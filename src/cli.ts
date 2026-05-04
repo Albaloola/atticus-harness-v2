@@ -31,6 +31,42 @@ program.command('status <matter-name>')
     await handler(matterName, options);
   });
 
+// Events
+program.command('events <matter-name>')
+  .description('List matter event log')
+  .option('--tail <n>', 'Number of events to show', '10')
+  .option('--follow', 'Follow new events in real time')
+  .option('--json', 'JSON output mode')
+  .action(async (matterName, options) => {
+    const { default: handler } = await import('./commands/events.js');
+    await handler(matterName, options);
+  });
+
+// Inbox
+program.command('inbox <matter-name>')
+  .description('Manage matter inbox')
+  .addCommand(
+    new Command('send')
+      .description('Send a message to the matter inbox')
+      .argument('<message>', 'Message content')
+      .action(async function (this: Command, message: string) {
+        const { inboxSendHandler } = await import('./commands/inbox.js');
+        const matterName = this.parent?.args[0] || '';
+        await inboxSendHandler(matterName, message);
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('List inbox messages')
+      .option('--json', 'JSON output')
+      .option('--tail <n>', 'Number of messages to show')
+      .action(async function (this: Command, options: { json?: boolean; tail?: string }) {
+        const { inboxListHandler } = await import('./commands/inbox.js');
+        const matterName = this.parent?.args[0] || '';
+        await inboxListHandler(matterName, options);
+      })
+  );
+
 // Run agent loop
 program.command('run <matter-name>')
   .description('Run agentic loop until done or blocked')
@@ -143,6 +179,80 @@ program.command('skill')
       .action(async (name) => {
         const { default: handler } = await import('./commands/skill-use.js');
         await handler(name);
+      })
+  );
+
+// Config management
+program
+  .command('config')
+  .description('Manage global harness configuration')
+  .addCommand(
+    new Command('show')
+      .description('Show merged configuration (with optional matter overrides)')
+      .argument('[matter]', 'Matter name for matter-level overrides')
+      .option('--json', 'JSON output')
+      .action(async (matter, options) => {
+        const { handleConfigShow } = await import('./commands/config.js');
+        await handleConfigShow(matter, options);
+      })
+  )
+  .addCommand(
+    new Command('init')
+      .description('Initialize global config at ~/.atticus-harness/config.json')
+      .option('--force', 'Overwrite existing config')
+      .action(async (options) => {
+        const { handleConfigInit } = await import('./commands/config.js');
+        await handleConfigInit(options);
+      })
+  )
+  .addCommand(
+    new Command('set')
+      .description('Set a non-secret config value (e.g. autonomy.mode, defaultModel)')
+      .argument('<path>', 'Dot-separated config path')
+      .argument('<value>', 'New value')
+      .action(async (path, value) => {
+        const { handleConfigSet } = await import('./commands/config.js');
+        await handleConfigSet(path, value);
+      })
+  );
+
+// Secrets management
+program
+  .command('secrets')
+  .description('Manage secrets stored in ~/.atticus-harness/secrets.env')
+  .addCommand(
+    new Command('set')
+      .description('Store a secret value (e.g. OPENROUTER_API_KEY)')
+      .argument('<key>', 'Secret key name')
+      .argument('<value>', 'Secret value')
+      .action(async (key, value) => {
+        const { handleSecretsSet } = await import('./commands/config.js');
+        await handleSecretsSet(key, value);
+      })
+  );
+
+// Policy management
+program
+  .command('policy')
+  .description('Manage tool approval and autonomy policy')
+  .addCommand(
+    new Command('show')
+      .description('Show current policy (with optional matter overrides)')
+      .argument('[matter]', 'Matter name for matter-level policy overrides')
+      .option('--json', 'JSON output')
+      .action(async (matter, options) => {
+        const { handlePolicyShow } = await import('./commands/config.js');
+        await handlePolicyShow(matter, options);
+      })
+  )
+  .addCommand(
+    new Command('set')
+      .description('Set a policy value (e.g. autonomy.mode, toolPolicy.read_only.defaultDecision)')
+      .argument('<path>', 'Dot-separated policy path')
+      .argument('<value>', 'New value')
+      .action(async (path, value) => {
+        const { handlePolicySet } = await import('./commands/config.js');
+        await handlePolicySet(path, value);
       })
   );
 

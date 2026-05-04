@@ -4,6 +4,7 @@ import { join } from 'path';
 import { loadMatter, getMatterPath } from '../storage/matter.js';
 import { searchEvidence } from '../storage/sqlite/search.js';
 import { getDb } from '../storage/sqlite/index.js';
+import { appendEvent } from '../state/events.js';
 
 export default async function verifyHandler(
   matterName: string,
@@ -91,6 +92,10 @@ export default async function verifyHandler(
   console.log(`  ${chalk.bold('Summary:')} ${supported} supported, ${unsupported} unverified, ${notFound} not found`);
   const allSupported = unsupported === 0 && notFound === 0;
   console.log(`  ${allSupported ? chalk.green('PASS') : chalk.yellow('NEEDS REVIEW')}`);
+
+  try {
+    await appendEvent({ matterName, type: 'draft.verified', data: { candidateId, supported, unsupported, notFound }, source: 'tool' });
+  } catch {}
 }
 
 function extractCitationContext(content: string, citationId: string): string | null {

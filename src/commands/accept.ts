@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { acceptCandidate } from '../storage/candidate.js';
 import { loadMatter } from '../storage/matter.js';
+import { appendEvent } from '../state/events.js';
 
 export default async function acceptHandler(
   matterName: string,
@@ -20,6 +21,10 @@ export default async function acceptHandler(
 
   try {
     const artifact = await acceptCandidate(matterName, candidateId);
+
+    try {
+      await appendEvent({ matterName, type: 'draft.accepted', data: { candidateId, artifactId: artifact.id }, source: 'tool' });
+    } catch {}
 
     console.log(chalk.green('✓'), `Candidate "${chalk.bold(candidateId)}" accepted.`);
     console.log(`  Promoted to artifact: ${chalk.cyan(artifact.id)}`);

@@ -1,11 +1,16 @@
-export interface HarnessConfig {
-  version: string;
-  openRouterApiKey?: string;
-  defaultModel: string;
-  fallbackModel: string;
-  maxRetries: number;
-  timeoutMs: number;
-  quietMode: boolean;
-  verbose: boolean;
-  matterDirectory: string;
-}
+export type {
+  GlobalHarnessConfig,
+  AutonomyPolicy,
+  ToolPolicy,
+  ToolCategoryPolicy,
+  ProviderConfig as GlobalProviderConfig,
+  ProvidersConfig,
+  ResolvedHarnessConfig,
+  AutonomyMode,
+  ExternalActionMode,
+  ApprovalDecision,
+  ToolCategory,
+  MatterConfigOverride,
+} from '../config/schema.js';
+
+export { DEFAULTS } from '../config/schema.js';

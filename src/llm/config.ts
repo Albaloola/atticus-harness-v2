@@ -21,6 +21,26 @@ export function loadConfig(): ProviderConfig {
   };
 }
 
+export async function loadConfigFromStore(): Promise<ProviderConfig> {
+  try {
+    const { resolveConfig } = await import('../config/loader.js');
+    const resolved = await resolveConfig();
+
+    return {
+      apiKey:
+        resolved.provider.apiKey ??
+        process.env.OPENROUTER_API_KEY ??
+        '',
+      baseUrl: resolved.provider.baseUrl ?? OPENROUTER_BASE_URL,
+      defaultModel: resolved.model ?? DEFAULT_MODEL,
+      timeoutMs: resolved.provider.timeoutMs ?? 180_000,
+      maxRetries: resolved.provider.maxRetries ?? 3,
+    };
+  } catch {
+    return loadConfig();
+  }
+}
+
 export function getDefaultModels(): { flash: string; pro: string } {
   return {
     flash: DEFAULT_MODEL,

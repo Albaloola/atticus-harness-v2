@@ -4,6 +4,7 @@ import { join } from 'path';
 import { loadMatter, saveMatterIndex, getMatterPath } from '../storage/matter.js';
 import { OpenRouterClient } from '../llm/client.js';
 import { listEvidence } from '../storage/evidence.js';
+import { appendEvent } from '../state/events.js';
 
 export default async function reviewHandler(
   matterName: string,
@@ -80,6 +81,10 @@ For each finding, rate severity: CRITICAL, HIGH, MEDIUM, LOW, or INFO.`;
 
     matterIndex.candidateCount++;
     await saveMatterIndex(matterName, matterIndex);
+
+    try {
+      await appendEvent({ matterName, type: 'draft.reviewed', data: { candidateId, reviewId }, source: 'tool' });
+    } catch {}
 
     console.log(chalk.green('✓'), 'Review complete');
     console.log('');

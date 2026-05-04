@@ -1,6 +1,7 @@
 import { readFile, writeFile, mkdir, readdir, rm } from 'fs/promises';
 import { join } from 'path';
 import type { MatterIndex, MatterStatus, MatterConfig } from '../types/matter.js';
+import { getStateDb } from '../state/store.js';
 
 const MATTERS_ROOT = 'matters';
 const INDEX_FILE = '_index.json';
@@ -95,10 +96,13 @@ export async function ensureMatterDirectories(name: string): Promise<void> {
     getMatterPath(name, '_extractions'),
     getMatterPath(name, '_candidates'),
     getMatterPath(name, '_artifacts'),
+    getMatterPath(name, '_state'),
   ];
   for (const dir of dirs) {
     await mkdir(dir, { recursive: true });
   }
+
+  getStateDb(name);
 }
 
 export async function deleteMatter(name: string): Promise<void> {

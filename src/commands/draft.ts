@@ -6,6 +6,7 @@ import { listEvidence } from '../storage/evidence.js';
 import { searchEvidence } from '../storage/sqlite/search.js';
 import { DraftTool } from '../tools/draft.tool.js';
 import { getDb } from '../storage/sqlite/index.js';
+import { appendEvent } from '../state/events.js';
 
 export default async function draftHandler(
   matterName: string,
@@ -68,6 +69,10 @@ export default async function draftHandler(
     matterIndex.status = 'drafting';
     matterIndex.candidateCount++;
     await saveMatterIndex(matterName, matterIndex);
+
+    try {
+      await appendEvent({ matterName, type: 'draft.created', data: { candidateId, docType }, source: 'tool' });
+    } catch {}
 
     console.log(chalk.green('✓'), `Draft saved as ${chalk.bold(candidateId)}`);
     console.log(`  Path: ${chalk.cyan(candidatePath)}`);

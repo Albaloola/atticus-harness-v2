@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { rejectCandidate } from '../storage/candidate.js';
 import { loadMatter } from '../storage/matter.js';
+import { appendEvent } from '../state/events.js';
 
 export default async function rejectHandler(
   matterName: string,
@@ -21,6 +22,10 @@ export default async function rejectHandler(
 
   try {
     await rejectCandidate(matterName, candidateId, options.reason);
+
+    try {
+      await appendEvent({ matterName, type: 'draft.rejected', data: { candidateId, reason: options.reason || '' }, source: 'tool' });
+    } catch {}
 
     console.log(chalk.yellow('○'), `Candidate "${chalk.bold(candidateId)}" rejected.`);
     if (options.reason) {

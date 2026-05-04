@@ -8,6 +8,7 @@ import { insertEvidence, getEvidenceCount } from '../storage/sqlite/evidence.js'
 import { chunkText, insertChunks } from '../storage/sqlite/chunks.js';
 import { extractText, hashFile } from '../extraction/index.js';
 import { detectFormatByMagic, getMimeType } from '../extraction/detect.js';
+import { appendEvent } from '../state/events.js';
 import type { EvidenceRecord } from '../types/evidence.js';
 
 export default async function ingestHandler(
@@ -87,6 +88,13 @@ export default async function ingestHandler(
     index.evidenceCount = evidenceCount + 1;
     await saveMatterIndex(matterName, index);
 
+    try {
+      await appendEvent({ matterName, type: 'matter.status_changed', data: { status: 'ingesting' }, source: 'tool' });
+    } catch {}
+    try {
+      await appendEvent({ matterName, type: 'evidence.ingestion_failed', data: { evidenceId, fileName, error: (err as Error).message }, source: 'tool' });
+    } catch {}
+
     console.log(chalk.yellow('\u26A0'), `Evidence registered but extraction failed.`);
     return;
   }
@@ -108,6 +116,13 @@ export default async function ingestHandler(
   index.status = 'ingesting';
   index.evidenceCount = evidenceCount + 1;
   await saveMatterIndex(matterName, index);
+
+  try {
+    await appendEvent({ matterName, type: 'matter.status_changed', data: { status: 'ingesting' }, source: 'tool' });
+  } catch {}
+  try {
+    await appendEvent({ matterName, type: 'evidence.ingested', data: { evidenceId, fileName, format, sha256 }, source: 'tool' });
+  } catch {}
 
   console.log(chalk.green('\u2713'), `Ingested "${fileName}" as ${chalk.bold(evidenceId)}`);
   console.log(`  Format:  ${chalk.cyan(format)}`);

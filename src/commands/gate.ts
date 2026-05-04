@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { readFile } from 'fs/promises';
 import { loadMatter, getMatterPath } from '../storage/matter.js';
 import { listEvidence } from '../storage/evidence.js';
+import { appendEvent } from '../state/events.js';
 
 export default async function gateHandler(
   matterName: string,
@@ -94,4 +95,8 @@ export default async function gateHandler(
   console.log(chalk.gray('━'.repeat(40)));
   const status = failed === 0 ? chalk.green('PASS') : failed <= 2 ? chalk.yellow('CONDITIONAL PASS') : chalk.red('FAIL');
   console.log(`  ${status}: ${passed}/${checks.length} checks passed`);
+
+  try {
+    await appendEvent({ matterName, type: 'draft.gated', data: { candidateId, passed, failed, totalChecks: String(checks.length) }, source: 'tool' });
+  } catch {}
 }

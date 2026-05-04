@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import { loadMatter, saveMatterIndex } from '../storage/matter.js';
 import { listEvidence } from '../storage/evidence.js';
 import { AgentLoop } from '../agent/index.js';
+import { appendEvent } from '../state/events.js';
 
 export default async function runHandler(
   matterName: string,
@@ -46,7 +47,25 @@ export default async function runHandler(
       verbose: !quietMode,
     });
 
+    try {
+      await appendEvent({ matterName, type: 'agent.run.started', data: { model: matterIndex.config.model || 'deepseek/deepseek-v4-flash' }, source: 'tool' });
+    } catch {}
+
     const result = await loop.run(matterName, options.prompt);
+
+    const statusEventType = {
+      completed: 'agent.run.completed' as const,
+      blocked: 'agent.run.blocked' as const,
+      error: 'agent.run.error' as const,
+      max_turns: 'agent.run.max_turns' as const,
+    }[result.status] || 'agent.run.completed';
+    try {
+      await appendEvent({ matterName, type: statusEventType, data: { turns: result.turns.length, summary: result.summary.substring(0, 200) }, source: 'tool' });
+    } catch {}
+
+    try {
+      await appendEvent({ matterName, type: 'matter.status_changed', data: { status: 'analyzing' }, source: 'tool' });
+    } catch {}
 
     if (!quietMode) {
       console.log('');

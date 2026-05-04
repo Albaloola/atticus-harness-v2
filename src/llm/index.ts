@@ -2,6 +2,7 @@ export { OpenRouterClient } from './client.js';
 export type { OpenRouterClientOptions } from './client.js';
 export {
   loadConfig,
+  loadConfigFromStore,
   getDefaultModels,
   DEFAULT_MODEL,
   PRO_MODEL,

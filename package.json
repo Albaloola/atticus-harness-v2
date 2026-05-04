@@ -1,0 +1,41 @@
+{
+  "name": "harness-v2",
+  "version": "0.1.0",
+  "description": "Standalone legal operations agent CLI",
+  "type": "module",
+  "bin": {
+    "harness": "./dist/cli.js"
+  },
+  "main": "./dist/cli.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "tsc --noEmit",
+    "setup": "bash scripts/setup.sh",
+    "postinstall": "npm run build --silent 2>/dev/null || true",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0",
+    "ink": "^7.0.1",
+    "js-yaml": "^4.1.0",
+    "jszip": "^3.10.1",
+    "react": "^19.2.5"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/js-yaml": "^4.0.0",
+    "@types/node": "^22.19.17",
+    "@types/react": "^19.2.14",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
+  }
+}

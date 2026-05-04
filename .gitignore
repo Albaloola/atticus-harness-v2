@@ -1,0 +1,9 @@
+node_modules/
+dist/
+matters/*
+!matters/.gitkeep
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.env
+tmp/

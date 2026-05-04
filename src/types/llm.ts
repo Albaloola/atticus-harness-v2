@@ -1,0 +1,40 @@
+import type { LLMMessage, ToolCall } from './message.js';
+import type { ToolDefinition } from './tool.js';
+
+export interface LLMConfig {
+  model: string;
+  maxTokens?: number;
+  temperature?: number;
+  jsonMode?: boolean;
+  disableThinking?: boolean;
+  maxRetries?: number;
+  timeoutMs?: number;
+}
+
+export interface LLMRequest {
+  messages: LLMMessage[];
+  tools?: ToolDefinition[];
+  config: LLMConfig;
+}
+
+export interface LLMResponse {
+  content: string;
+  toolCalls?: ToolCall[];
+  usage?: LLMUsage;
+  provider?: string;
+  model?: string;
+}
+
+export interface LLMUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cacheHitTokens?: number;
+  cacheMissTokens?: number;
+}
+
+export interface LLMToolUse {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}

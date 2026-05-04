@@ -1,6 +1,6 @@
 # Harness v2 — Legal Operations Agent CLI
 
-Standalone terminal-native agent for legal work. Ingests evidence, runs an agentic loop with tool-calling, drafts documents, verifies citations, and manages matter workflows. Built in TypeScript on Node.js.
+Standalone terminal-native agent for legal work. Ingests evidence, runs hierarchical orchestration with tool-calling, drafts documents, verifies citations, manages matter workflows, schedules recurring jobs, and auto-accepts gated outputs. Built in TypeScript on Node.js.
 
 ## Quick Install
 
@@ -32,126 +32,172 @@ sudo apt install poppler-utils tesseract-ocr libreoffice
 ### Set your API key
 
 ```bash
+# Using the new config system (recommended)
+harness config init
+harness secrets set OPENROUTER_API_KEY sk-or-v1-...
+
+# Or via environment variable (legacy)
 export OPENROUTER_API_KEY=sk-or-v1-...
+```
+
+### Configure autonomy and policies
+
+```bash
+harness policy show                     # View current policy
+harness policy preset operator-safe     # Maximum safety (default)
+harness policy preset auto-internal     # Auto-approve internal tool use
+harness policy preset auto-accept-gated # Auto-accept after gates pass
+harness policy preset full-local-autonomy  # Full autonomy (prepare-only output)
 ```
 
 ## Usage
 
-### 1. Create a matter
+### Matter lifecycle
 
 ```bash
-harness init my-case
+harness init my-case                           # Create a new matter
+harness status my-case                         # Show matter state and next actions
+harness status my-case --json                  # Machine-readable status
+harness events my-case --tail 100 --follow     # Tail event log
+harness watch my-case                          # Watch matter progress in real time
 ```
 
-Creates the directory structure under `matters/my-case/`.
-
-### 2. Ingest evidence
+### Evidence ingestion and search
 
 ```bash
-harness ingest my-case ~/documents/contract.pdf
+harness ingest my-case ~/documents/contract.pdf   # Ingest and OCR a document
+harness evidence my-case                           # List evidence index
+harness evidence my-case --filter pdf              # Filter by format
+harness search my-case "tenancy agreement"         # Full-text FTS5 search
 ```
 
-Copies the file, computes SHA-256, runs OCR/extraction, indexes text into SQLite FTS5 for search.
-
-Supports: PDF, DOCX, DOC, JPEG, PNG, TXT, HTML
-
-### 3. Search evidence
+### Agentic loop
 
 ```bash
-harness search my-case "tenancy agreement"
+harness run my-case                              # Run agent loop
+harness run my-case --skill contract-review      # Load a specific skill
+harness run my-case --quiet                      # Suppress verbose output
+harness run my-case --background                 # Run asynchronously
 ```
 
-Full-text search across all ingested evidence with relevance scoring.
-
-### 4. List evidence
+### Hierarchical orchestration
 
 ```bash
-harness evidence my-case
+harness orchestrate my-case --objective "Analyze housing disrepair claim"
+harness orchestrate my-case --objective "..." --max-depth 3 --concurrency 4
+harness orchestrate my-case --background --json
 ```
 
-### 5. Run the agent loop
+The orchestrator runs a master→mini→worker pipeline across all 10 legal workflow phases: intake, evidence, issue spotting, legal research, merits/risk, procedural planning, document production, verification, bundle assembly, and operator handoff.
 
-```bash
-harness run my-case
-```
-
-The agent loads matter context, calls OpenRouter, executes tools, and loops until the task is done or blocked. State is saved to disk — crash and re-run to resume.
-
-```bash
-harness run my-case --skill contract-review    # Load a specific skill
-harness run my-case --quiet                    # Suppress verbose output
-```
-
-### 6. Draft a document
+### Draft, verify, review, gate
 
 ```bash
 harness draft my-case "Draft a letter disputing the rent arrears"
+harness verify my-case draft-1234567890          # Verify citations
+harness gate my-case draft-1234567890            # Run quality gates
+harness review my-case draft-1234567890          # Hostile adversarial review
 ```
 
-Generates a legal document using evidence context. Saves to `_candidates/`.
-
-### 7. Verify citations
+### Accept or reject
 
 ```bash
-harness verify my-case draft-1234567890
-```
-
-Extracts citations like `[NAP-SRC-0001]` from the draft and verifies quoted text against source evidence.
-
-### 8. Quality gate
-
-```bash
-harness gate my-case draft-1234567890
-```
-
-Checks: citations present, content length, document structure, date present, citation validity.
-
-### 9. Hostile review
-
-```bash
-harness review my-case draft-1234567890
-```
-
-Runs an adversarial legal review via LLM, identifying weaknesses and risks.
-
-### 10. Accept or reject
-
-```bash
-harness accept my-case draft-1234567890   # Promotes to artifact
+harness accept my-case draft-1234567890          # Manual accept
+harness accept auto my-case draft-1234567890     # Auto-accept (respects policy)
 harness reject my-case draft-1234567890 --reason "needs more citations"
 ```
 
-### 11. Skills
+### Source research
 
 ```bash
-harness skill list                         # List all 26 skills
+harness source search my-case "Housing Act 1988 section 21"   # Search web sources
+harness source fetch my-case https://example.com/statute      # Fetch and snapshot a URL
+harness source list my-case                                    # List stored sources
+```
+
+### Scheduling
+
+```bash
+harness schedule create my-case --cron "0 9 * * *" --prompt "Check deadlines"
+harness schedule create my-case --cron "0 */6 * * *" --prompt "..." --recurring --durable
+harness schedule list my-case --json
+harness schedule delete my-case <job-id>
+```
+
+### Daemon control
+
+```bash
+harness daemon start                  # Start background daemon
+harness daemon status --json          # Check daemon status
+harness daemon stop                   # Stop daemon
+harness pause my-case                 # Pause active run
+harness resume my-case                # Resume paused run
+harness cancel my-case --run <run-id> # Cancel a run
+```
+
+### Configuration
+
+```bash
+harness config show                   # View merged configuration
+harness config show my-case --json    # With matter overrides
+harness config init --force           # Reset to defaults
+harness config set defaultModel deepseek/deepseek-v4-pro
+harness secrets set OPENROUTER_API_KEY sk-or-v1-...
+harness policy show --json
+harness policy set autonomy.maxAgentDepth 5
+```
+
+### Skills
+
+```bash
+harness skill list                         # List all skills
 harness skill use contract-review-anthropic  # Display a skill's prompt
 ```
 
 ## Workflow
 
 ```
-init → ingest (×N) → search → run → draft → verify → gate → review → accept
+init → ingest (×N) → search → run/orchestrate → draft → verify → gate → review → accept
 ```
 
-The agent loop handles the middle pipeline autonomously: it assesses the matter state, gathers evidence, drafts documents, and checks its own work.
+For full orchestration:
+```
+orchestrate → [intake → evidence → issue-spot → research → merits → procedure → draft → verify → bundle → handoff]
+               └── master → mini-orchestrators → workers (parallel, depth-limited)
+```
 
 ## Architecture
 
 ```
 src/
-├── cli.ts              # Commander entry point (14 commands)
-├── agent/              # Agent loop (load → assess → plan → execute → record → check → loop)
-├── commands/           # Command implementations
+├── cli.ts              # Commander entry point (30+ commands)
+├── agent/              # QueryLoop + AgentLoop wrapper + structured results
+├── commands/           # Command handlers
+├── config/             # Global control panel (providers, autonomy, secrets)
+├── state/              # Event-sourced matter store (SQLite + JSONL)
+├── orchestration/      # Master → Mini → Worker hierarchical pipeline
+├── scheduler/          # 5-field cron parser + scheduled job loop
+├── daemon/             # Long-running process manager + supervisor
+├── research/           # Web search/fetch, source snapshots, citation verification
+├── legal/              # 10-phase workflow, 24 artifact types, templates, skills router
+├── acceptance/         # 10-gate scoring, auto-acceptance, review quorum
 ├── extraction/         # PDF/DOCX/DOC/image/text extraction pipeline
 ├── llm/                # OpenRouter client (DeepSeek V4 flash/pro)
 ├── storage/            # Flat-file matter storage + SQLite FTS5 evidence store
 ├── tools/              # 11 tools registered for agent use
 ├── types/              # Shared TypeScript interfaces
-└── skills/             # SKILL.md parser and loader
+├── skills/             # SKILL.md parser and loader
+└── permissions/        # Approval decision engine (plan)
 skills/                 # 26 bundled SKILL.md files
-tests/                  # 37 unit tests
+tests/                  # 321 unit tests across 14 files
 ```
+
+### Key architecture principles
+
+- **Event-sourced**: Every agent thought, tool call, candidate, gate, reviewer result, source snapshot, and decision is recorded as an event. Status is derived from state, not inferred from model output.
+- **Hierarchical**: Master orchestrator decomposes matters into mini-orchestrators, which spawn workers for bounded tasks. Depth-limited recursion with configurable concurrency.
+- **Autonomy-configurable**: Safety is policy, not hard-coded. Five autonomy modes from `operator_safe` to `full_local_autonomy`. External dispatch is always prepare-only in this version.
+- **Daemon-capable, CLI-controlled**: Run work asynchronously, inspect state without interrupting inference.
 
 ## Development
 
@@ -162,9 +208,22 @@ npm test             # Run tests (vitest)
 npm run dev          # Watch mode
 ```
 
+## What it does
+
+- ✅ CLI-first, daemon-capable, event-sourced legal orchestration
+- ✅ Master → mini-orchestrator → worker hierarchical pipeline
+- ✅ Scheduled recurring/one-shot jobs with cron expressions
+- ✅ Non-interrupting status snapshots and event streaming
+- ✅ Evidence-grade web research with source snapshots and citation verification
+- ✅ 10-phase legal workflow (intake through operator handoff)
+- ✅ 10-gate quality scoring with policy-controlled auto-acceptance
+- ✅ Review quorum with hostile reviewer agent
+- ✅ 26 bundled legal skills
+- ✅ SQLite + JSONL dual persistence for audit trails
+
 ## What it doesn't do
 
-- No TUI, no web UI, no daemon — pure CLI
-- No scheduler, no micro-orchestration — single agentic loop
-- No auto-acceptance — operator must explicitly accept/reject
-- No external legal action without operator approval
+- No TUI, no web UI — pure CLI
+- No external legal dispatch — all outputs are prepare-only
+- No cloud bridge, no remote sessions
+- No MCP or plugin marketplace

@@ -7,12 +7,14 @@ import type { MatterEvent, MatterEventType } from '../types/state.js';
 export interface AppendEventParams {
   matterName: string;
   type: MatterEventType;
+  runId?: string;
+  taskId?: string;
   data?: Record<string, unknown>;
   source?: string;
 }
 
 export async function appendEvent(params: AppendEventParams): Promise<MatterEvent> {
-  const { matterName, type, data = {}, source = 'operator' } = params;
+  const { matterName, type, runId, taskId, data = {}, source = 'operator' } = params;
 
   const event: MatterEvent = {
     id: randomUUID(),
@@ -25,9 +27,9 @@ export async function appendEvent(params: AppendEventParams): Promise<MatterEven
 
   const db = getStateDb(matterName);
   db.prepare(
-    `INSERT INTO events (id, timestamp, type, matter_name, data_json, source)
-     VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(event.id, event.timestamp, event.type, event.matterName, JSON.stringify(event.data), event.source);
+    `INSERT INTO events (id, timestamp, type, matter_name, run_id, task_id, data_json, source)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(event.id, event.timestamp, event.type, event.matterName, runId ?? null, taskId ?? null, JSON.stringify(event.data), event.source);
 
   const stateDir = getMatterPath(matterName, '_state');
   await mkdir(stateDir, { recursive: true });

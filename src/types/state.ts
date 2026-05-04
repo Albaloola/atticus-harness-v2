@@ -13,7 +13,12 @@ export type MatterEventType =
   | 'agent.run.error'
   | 'agent.run.max_turns'
   | 'agent.turn.completed'
+  | 'agent.spawned'
+  | 'agent.completed'
   | 'tool.called'
+  | 'task.created'
+  | 'run.started'
+  | 'run.completed'
   | 'draft.created'
   | 'draft.verified'
   | 'draft.gated'
@@ -43,8 +48,14 @@ export type TaskStatus =
 export interface TaskDagNode {
   id: string;
   matterName: string;
+  parentId?: string;
+  runId?: string;
+  kind: string;
   type: string;
   status: TaskStatus;
+  priority: string;
+  depth: number;
+  assignedAgent?: string;
   dependencies: string[];
   title: string;
   created: string;
@@ -64,6 +75,9 @@ export type AgentRunStatus =
 export interface AgentRun {
   id: string;
   matterName: string;
+  parentRunId?: string;
+  agentType: string;
+  role: string;
   status: AgentRunStatus;
   model: string;
   skill?: string;
@@ -71,6 +85,7 @@ export interface AgentRun {
   started: string;
   ended?: string;
   turns: number;
+  costUsd: number;
   summary?: string;
   error?: string;
 }
@@ -82,7 +97,9 @@ export interface MatterRuntimeSnapshot {
   timestamp: string;
   status: MatterStatus;
   phase: string;
-  activeAgents: AgentRun[];
+  activeRunId?: string;
+  currentPhase?: string;
+  activeAgents: Array<{ runId: string; role: string; title: string; status: string; lastEventAt: string }>;
   taskCounts: TaskCounts;
   latestFindings: string[];
   latestRisks: string[];
@@ -124,3 +141,46 @@ export interface RuntimeSource {
   summary: string;
   addedAt: string;
 }
+
+export interface DaemonStatus {
+  running: boolean;
+  pid: number | null;
+  startedAt: string | null;
+  uptime: number | null;
+  activeRuns: number;
+}
+
+// ── Scheduler ─────────────────────────────────────────────────
+
+export interface ScheduledJob {
+  id: string;
+  matterName: string;
+  cron: string;
+  prompt: string;
+  recurring: boolean;
+  durable: boolean;
+  enabled: boolean;
+  status: string;
+  createdAt: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface CronField {
+  minute: number[];
+  hour: number[];
+  dayOfMonth: number[];
+  month: number[];
+  dayOfWeek: number[];
+}
+
+export interface SupervisedRun {
+  runId: string;
+  matterName: string;
+  startedAt: string;
+  status: 'running' | 'paused' | 'cancelled';
+  abortController?: AbortController;
+}
+
+// ── Scheduler ─────────────────────────────────────────────────

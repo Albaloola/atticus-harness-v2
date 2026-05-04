@@ -5,6 +5,9 @@ import type { AgentRun, AgentRunStatus } from '../types/state.js';
 export interface CreateRunParams {
   matterName: string;
   model: string;
+  parentRunId?: string;
+  agentType?: string;
+  role?: string;
   skill?: string;
   prompt?: string;
   id?: string;
@@ -17,18 +20,26 @@ export function createRun(params: CreateRunParams): AgentRun {
   const run: AgentRun = {
     id,
     matterName: params.matterName,
+    parentRunId: params.parentRunId,
+    agentType: params.agentType || 'worker',
+    role: params.role || 'worker',
     status: 'running',
     model: params.model,
     skill: params.skill,
     prompt: params.prompt,
     started: new Date().toISOString(),
     turns: 0,
+    costUsd: 0,
   };
 
   db.prepare(
-    `INSERT INTO agent_runs (id, matter_name, status, model, skill, prompt, started, turns)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(run.id, run.matterName, run.status, run.model, run.skill ?? null, run.prompt ?? null, run.started, run.turns);
+    `INSERT INTO agent_runs (id, matter_name, parent_run_id, agent_type, role, status, model, skill, prompt, started, turns, cost_usd)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    run.id, run.matterName, run.parentRunId ?? null, run.agentType, run.role,
+    run.status, run.model, run.skill ?? null, run.prompt ?? null,
+    run.started, run.turns, run.costUsd
+  );
 
   return run;
 }
@@ -106,6 +117,9 @@ export function listRuns(
 interface RunRow {
   id: string;
   matter_name: string;
+  parent_run_id: string | null;
+  agent_type: string;
+  role: string;
   status: string;
   model: string;
   skill: string | null;
@@ -113,6 +127,7 @@ interface RunRow {
   started: string;
   ended: string | null;
   turns: number;
+  cost_usd: number;
   summary: string | null;
   error: string | null;
 }
@@ -121,6 +136,9 @@ function rowToRun(row: RunRow): AgentRun {
   return {
     id: row.id,
     matterName: row.matter_name,
+    parentRunId: row.parent_run_id ?? undefined,
+    agentType: row.agent_type || 'worker',
+    role: row.role || 'worker',
     status: row.status as AgentRunStatus,
     model: row.model,
     skill: row.skill ?? undefined,
@@ -128,6 +146,7 @@ function rowToRun(row: RunRow): AgentRun {
     started: row.started,
     ended: row.ended ?? undefined,
     turns: row.turns,
+    costUsd: row.cost_usd ?? 0,
     summary: row.summary ?? undefined,
     error: row.error ?? undefined,
   };

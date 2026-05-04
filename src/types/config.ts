@@ -5,6 +5,7 @@ export type {
   ToolCategoryPolicy,
   ProviderConfig as GlobalProviderConfig,
   ProvidersConfig,
+  ProviderPolicy,
   ResolvedHarnessConfig,
   AutonomyMode,
   ExternalActionMode,

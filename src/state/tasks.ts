@@ -4,8 +4,14 @@ import type { TaskDagNode, TaskStatus } from '../types/state.js';
 
 export interface CreateTaskParams {
   matterName: string;
+  kind?: string;
   type: string;
   title: string;
+  parentId?: string;
+  runId?: string;
+  priority?: string;
+  depth?: number;
+  assignedAgent?: string;
   dependencies?: string[];
   data?: Record<string, unknown>;
   id?: string;
@@ -19,8 +25,14 @@ export function createTask(params: CreateTaskParams): TaskDagNode {
   const node: TaskDagNode = {
     id,
     matterName: params.matterName,
+    parentId: params.parentId,
+    runId: params.runId,
+    kind: params.kind || params.type,
     type: params.type,
     status: 'pending',
+    priority: params.priority || 'medium',
+    depth: params.depth ?? 0,
+    assignedAgent: params.assignedAgent,
     dependencies: params.dependencies || [],
     title: params.title,
     created: now,
@@ -29,13 +41,19 @@ export function createTask(params: CreateTaskParams): TaskDagNode {
   };
 
   db.prepare(
-    `INSERT INTO tasks (id, matter_name, type, status, dependencies_json, title, created, updated, data_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO tasks (id, matter_name, parent_id, run_id, kind, type, status, priority, depth, assigned_agent, dependencies_json, title, created, updated, data_json)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     node.id,
     node.matterName,
+    node.parentId ?? null,
+    node.runId ?? null,
+    node.kind,
     node.type,
     node.status,
+    node.priority,
+    node.depth,
+    node.assignedAgent ?? null,
     JSON.stringify(node.dependencies),
     node.title,
     node.created,
@@ -108,8 +126,14 @@ export function listTasks(
 interface TaskRow {
   id: string;
   matter_name: string;
+  parent_id: string | null;
+  run_id: string | null;
+  kind: string;
   type: string;
   status: string;
+  priority: string;
+  depth: number;
+  assigned_agent: string | null;
   dependencies_json: string;
   title: string;
   created: string;
@@ -121,8 +145,14 @@ function rowToTask(row: TaskRow): TaskDagNode {
   return {
     id: row.id,
     matterName: row.matter_name,
+    parentId: row.parent_id ?? undefined,
+    runId: row.run_id ?? undefined,
+    kind: row.kind || row.type,
     type: row.type,
     status: row.status as TaskStatus,
+    priority: row.priority || 'medium',
+    depth: row.depth ?? 0,
+    assignedAgent: row.assigned_agent ?? undefined,
     dependencies: JSON.parse(row.dependencies_json),
     title: row.title,
     created: row.created,

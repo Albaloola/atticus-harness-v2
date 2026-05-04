@@ -2,12 +2,18 @@
 // Global control-panel types for Harness V2
 // ---------------------------------------------------------------------------
 
-export type AutonomyMode = 'operator_safe' | 'semi_autonomous' | 'full_autonomy';
+export type AutonomyMode =
+  | 'operator_safe'
+  | 'auto_internal'
+  | 'auto_accept_gated'
+  | 'full_local_autonomy'
+  | 'custom';
 
 export type ExternalActionMode =
+  | 'disabled'
   | 'prepare_only'
-  | 'operator_approval'
-  | 'auto';
+  | 'prepare_bundle_only'
+  | 'operator_required_to_send';
 
 export type ApprovalDecision =
   | 'allow'
@@ -41,11 +47,39 @@ export type ToolPolicy = Partial<Record<ToolCategory, ToolCategoryPolicy>>;
 // ---------------------------------------------------------------------------
 export interface AutonomyPolicy {
   mode: AutonomyMode;
+  autoApproveTools: boolean;
+  autoApproveReadOnly: boolean;
+  autoApproveFileWrites: boolean;
+  autoApproveShell: boolean;
+  autoApproveWeb: boolean;
   autoAcceptCandidates: boolean;
+  requireQualityGateForAcceptance: boolean;
+  requireCitationVerificationForAcceptance: boolean;
+  requireHostileReviewForAcceptance: boolean;
+  minGateScoreForAutoAccept: number;
   externalActionMode: ExternalActionMode;
   allowExternalDispatch: boolean;
   maxConcurrentAgents: number;
   maxAgentDepth: number;
+  maxMatterBudgetUsd?: number;
+  maxRunBudgetUsd?: number;
+  maxWallClockMinutes?: number;
+}
+
+export interface ProviderPolicy {
+  defaultProvider: 'openrouter' | 'anthropic' | 'openai-compatible' | 'local';
+  models: {
+    fast: string;
+    reasoning: string;
+    drafting: string;
+    reviewer: string;
+    citation: string;
+    cheap: string;
+  };
+  retries: number;
+  timeoutMs: number;
+  concurrentRequests: number;
+  perProviderRateLimit?: Record<string, { rpm?: number; tpm?: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,8 +108,30 @@ export interface GlobalHarnessConfig {
   version: string;
   defaultModel: string;
   providers: ProvidersConfig;
+  providerPolicy: ProviderPolicy;
   autonomy: AutonomyPolicy;
   toolPolicy: ToolPolicy;
+}
+
+export interface ResolvedHarnessConfig {
+  /** The final provider configuration after merging */
+  provider: ProviderConfig;
+  /** Which provider was selected ('openrouter' by default) */
+  providerName: string;
+  /** Provider routing policy */
+  providerPolicy: ProviderPolicy;
+  /** Resolved model name */
+  model: string;
+  /** Resolved autonomy policy */
+  autonomy: AutonomyPolicy;
+  /** Resolved tool approval policy */
+  toolPolicy: ToolPolicy;
+  /** Whether config was loaded from disk vs defaults only */
+  fromDisk: boolean;
+  /** Matter name, if one was specified */
+  matterName?: string;
+  /** Redacted copy for display — never contains raw secrets */
+  redacted?(): Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,9 +182,32 @@ export const DEFAULTS: GlobalHarnessConfig = {
       maxRetries: 3,
     },
   },
+  providerPolicy: {
+    defaultProvider: 'openrouter',
+    models: {
+      fast: 'deepseek/deepseek-v4-flash',
+      reasoning: 'deepseek/deepseek-v4-pro',
+      drafting: 'deepseek/deepseek-v4-pro',
+      reviewer: 'deepseek/deepseek-v4-pro',
+      citation: 'deepseek/deepseek-v4-flash',
+      cheap: 'deepseek/deepseek-v4-flash',
+    },
+    retries: 3,
+    timeoutMs: 180_000,
+    concurrentRequests: 4,
+  },
   autonomy: {
     mode: 'operator_safe',
+    autoApproveTools: false,
+    autoApproveReadOnly: true,
+    autoApproveFileWrites: false,
+    autoApproveShell: false,
+    autoApproveWeb: false,
     autoAcceptCandidates: false,
+    requireQualityGateForAcceptance: true,
+    requireCitationVerificationForAcceptance: true,
+    requireHostileReviewForAcceptance: true,
+    minGateScoreForAutoAccept: 0.8,
     externalActionMode: 'prepare_only',
     allowExternalDispatch: false,
     maxConcurrentAgents: 4,

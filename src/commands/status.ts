@@ -79,7 +79,7 @@ export default async function statusHandler(
     if (snapshot.activeAgents.length > 0) {
       console.log(`  ${chalk.yellow('Active Agents:')} ${snapshot.activeAgents.length}`);
       for (const agent of snapshot.activeAgents) {
-        console.log(`    - ${agent.model} (${agent.skill || 'no skill'}, turn ${agent.turns})`);
+        console.log(`    - ${agent.role}: ${agent.title} (${agent.status})`);
       }
       console.log('');
     }

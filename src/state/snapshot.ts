@@ -25,7 +25,15 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
     blocked: tasks.filter((t) => t.status === 'blocked').length,
   };
 
-  const activeAgents = runs.filter((r) => r.status === 'running');
+  const activeAgents = runs
+    .filter((r) => r.status === 'running')
+    .map((r) => ({
+      runId: r.id,
+      role: r.role,
+      title: r.prompt || r.skill || `Agent run ${r.id.substring(0, 8)}`,
+      status: r.status,
+      lastEventAt: r.started,
+    }));
 
   const findings = allEvents
     .filter((e) => e.type === 'tool.called' && e.data?.output)
@@ -59,6 +67,8 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
     timestamp: new Date().toISOString(),
     status: index.status,
     phase,
+    activeRunId: activeAgents.length > 0 ? activeAgents[0].runId : undefined,
+    currentPhase: phase,
     activeAgents,
     taskCounts,
     latestFindings: findings,

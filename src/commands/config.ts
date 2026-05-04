@@ -4,7 +4,7 @@ import { mkdir, access, writeFile } from 'fs/promises';
 import { constants } from 'fs';
 import { getConfigDir, getConfigPath, getSecretsPath } from '../config/paths.js';
 import { DEFAULTS } from '../config/schema.js';
-import type { ToolCategoryPolicy } from '../config/schema.js';
+import type { ToolCategoryPolicy, AutonomyMode } from '../config/schema.js';
 
 type JsonObject = { [key: string]: unknown };
 
@@ -144,6 +144,73 @@ function parseValue(value: string): unknown {
   } catch {
     return value;
   }
+}
+
+export async function handlePolicyPreset(preset: string): Promise<void> {
+  const validPresets: AutonomyMode[] = [
+    'operator_safe',
+    'auto_internal',
+    'auto_accept_gated',
+    'full_local_autonomy',
+  ];
+
+  if (!validPresets.includes(preset as AutonomyMode)) {
+    console.error(`Invalid preset: ${preset}`);
+    console.error(`Valid: ${validPresets.join(', ')}`);
+    process.exit(1);
+  }
+
+  await setConfigValue('autonomy.mode', preset);
+
+  const presets: Record<string, Partial<Record<string, unknown>>> = {
+    operator_safe: {
+      'autonomy.autoApproveTools': false,
+      'autonomy.autoApproveFileWrites': false,
+      'autonomy.autoAcceptCandidates': false,
+      'autonomy.externalActionMode': 'prepare_only',
+      'autonomy.allowExternalDispatch': false,
+    },
+    auto_internal: {
+      'autonomy.autoApproveTools': true,
+      'autonomy.autoApproveFileWrites': true,
+      'autonomy.autoAcceptCandidates': false,
+      'autonomy.externalActionMode': 'prepare_only',
+      'autonomy.allowExternalDispatch': false,
+    },
+    auto_accept_gated: {
+      'autonomy.autoApproveTools': true,
+      'autonomy.autoApproveFileWrites': true,
+      'autonomy.autoAcceptCandidates': true,
+      'autonomy.requireQualityGateForAcceptance': true,
+      'autonomy.requireCitationVerificationForAcceptance': true,
+      'autonomy.requireHostileReviewForAcceptance': true,
+      'autonomy.minGateScoreForAutoAccept': 0.8,
+      'autonomy.externalActionMode': 'prepare_only',
+      'autonomy.allowExternalDispatch': false,
+    },
+    full_local_autonomy: {
+      'autonomy.autoApproveTools': true,
+      'autonomy.autoApproveFileWrites': true,
+      'autonomy.autoApproveShell': true,
+      'autonomy.autoApproveWeb': true,
+      'autonomy.autoAcceptCandidates': true,
+      'autonomy.requireQualityGateForAcceptance': false,
+      'autonomy.requireCitationVerificationForAcceptance': false,
+      'autonomy.requireHostileReviewForAcceptance': false,
+      'autonomy.externalActionMode': 'prepare_bundle_only',
+      'autonomy.allowExternalDispatch': false,
+    },
+  };
+
+  const settings = presets[preset];
+  if (settings) {
+    for (const [path, value] of Object.entries(settings)) {
+      await setConfigValue(path, value);
+    }
+  }
+
+  console.log(`Policy preset applied: ${preset}`);
+  console.log('Run "harness policy show" to verify.');
 }
 
 function printSection(title: string, data: JsonObject): void {

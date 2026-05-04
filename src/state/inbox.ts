@@ -54,8 +54,13 @@ export async function listInboxMessages(
     const content = await readFile(inboxPath, 'utf-8');
     const lines = content.trim().split('\n').filter(Boolean);
 
-    let messages = lines.map((line) => JSON.parse(line) as InboxMessage);
-    messages.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    let messages = lines.map((line, idx) => {
+      const msg = JSON.parse(line) as InboxMessage;
+      return { ...msg, _idx: idx };
+    });
+    messages.sort((a: InboxMessage & { _idx: number }, b: InboxMessage & { _idx: number }) =>
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime() || b._idx - a._idx
+    );
 
     if (options?.tail) {
       messages = messages.slice(0, options.tail);

@@ -73,6 +73,7 @@ program.command('run <matter-name>')
   .option('-p, --prompt <text>', 'Initial prompt for the agent')
   .option('-s, --skill <name>', 'Load a skill for this run')
   .option('-q, --quiet', 'Suppress verbose output')
+  .option('--background', 'Run in background mode')
   .action(async (matterName, options) => {
     const { default: handler } = await import('./commands/run.js');
     await handler(matterName, options);
@@ -253,6 +254,184 @@ program
       .action(async (path, value) => {
         const { handlePolicySet } = await import('./commands/config.js');
         await handlePolicySet(path, value);
+      })
+  );
+
+// Policy presets
+program
+  .command('policy')
+  .addCommand(
+    new Command('preset')
+      .description('Apply a preset autonomy policy')
+      .argument('<preset>', 'Preset name: operator-safe, auto-internal, auto-accept-gated, full-local-autonomy')
+      .action(async (preset) => {
+        const { handlePolicyPreset } = await import('./commands/config.js');
+        await handlePolicyPreset(preset);
+      })
+  );
+
+// Orchestration
+program
+  .command('orchestrate <matter-name>')
+  .description('Run hierarchical orchestration on a matter')
+  .option('-o, --objective <text>', 'High-level objective')
+  .option('--background', 'Run in background mode')
+  .option('--json', 'JSON output')
+  .option('--max-depth <n>', 'Maximum agent depth', '3')
+  .option('--concurrency <n>', 'Maximum concurrent agents', '4')
+  .action(async (matterName, options) => {
+    const { default: handler } = await import('./commands/orchestrate.js');
+    await handler(matterName, options);
+  });
+
+// Accept auto
+program.command('accept')
+  .addCommand(
+    new Command('auto')
+      .description('Auto-accept candidate if policy and gates allow')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<candidate-id>', 'Candidate ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, candidateId, options) => {
+        const { handleAcceptAuto } = await import('./commands/accept.js');
+        await handleAcceptAuto(matterName, candidateId, options);
+      })
+  );
+
+// Daemon management
+program
+  .command('daemon')
+  .description('Manage the daemon/background process')
+  .addCommand(
+    new Command('start')
+      .description('Start the harness daemon')
+      .action(async () => {
+        const { handleDaemonStart } = await import('./commands/daemon.js');
+        await handleDaemonStart();
+      })
+  )
+  .addCommand(
+    new Command('stop')
+      .description('Stop the harness daemon')
+      .action(async () => {
+        const { handleDaemonStop } = await import('./commands/daemon.js');
+        await handleDaemonStop();
+      })
+  )
+  .addCommand(
+    new Command('status')
+      .description('Show daemon status')
+      .option('--json', 'JSON output')
+      .action(async (options) => {
+        const { handleDaemonStatus } = await import('./commands/daemon.js');
+        await handleDaemonStatus(options);
+      })
+  );
+
+// Watch
+program.command('watch <matter-name>')
+  .description('Watch matter progress in real time')
+  .option('--json', 'JSON output')
+  .action(async (matterName, options) => {
+    const { default: handler } = await import('./commands/watch.js');
+    await handler(matterName, options);
+  });
+
+// Pause / Resume / Cancel
+program.command('pause <matter-name>')
+  .description('Pause active matter run')
+  .action(async (matterName) => {
+    const { default: handler } = await import('./commands/control.js');
+    await handler(matterName, 'pause');
+  });
+
+program.command('resume <matter-name>')
+  .description('Resume paused matter run')
+  .action(async (matterName) => {
+    const { default: handler } = await import('./commands/control.js');
+    await handler(matterName, 'resume');
+  });
+
+program.command('cancel <matter-name>')
+  .description('Cancel an active or paused matter run')
+  .option('--run <id>', 'Specific run ID to cancel')
+  .action(async (matterName, options) => {
+    const { handleCancel } = await import('./commands/control.js');
+    await handleCancel(matterName, options);
+  });
+
+// Schedule management
+program
+  .command('schedule')
+  .description('Manage scheduled jobs')
+  .addCommand(
+    new Command('create')
+      .description('Create a scheduled job for a matter')
+      .argument('<matter-name>', 'Matter name')
+      .option('--cron <expr>', '5-field cron expression (e.g. "0 9 * * *")')
+      .option('--prompt <text>', 'Prompt to run')
+      .option('--recurring', 'Repeating job')
+      .option('--durable', 'Persist across restarts')
+      .action(async (matterName, options) => {
+        const { handleScheduleCreate } = await import('./commands/schedule.js');
+        await handleScheduleCreate(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('List scheduled jobs for a matter')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleScheduleList } = await import('./commands/schedule.js');
+        await handleScheduleList(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('delete')
+      .description('Delete a scheduled job')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<job-id>', 'Job ID to delete')
+      .action(async (matterName, jobId) => {
+        const { handleScheduleDelete } = await import('./commands/schedule.js');
+        await handleScheduleDelete(matterName, jobId);
+      })
+  );
+
+// Source management
+program
+  .command('source')
+  .description('Manage research sources')
+  .addCommand(
+    new Command('search')
+      .description('Search for web sources for a matter')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<query>', 'Search query')
+      .option('--json', 'JSON output')
+      .action(async (matterName, query, options) => {
+        const { handleSourceSearch } = await import('./commands/source.js');
+        await handleSourceSearch(matterName, query, options);
+      })
+  )
+  .addCommand(
+    new Command('fetch')
+      .description('Fetch and snapshot a URL for a matter')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<url>', 'URL to fetch')
+      .option('--json', 'JSON output')
+      .action(async (matterName, url, options) => {
+        const { handleSourceFetch } = await import('./commands/source.js');
+        await handleSourceFetch(matterName, url, options);
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('List stored sources for a matter')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleSourceList } = await import('./commands/source.js');
+        await handleSourceList(matterName, options);
       })
   );
 

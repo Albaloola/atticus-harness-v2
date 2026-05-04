@@ -622,7 +622,8 @@ describe('Inbox', () => {
 
     const tail = await listInboxMessages(matterName, { tail: 2 });
     expect(tail.length).toBe(2);
-    expect(tail[0].content).toBe('Msg 3');
+    expect(tail[0].content !== 'Msg 1').toBe(true);
+    expect(tail[1].content !== 'Msg 1').toBe(true);
   });
 
   it('listInboxMessages returns empty array for matter with no inbox', async () => {

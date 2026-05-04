@@ -50,16 +50,32 @@ export function evaluateAutonomyPolicy(
 ): ApprovalDecision {
   const category = classifyToolCategory(toolName);
 
-  if (autonomy.mode === 'full_autonomy') {
+  if (autonomy.mode === 'full_local_autonomy') {
     return 'allow';
   }
 
-  if (autonomy.mode === 'semi_autonomous') {
+  if (autonomy.mode === 'auto_internal') {
     if (category === 'read_only') return 'allow';
+    if (category === 'matter_write' && autonomy.autoApproveFileWrites) return 'allow';
     if (category === 'matter_write') return 'allow_with_audit';
     if (category === 'external_action') return 'ask';
     if (category === 'agent_spawn') return 'allow_with_audit';
+    if (category === 'config_change') return 'ask';
     return 'ask';
+  }
+
+  if (autonomy.mode === 'auto_accept_gated') {
+    if (category === 'read_only') return 'allow';
+    if (category === 'matter_write' && autonomy.autoApproveFileWrites) return 'allow';
+    if (category === 'matter_write') return 'allow_with_audit';
+    if (category === 'external_action') return autonomy.allowExternalDispatch ? 'ask' : 'deny';
+    if (category === 'agent_spawn') return 'allow_with_audit';
+    if (category === 'config_change') return 'ask';
+    return 'ask';
+  }
+
+  if (autonomy.mode === 'custom') {
+    return evaluatePolicy(autonomy as unknown as ToolPolicy, toolName, _context);
   }
 
   // operator_safe: use tool policy categories
@@ -69,10 +85,10 @@ export function evaluateAutonomyPolicy(
     case 'matter_write':
       return 'ask';
     case 'external_action':
-      return autonomy.externalActionMode === 'auto'
-        ? 'allow_with_audit'
-        : autonomy.externalActionMode === 'operator_approval'
-          ? 'ask'
+      return autonomy.externalActionMode === 'operator_required_to_send'
+        ? 'ask'
+        : autonomy.externalActionMode === 'prepare_only' || autonomy.externalActionMode === 'prepare_bundle_only'
+          ? 'deny'
           : 'deny';
     case 'agent_spawn':
       return 'ask';

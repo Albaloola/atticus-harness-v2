@@ -158,6 +158,7 @@ export async function resolveConfig(
   const result: ResolvedHarnessConfig = {
     provider,
     providerName: providerName ?? 'openrouter',
+    providerPolicy: globalConfig.providerPolicy,
     model,
     autonomy,
     toolPolicy,
@@ -173,22 +174,11 @@ function redactConfig(config: ResolvedHarnessConfig): Record<string, unknown> {
   if (provider.apiKey) {
     provider.apiKey = '__REDACTED__';
   }
-  // Redact potentially-sensitive fields
-  if (provider.baseUrl) {
-    try {
-      const url = new URL(provider.baseUrl);
-      if (url.password) {
-        url.password = '__REDACTED__';
-        provider.baseUrl = url.toString();
-      }
-    } catch {
-      // Not a valid URL, leave as-is
-    }
-  }
 
   return {
     provider,
     providerName: config.providerName,
+    providerPolicy: config.providerPolicy,
     model: config.model,
     autonomy: config.autonomy,
     toolPolicy: config.toolPolicy,

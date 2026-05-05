@@ -11,7 +11,16 @@ export interface CandidateArtifact {
   metadata: CandidateMetadata;
 }
 
-export type ArtifactType = 'draft' | 'review' | 'analysis' | 'extraction' | 'report';
+export type ArtifactType =
+  | 'draft'
+  | 'review'
+  | 'analysis'
+  | 'extraction'
+  | 'report'
+  | 'email'
+  | 'communication'
+  | 'task'
+  | 'case_management';
 
 export interface CandidateMetadata {
   skill?: string;
@@ -19,6 +28,11 @@ export interface CandidateMetadata {
   citations?: CitationRef[];
   verificationResult?: string;
   rejectionReason?: string;
+  source?: string;
+  requestedType?: string;
+  caseMemorySummary?: string;
+  externalAction?: 'internal' | 'prepare_only' | 'requires_operator';
+  [key: string]: unknown;
 }
 
 export interface CitationRef {

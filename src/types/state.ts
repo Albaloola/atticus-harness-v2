@@ -25,7 +25,11 @@ export type MatterEventType =
   | 'draft.reviewed'
   | 'draft.accepted'
   | 'draft.rejected'
-  | 'inbox.message.received';
+  | 'inbox.message.received'
+  | 'case.instruction.received'
+  | 'case.memory.loaded'
+  | 'case.output.created'
+  | 'case.auto_accept.evaluated';
 
 export interface MatterEvent {
   id: string;

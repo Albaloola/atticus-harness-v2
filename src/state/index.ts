@@ -5,3 +5,4 @@ export { createTask, updateTask, getTask, listTasks, type CreateTaskParams } fro
 export { createRun, updateRun, getRun, listRuns, type CreateRunParams } from './runs.js';
 export { deriveSnapshot } from './snapshot.js';
 export { appendInboxMessage, listInboxMessages, type InboxMessage } from './inbox.js';
+export { setRuntimeValue, getRuntimeValue, deleteRuntimeValue } from './runtime-kv.js';

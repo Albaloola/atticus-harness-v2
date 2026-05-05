@@ -296,6 +296,56 @@ program
     await handler(matterName, options);
   });
 
+// Case management through the main orchestrator
+program
+  .command('case')
+  .description('Manage ongoing case instructions through the main orchestrator')
+  .addCommand(
+    new Command('manage')
+      .description('Produce a follow-up communication, task, or document from persisted case memory')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<instruction>', 'Hermes/operator instruction')
+      .option('--type <type>', 'email, communication, task, case_management, draft, or report')
+      .option('--source <source>', 'Instruction source', 'hermes')
+      .option('--auto-accept', 'Evaluate auto-acceptance after producing the candidate')
+      .option('--background', 'Run in background mode')
+      .option('--json', 'JSON output')
+      .action(async (matterName, instruction, options) => {
+        const { handleCaseManage } = await import('./commands/case.js');
+        await handleCaseManage(matterName, instruction, options);
+      })
+  )
+  .addCommand(
+    new Command('memory')
+      .description('Show the persisted case memory pack used after reset/compaction')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleCaseMemory } = await import('./commands/case.js');
+        await handleCaseMemory(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('resume')
+      .description('Show main-orchestrator checkpoint, dashboard, and settings')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleCaseResume } = await import('./commands/case.js');
+        await handleCaseResume(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('reset')
+      .description('Reset only the main-orchestrator checkpoint; preserve case memory')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleCaseReset } = await import('./commands/case.js');
+        await handleCaseReset(matterName, options);
+      })
+  );
+
 // Daemon management
 program
   .command('daemon')

@@ -90,6 +90,23 @@ harness orchestrate my-case --background --json
 
 The orchestrator runs a master→mini→worker pipeline across all 10 legal workflow phases: intake, evidence, issue spotting, legal research, merits/risk, procedural planning, document production, verification, bundle assembly, and operator handoff.
 
+### Ongoing case management
+
+```bash
+harness case manage my-case "Draft an email to the university asking for an update" --type email
+harness case manage my-case "Create tomorrow's follow-up task list" --type task --json
+harness case memory my-case --json
+harness case resume my-case --json
+harness case reset my-case
+```
+
+Hermes should route case-related emails, communications, task lists, status reports,
+and follow-up documents through `harness case manage`. The main orchestrator rebuilds
+the case from persisted matter memory, dashboard/status, accepted artifacts,
+candidate history, evidence, sources, inbox, tasks, runs, autonomy policy, tool
+policy, and acceptance settings. It produces prepare-only candidates; it does not
+send, file, serve, or contact externally.
+
 ### Draft, verify, review, gate
 
 ```bash

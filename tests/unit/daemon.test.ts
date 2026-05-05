@@ -4,6 +4,7 @@ import { Supervisor } from '../../src/daemon/supervisor.js';
 import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { getConfigDir } from '../../src/config/paths.js';
+import { isSchedulerRunning } from '../../src/scheduler/loop.js';
 
 const RUNTIME_DIR = join(getConfigDir(), 'runtime');
 const PID_FILE = join(RUNTIME_DIR, 'daemon.pid');
@@ -166,6 +167,7 @@ describe('Daemon', () => {
     expect(status.running).toBe(true);
     expect(status.pid).toBe(process.pid);
     expect(status.activeRuns).toBe(0);
+    expect(status.schedulerRunning).toBe(true);
   });
 
   it('stopDaemon removes PID and status files', () => {
@@ -182,12 +184,21 @@ describe('Daemon', () => {
     const status = getDaemonStatus();
     expect(status.running).toBe(false);
     expect(status.pid).toBeNull();
+    expect(status.schedulerRunning).toBe(false);
   });
 
   it('getSupervisor returns supervisor instance after start', () => {
     startDaemon();
     const sv = getSupervisor();
     expect(sv).toBeInstanceOf(Supervisor);
+  });
+
+  it('starts and stops scheduler loop with daemon lifecycle', () => {
+    startDaemon();
+    expect(isSchedulerRunning()).toBe(true);
+
+    stopDaemon();
+    expect(isSchedulerRunning()).toBe(false);
   });
 
   it('getSupervisor returns null after stop', () => {

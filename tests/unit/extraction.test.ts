@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { hashText } from '../../src/extraction/hash.ts';
 import { detectFormatByExtension, getMimeType } from '../../src/extraction/detect.ts';
+import { normalizeExtractedText } from '../../src/extraction/normalize.ts';
 
 describe('hashText', () => {
   it('returns consistent SHA-256 hex string', () => {
@@ -60,5 +61,17 @@ describe('getMimeType', () => {
     expect(getMimeType('image')).toBe('image/jpeg');
     expect(getMimeType('text')).toBe('text/plain');
     expect(getMimeType('unknown')).toBe('application/octet-stream');
+  });
+});
+
+describe('normalizeExtractedText', () => {
+  it('decomposes typographic ligatures into searchable text', () => {
+    const text = 'O\uFB03ce con\uFB01rm a\uFB00ord \uFB02at';
+    expect(normalizeExtractedText(text)).toBe('Office confirm afford flat');
+  });
+
+  it('repairs common mojibake ligature output from PDF extraction', () => {
+    expect(normalizeExtractedText('Oï¬ƒce conï¬rm aï¬€ord')).toBe('Office confirm afford');
+    expect(normalizeExtractedText('conâ¬ºrm')).toBe('confirm');
   });
 });

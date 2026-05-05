@@ -4,6 +4,7 @@ import { join } from 'path';
 import { getConfigDir } from '../config/paths.js';
 import { Supervisor } from './supervisor.js';
 import type { DaemonStatus } from '../types/state.js';
+import { isSchedulerRunning, startSchedulerLoop, stopSchedulerLoop } from '../scheduler/loop.js';
 
 const RUNTIME_DIR = join(getConfigDir(), 'runtime');
 const PID_FILE = join(RUNTIME_DIR, 'daemon.pid');
@@ -31,6 +32,7 @@ export function startDaemon(): DaemonStatus {
   const now = new Date();
   startedAt = now.toISOString();
   supervisor = new Supervisor();
+  startSchedulerLoop();
 
   writeFileSync(PID_FILE, String(pid), 'utf-8');
 
@@ -40,6 +42,7 @@ export function startDaemon(): DaemonStatus {
     startedAt: startedAt,
     uptime: 0,
     activeRuns: 0,
+    schedulerRunning: isSchedulerRunning(),
   };
   writeFileSync(STATUS_FILE, JSON.stringify(status, null, 2), 'utf-8');
   return status;
@@ -58,21 +61,46 @@ export function stopDaemon(): void {
 
   startedAt = null;
   supervisor = null;
+  stopSchedulerLoop();
+}
+
+export function getRuntimeDir(): string {
+  ensureRuntimeDir();
+  return RUNTIME_DIR;
+}
+
+export function getDaemonPid(): number | null {
+  return readPidFromFile();
 }
 
 export function getDaemonStatus(): DaemonStatus {
   const running = fileDaemonAlive();
   const pid = running ? readPidFromFile() : null;
-  const uptime = running && startedAt ? Date.now() - new Date(startedAt).getTime() : null;
-  const activeRuns = supervisor ? supervisor.activeCount() : 0;
+  const persisted = readPersistedStatus();
+  const effectiveStartedAt = startedAt ?? persisted?.startedAt ?? null;
+  const uptime = running && effectiveStartedAt ? Date.now() - new Date(effectiveStartedAt).getTime() : null;
+  const activeRuns = supervisor ? supervisor.activeCount() : persisted?.activeRuns ?? 0;
+  const pendingCommands = readPendingCommandCount();
+  const schedulerRunning = isSchedulerRunning() || Boolean(running && persisted?.schedulerRunning);
 
   return {
     running,
     pid,
-    startedAt,
+    startedAt: effectiveStartedAt,
     uptime,
     activeRuns,
+    pendingCommands,
+    schedulerRunning,
   };
+}
+
+function readPersistedStatus(): DaemonStatus | null {
+  try {
+    if (!existsSync(STATUS_FILE)) return null;
+    return JSON.parse(readFileSync(STATUS_FILE, 'utf-8')) as DaemonStatus;
+  } catch {
+    return null;
+  }
 }
 
 export function getSupervisor(): Supervisor | null {
@@ -105,5 +133,15 @@ function isProcessAlive(pid: number): boolean {
     return true;
   } catch {
     return false;
+  }
+}
+
+function readPendingCommandCount(): number {
+  try {
+    const commandsPath = join(RUNTIME_DIR, 'commands.jsonl');
+    if (!existsSync(commandsPath)) return 0;
+    return readFileSync(commandsPath, 'utf-8').split('\n').filter(Boolean).length;
+  } catch {
+    return 0;
   }
 }

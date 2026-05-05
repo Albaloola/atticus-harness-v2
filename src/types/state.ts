@@ -148,6 +148,8 @@ export interface DaemonStatus {
   startedAt: string | null;
   uptime: number | null;
   activeRuns: number;
+  pendingCommands?: number;
+  schedulerRunning?: boolean;
 }
 
 // ── Scheduler ─────────────────────────────────────────────────

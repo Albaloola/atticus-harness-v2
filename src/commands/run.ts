@@ -6,7 +6,7 @@ import { appendEvent } from '../state/events.js';
 
 export default async function runHandler(
   matterName: string,
-  options: { prompt?: string; skill?: string; quiet?: boolean }
+  options: { prompt?: string; skill?: string; quiet?: boolean; background?: boolean }
 ): Promise<void> {
   let matterIndex;
   try {
@@ -23,6 +23,29 @@ export default async function runHandler(
 
   const evidence = await listEvidence(matterName).catch(() => []);
   const quietMode = options.quiet ?? false;
+
+  if (options.background) {
+    const { spawnBackgroundHarness } = await import('../daemon/background.js');
+    const args = ['run', matterName, '--quiet'];
+    if (options.prompt) args.push('--prompt', options.prompt);
+    if (options.skill) args.push('--skill', options.skill);
+    const background = spawnBackgroundHarness(args);
+    await appendEvent({
+      matterName,
+      type: 'agent.run.started',
+      data: {
+        background: true,
+        pid: background.pid,
+        logPath: background.logPath,
+        prompt: options.prompt,
+        skill: options.skill,
+      },
+      source: 'tool',
+    });
+    console.log(chalk.green('Background run started'), `PID: ${background.pid ?? 'unknown'}`);
+    console.log(`  Log: ${chalk.gray(background.logPath)}`);
+    return;
+  }
 
   if (!quietMode) {
     console.log(chalk.cyan('Harness Agent Loop'));

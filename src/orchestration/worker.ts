@@ -4,6 +4,7 @@ import { createRun, updateRun } from '../state/runs.js';
 import { appendEvent } from '../state/events.js';
 import { WORKER_PROMPT } from './prompts.js';
 import { ToolRegistry } from '../tools/index.js';
+import { resolveConfig } from '../config/loader.js';
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
 import type { QueryLoopConfig, QueryLoopResult } from '../agent/query-loop.js';
 import type { AgentRun } from '../types/state.js';
@@ -86,7 +87,10 @@ export class WorkerAgent {
 
         await appendEvent({
           matterName: this.spawn.matterName,
-          type: parsed.status === 'failed' ? 'agent.run.error' : 'agent.run.completed',
+          type:
+            parsed.status === 'failed' ? 'agent.run.error' :
+            parsed.status === 'blocked' || parsed.status === 'needs_followup' ? 'agent.run.blocked' :
+            'agent.run.completed',
           runId: this.run.id,
           taskId: this.spawn.taskId,
           data: {
@@ -184,9 +188,13 @@ export class WorkerAgent {
   }
 
   private async executeQueryLoop(userMessage: string): Promise<QueryLoopResult> {
-    const toolRegistry = new ToolRegistry();
+    const resolvedConfig = await resolveConfig({ matterName: this.spawn.matterName });
+    const toolRegistry = new ToolRegistry({
+      allowedTools: this.spawn.allowedTools,
+      enforcePolicy: true,
+    });
 
-    const maxTurns = this.spawn.maxTurns || this.config.spawn.allowedTools ? 15 : 25;
+    const maxTurns = this.spawn.maxTurns ?? (this.config.spawn.allowedTools ? 15 : 25);
 
     const config: QueryLoopConfig = {
       model: this.config.model,
@@ -201,6 +209,7 @@ export class WorkerAgent {
       role: this.spawn.role,
       quietMode: this.config.quietMode,
       verbose: this.config.verbose,
+      autonomy: resolvedConfig.autonomy,
     };
 
     if (this.config.queryLoopFactory) {

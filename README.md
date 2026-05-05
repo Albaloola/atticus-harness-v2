@@ -102,7 +102,7 @@ harness review my-case draft-1234567890          # Hostile adversarial review
 ### Accept or reject
 
 ```bash
-harness accept my-case draft-1234567890          # Manual accept
+harness accept manual my-case draft-1234567890   # Manual accept
 harness accept auto my-case draft-1234567890     # Auto-accept (respects policy)
 harness reject my-case draft-1234567890 --reason "needs more citations"
 ```
@@ -114,6 +114,10 @@ harness source search my-case "Housing Act 1988 section 21"   # Search web sourc
 harness source fetch my-case https://example.com/statute      # Fetch and snapshot a URL
 harness source list my-case                                    # List stored sources
 ```
+
+`source search` uses `SEARCH_API_KEY` and an optional `SEARCH_ENDPOINT`; `source fetch`
+stores hashed snapshots under the matter so later verification works from saved text,
+not bare URLs.
 
 ### Scheduling
 
@@ -177,19 +181,19 @@ src/
 ├── state/              # Event-sourced matter store (SQLite + JSONL)
 ├── orchestration/      # Master → Mini → Worker hierarchical pipeline
 ├── scheduler/          # 5-field cron parser + scheduled job loop
-├── daemon/             # Long-running process manager + supervisor
+├── daemon/             # Background process manager, supervisor, control queue
 ├── research/           # Web search/fetch, source snapshots, citation verification
 ├── legal/              # 10-phase workflow, 24 artifact types, templates, skills router
 ├── acceptance/         # 10-gate scoring, auto-acceptance, review quorum
 ├── extraction/         # PDF/DOCX/DOC/image/text extraction pipeline
 ├── llm/                # OpenRouter client (DeepSeek V4 flash/pro)
 ├── storage/            # Flat-file matter storage + SQLite FTS5 evidence store
-├── tools/              # 11 tools registered for agent use
+├── tools/              # Policy-aware tools registered for agent use
 ├── types/              # Shared TypeScript interfaces
 ├── skills/             # SKILL.md parser and loader
 └── permissions/        # Approval decision engine (plan)
 skills/                 # 26 bundled SKILL.md files
-tests/                  # 321 unit tests across 14 files
+tests/                  # Unit coverage for CLI, state, tools, orchestration, extraction
 ```
 
 ### Key architecture principles

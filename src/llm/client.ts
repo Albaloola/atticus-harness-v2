@@ -1,5 +1,6 @@
 import {
   loadConfig,
+  loadConfigFromStore,
   OPENROUTER_BASE_URL,
   CHAT_COMPLETIONS_PATH,
   type ProviderConfig,
@@ -45,9 +46,13 @@ export class OpenRouterClient {
   private apiKey: string;
   private baseUrl: string;
   private timeoutMs: number;
+  private readonly explicitOptions: OpenRouterClientOptions;
+  private readonly storeConfig: Promise<ProviderConfig>;
 
   constructor(options?: OpenRouterClientOptions) {
     const config = loadConfig();
+    this.explicitOptions = options ?? {};
+    this.storeConfig = loadConfigFromStore();
     this.apiKey = options?.apiKey || config.apiKey || '';
     this.baseUrl = options?.baseUrl || config.baseUrl || OPENROUTER_BASE_URL;
     this.timeoutMs = options?.timeoutMs || config.timeoutMs || 180_000;
@@ -58,6 +63,8 @@ export class OpenRouterClient {
   }
 
   async chatWithTools(request: LLMRequest): Promise<LLMResponse> {
+    await this.hydrateConfigFromStore();
+
     if (!this.apiKey) {
       throw new AuthError();
     }
@@ -116,6 +123,19 @@ export class OpenRouterClient {
       );
     } finally {
       clearTimeout(timeoutId);
+    }
+  }
+
+  private async hydrateConfigFromStore(): Promise<void> {
+    const config = await this.storeConfig;
+    if (!this.explicitOptions.apiKey && config.apiKey) {
+      this.apiKey = config.apiKey;
+    }
+    if (!this.explicitOptions.baseUrl && config.baseUrl) {
+      this.baseUrl = config.baseUrl;
+    }
+    if (!this.explicitOptions.timeoutMs && config.timeoutMs) {
+      this.timeoutMs = config.timeoutMs;
     }
   }
 

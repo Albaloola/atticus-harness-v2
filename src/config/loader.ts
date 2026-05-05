@@ -1,6 +1,6 @@
 import { readFile, writeFile, mkdir, access } from 'fs/promises';
 import { constants } from 'fs';
-import { loadSecrets, getOpenRouterKey } from './secrets.js';
+import { loadSecrets } from './secrets.js';
 import {
   getConfigPath,
   getConfigDir,

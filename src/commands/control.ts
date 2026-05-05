@@ -19,14 +19,21 @@ export default async function controlHandler(
   }
 
   try {
-    const { Supervisor } = await import('../daemon/supervisor.js');
-    const supervisor = new Supervisor();
+    const { getSupervisor } = await import('../daemon/daemon.js');
+    const { enqueueControlCommand } = await import('../daemon/control-queue.js');
+    const supervisor = getSupervisor();
+    let applied = false;
     if (action === 'pause') {
-      supervisor.pauseRun(matterName);
+      applied = supervisor?.pauseRun(matterName) ?? false;
     } else {
-      supervisor.resumeRun(matterName);
+      applied = supervisor?.resumeRun(matterName) ?? false;
     }
-    console.log(chalk.green(`OK`));
+    if (!applied) {
+      await enqueueControlCommand({ action, matterName });
+      console.log(chalk.yellow('Queued control command for daemon/runtime pickup'));
+    } else {
+      console.log(chalk.green(`OK`));
+    }
   } catch (err: unknown) {
     console.error(chalk.red('Failed:'), (err as Error).message);
     process.exit(1);
@@ -48,10 +55,16 @@ export async function handleCancel(
   console.log(chalk.red(`Cancelling ${target}...`));
 
   try {
-    const { Supervisor } = await import('../daemon/supervisor.js');
-    const supervisor = new Supervisor();
-    supervisor.cancelRun(target);
-    console.log(chalk.green('Cancelled'));
+    const { getSupervisor } = await import('../daemon/daemon.js');
+    const { enqueueControlCommand } = await import('../daemon/control-queue.js');
+    const supervisor = getSupervisor();
+    const applied = supervisor?.cancelRun(target) ?? false;
+    if (!applied) {
+      await enqueueControlCommand({ action: 'cancel', matterName, runId: options.run });
+      console.log(chalk.yellow('Queued cancellation for daemon/runtime pickup'));
+    } else {
+      console.log(chalk.green('Cancelled'));
+    }
   } catch (err: unknown) {
     console.error(chalk.red('Failed:'), (err as Error).message);
     process.exit(1);

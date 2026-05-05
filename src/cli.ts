@@ -145,13 +145,29 @@ program.command('gate <matter-name>')
   });
 
 // Output acceptance
-program.command('accept <matter-name>')
-  .description('Mark candidate output as accepted')
-  .argument('<candidate-id>', 'Candidate ID to accept')
-  .action(async (matterName, candidateId, options) => {
-    const { default: handler } = await import('./commands/accept.js');
-    await handler(matterName, candidateId);
-  });
+program.command('accept')
+  .description('Accept or auto-accept a candidate output')
+  .addCommand(
+    new Command('manual')
+      .description('Manually mark a candidate as accepted')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<candidate-id>', 'Candidate ID to accept')
+      .action(async (matterName, candidateId, options) => {
+        const { default: handler } = await import('./commands/accept.js');
+        await handler(matterName, candidateId);
+      })
+  )
+  .addCommand(
+    new Command('auto')
+      .description('Auto-accept candidate if policy and gates allow')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<candidate-id>', 'Candidate ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, candidateId, options) => {
+        const { handleAcceptAuto } = await import('./commands/accept.js');
+        await handleAcceptAuto(matterName, candidateId, options);
+      })
+  );
 
 program.command('reject <matter-name>')
   .description('Reject a candidate output')
@@ -255,11 +271,7 @@ program
         const { handlePolicySet } = await import('./commands/config.js');
         await handlePolicySet(path, value);
       })
-  );
-
-// Policy presets
-program
-  .command('policy')
+  )
   .addCommand(
     new Command('preset')
       .description('Apply a preset autonomy policy')
@@ -283,20 +295,6 @@ program
     const { default: handler } = await import('./commands/orchestrate.js');
     await handler(matterName, options);
   });
-
-// Accept auto
-program.command('accept')
-  .addCommand(
-    new Command('auto')
-      .description('Auto-accept candidate if policy and gates allow')
-      .argument('<matter-name>', 'Matter name')
-      .argument('<candidate-id>', 'Candidate ID')
-      .option('--json', 'JSON output')
-      .action(async (matterName, candidateId, options) => {
-        const { handleAcceptAuto } = await import('./commands/accept.js');
-        await handleAcceptAuto(matterName, candidateId, options);
-      })
-  );
 
 // Daemon management
 program
@@ -325,6 +323,14 @@ program
       .action(async (options) => {
         const { handleDaemonStatus } = await import('./commands/daemon.js');
         await handleDaemonStatus(options);
+      })
+  )
+  .addCommand(
+    new Command('serve')
+      .description('Run daemon service loop')
+      .action(async () => {
+        const { handleDaemonServe } = await import('./commands/daemon.js');
+        await handleDaemonServe();
       })
   );
 

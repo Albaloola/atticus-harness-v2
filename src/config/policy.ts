@@ -10,6 +10,7 @@ const TOOL_TO_CATEGORY: Record<string, ToolCategory> = {
   search_files: 'read_only',
   exec_sqlite: 'read_only',
   evidence_search: 'read_only',
+  evidence_chunk_read: 'read_only',
   llm_call: 'agent_spawn',
   write_file: 'matter_write',
   draft: 'matter_write',
@@ -17,6 +18,8 @@ const TOOL_TO_CATEGORY: Record<string, ToolCategory> = {
   quality_gate: 'read_only',
   hostile_review: 'agent_spawn',
   evidence_ingest: 'matter_write',
+  web_search: 'network',
+  web_fetch: 'network',
 };
 
 export function classifyToolCategory(toolName: string): ToolCategory {
@@ -56,6 +59,7 @@ export function evaluateAutonomyPolicy(
 
   if (autonomy.mode === 'auto_internal') {
     if (category === 'read_only') return 'allow';
+    if (category === 'network') return autonomy.autoApproveWeb ? 'allow_with_audit' : 'ask';
     if (category === 'matter_write' && autonomy.autoApproveFileWrites) return 'allow';
     if (category === 'matter_write') return 'allow_with_audit';
     if (category === 'external_action') return 'ask';
@@ -66,6 +70,7 @@ export function evaluateAutonomyPolicy(
 
   if (autonomy.mode === 'auto_accept_gated') {
     if (category === 'read_only') return 'allow';
+    if (category === 'network') return autonomy.autoApproveWeb ? 'allow_with_audit' : 'ask';
     if (category === 'matter_write' && autonomy.autoApproveFileWrites) return 'allow';
     if (category === 'matter_write') return 'allow_with_audit';
     if (category === 'external_action') return autonomy.allowExternalDispatch ? 'ask' : 'deny';
@@ -84,6 +89,8 @@ export function evaluateAutonomyPolicy(
       return 'allow';
     case 'matter_write':
       return 'ask';
+    case 'network':
+      return autonomy.autoApproveWeb ? 'allow_with_audit' : 'ask';
     case 'external_action':
       return autonomy.externalActionMode === 'operator_required_to_send'
         ? 'ask'

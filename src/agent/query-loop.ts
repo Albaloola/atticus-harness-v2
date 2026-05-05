@@ -7,6 +7,7 @@ import type { LLMMessage } from '../types/message.js';
 import type { ToolUseContext } from '../types/tool.js';
 import type { ToolRegistry } from '../tools/index.js';
 import { appendEvent } from '../state/events.js';
+import type { AutonomyPolicy } from '../config/schema.js';
 
 const MAX_TOOL_OUTPUT_CHARS = 5000;
 
@@ -23,6 +24,7 @@ export interface QueryLoopConfig {
   role?: string;
   quietMode?: boolean;
   verbose?: boolean;
+  autonomy?: AutonomyPolicy;
 }
 
 export interface QueryLoopResult {

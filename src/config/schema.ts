@@ -24,6 +24,7 @@ export type ApprovalDecision =
 export type ToolCategory =
   | 'read_only'
   | 'matter_write'
+  | 'network'
   | 'external_action'
   | 'agent_spawn'
   | 'config_change';
@@ -219,6 +220,10 @@ export const DEFAULTS: GlobalHarnessConfig = {
       requireAuditLog: false,
     },
     matter_write: {
+      defaultDecision: 'ask',
+      requireAuditLog: true,
+    },
+    network: {
       defaultDecision: 'ask',
       requireAuditLog: true,
     },

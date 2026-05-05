@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises';
 import { hashText } from './hash.js';
+import { normalizeExtractedText } from './normalize.js';
 import type { ExtractedText } from './types.js';
 
 const ENCODINGS = ['utf-8', 'utf8', 'cp1252', 'latin1'] as const;
@@ -26,6 +27,8 @@ export async function extractPlainText(filePath: string, sourceId?: string): Pro
     text = htmlToText(text);
     method = 'html_to_text';
   }
+
+  text = normalizeExtractedText(text);
 
   return {
     sourceId: sourceId || filePath,

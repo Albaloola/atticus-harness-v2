@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
+import { readdirSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { getStateDb } from '../state/store.js';
-import { listMatters } from '../storage/matter.js';
 import { nextRunTime } from './cron.js';
 import type { ScheduledJob } from '../types/state.js';
 
@@ -144,8 +145,6 @@ function listMattersSyncCached(): string[] {
   if (mattersCache && Date.now() - mattersCacheTime < MATTERS_CACHE_TTL) {
     return mattersCache;
   }
-  const { readdirSync, existsSync, readFileSync } = require('fs');
-  const { join } = require('path');
   const MATTERS_ROOT = 'matters';
   const INDEX_FILE = '_index.json';
   try {

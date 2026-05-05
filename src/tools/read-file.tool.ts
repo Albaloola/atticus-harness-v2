@@ -1,21 +1,57 @@
 import { readFile } from 'fs/promises';
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
 
-export class ReadFileTool implements Tool<{ path: string }, string> {
+const DEFAULT_READ_LENGTH = 5000;
+const MAX_READ_LENGTH = 20000;
+
+export interface ReadFileArgs {
+  path: string;
+  offset?: number;
+  length?: number;
+}
+
+export interface ReadFileResult {
+  content: string;
+  offset: number;
+  length: number;
+  totalLength: number;
+  truncated: boolean;
+  nextOffset?: number;
+}
+
+export class ReadFileTool implements Tool<ReadFileArgs, ReadFileResult> {
   readonly name = 'read_file';
-  readonly description = 'Read the contents of a file. Returns the file content as text.';
+  readonly description = 'Read a window of a text file. Use offset and length to page through long evidence without losing tail content.';
   readonly inputSchema = {
     type: 'object',
     properties: {
       path: { type: 'string', description: 'Absolute path to the file to read' },
+      offset: { type: 'number', description: 'Character offset to start reading from (default: 0)' },
+      length: { type: 'number', description: `Characters to read, max ${MAX_READ_LENGTH} (default: ${DEFAULT_READ_LENGTH})` },
     },
     required: ['path'],
   };
 
-  async call(args: { path: string }, _context: ToolUseContext): Promise<ToolResult<string>> {
+  async call(args: ReadFileArgs, _context: ToolUseContext): Promise<ToolResult<ReadFileResult>> {
     try {
       const content = await readFile(args.path, 'utf-8');
-      return { success: true, data: content, output: content.length > 2000 ? content.substring(0, 2000) + '\n... [truncated]' : content };
+      const offset = Math.max(0, Math.trunc(args.offset ?? 0));
+      const requestedLength = Math.max(1, Math.trunc(args.length ?? DEFAULT_READ_LENGTH));
+      const length = Math.min(requestedLength, MAX_READ_LENGTH);
+      const slice = content.slice(offset, offset + length);
+      const nextOffset = offset + slice.length < content.length ? offset + slice.length : undefined;
+      const data: ReadFileResult = {
+        content: slice,
+        offset,
+        length: slice.length,
+        totalLength: content.length,
+        truncated: nextOffset !== undefined,
+        nextOffset,
+      };
+      const footer = data.truncated
+        ? `\n\n[read_file window ${offset}-${offset + slice.length} of ${content.length}; nextOffset=${nextOffset}]`
+        : `\n\n[read_file complete ${offset}-${offset + slice.length} of ${content.length}]`;
+      return { success: true, data, output: slice + footer };
     } catch (err: unknown) {
       return { success: false, error: `Failed to read file: ${(err as Error).message}` };
     }

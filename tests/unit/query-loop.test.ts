@@ -225,10 +225,13 @@ describe('QueryLoop', () => {
       const lines = eventsContent.trim().split('\n').filter(Boolean);
       expect(lines.length).toBeGreaterThanOrEqual(1);
 
-      const event = JSON.parse(lines[0]);
-      expect(event.type).toBe('agent.turn.completed');
-      expect(event.source).toBe('agent');
-      expect(event.data.turnNumber).toBe(1);
+      const events = lines.map((line) => JSON.parse(line));
+      expect(events.some((event) => event.type === 'tool.called')).toBe(true);
+      const event = events.find((e) => e.type === 'agent.turn.completed');
+      expect(event).toBeDefined();
+      expect(event!.type).toBe('agent.turn.completed');
+      expect(event!.source).toBe('agent');
+      expect(event!.data.turnNumber).toBe(1);
     });
   });
 

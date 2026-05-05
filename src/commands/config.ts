@@ -147,6 +147,7 @@ function parseValue(value: string): unknown {
 }
 
 export async function handlePolicyPreset(preset: string): Promise<void> {
+  const normalizedPreset = preset.replace(/-/g, '_');
   const validPresets: AutonomyMode[] = [
     'operator_safe',
     'auto_internal',
@@ -154,13 +155,13 @@ export async function handlePolicyPreset(preset: string): Promise<void> {
     'full_local_autonomy',
   ];
 
-  if (!validPresets.includes(preset as AutonomyMode)) {
+  if (!validPresets.includes(normalizedPreset as AutonomyMode)) {
     console.error(`Invalid preset: ${preset}`);
-    console.error(`Valid: ${validPresets.join(', ')}`);
+    console.error(`Valid: ${validPresets.map((p) => p.replace(/_/g, '-')).join(', ')}`);
     process.exit(1);
   }
 
-  await setConfigValue('autonomy.mode', preset);
+  await setConfigValue('autonomy.mode', normalizedPreset);
 
   const presets: Record<string, Partial<Record<string, unknown>>> = {
     operator_safe: {
@@ -202,14 +203,14 @@ export async function handlePolicyPreset(preset: string): Promise<void> {
     },
   };
 
-  const settings = presets[preset];
+  const settings = presets[normalizedPreset];
   if (settings) {
     for (const [path, value] of Object.entries(settings)) {
       await setConfigValue(path, value);
     }
   }
 
-  console.log(`Policy preset applied: ${preset}`);
+  console.log(`Policy preset applied: ${normalizedPreset.replace(/_/g, '-')}`);
   console.log('Run "harness policy show" to verify.');
 }
 

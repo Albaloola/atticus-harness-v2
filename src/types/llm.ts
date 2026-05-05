@@ -6,6 +6,11 @@ export interface LLMConfig {
   maxTokens?: number;
   temperature?: number;
   jsonMode?: boolean;
+  jsonSchema?: {
+    name: string;
+    schema: Record<string, unknown>;
+    strict?: boolean;
+  };
   disableThinking?: boolean;
   maxRetries?: number;
   timeoutMs?: number;

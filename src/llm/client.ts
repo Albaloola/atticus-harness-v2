@@ -102,23 +102,24 @@ export class OpenRouterClient {
       return this.parseResponse(data);
     } catch (err) {
       if (err instanceof LLMError) throw err;
+      const error = err as Error;
       if (
-        err instanceof TypeError &&
-        (err as Error).message.includes('abort')
+        error.name === 'AbortError' ||
+        /abort|aborted/i.test(error.message)
       ) {
-        throw new LLMError('Request timed out', 408);
+        throw new LLMError(`Request timed out after ${this.timeoutMs}ms`, 408);
       }
       if (
         err instanceof TypeError &&
-        (err as Error).message.includes('fetch')
+        error.message.includes('fetch')
       ) {
         throw new LLMError(
-          `Network error: ${(err as Error).message}`,
+          `Network error: ${error.message}`,
           0,
         );
       }
       throw new LLMError(
-        `Unexpected error: ${(err as Error).message}`,
+        `Unexpected error: ${error.message}`,
         0,
       );
     } finally {
@@ -161,7 +162,16 @@ export class OpenRouterClient {
       payload.tool_choice = 'auto';
     }
 
-    if (request.config.jsonMode) {
+    if (request.config.jsonSchema) {
+      payload.response_format = {
+        type: 'json_schema',
+        json_schema: {
+          name: request.config.jsonSchema.name,
+          strict: request.config.jsonSchema.strict ?? true,
+          schema: request.config.jsonSchema.schema,
+        },
+      };
+    } else if (request.config.jsonMode) {
       payload.response_format = { type: 'json_object' };
     }
 

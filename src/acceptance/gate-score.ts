@@ -98,7 +98,7 @@ export function computeGateScore(
 function scoreCitationCoverage(content: string, citations: CitationRef[]): GateCheck {
   const weight = GATE_WEIGHTS.citationCoverage;
   const uniqueCited = new Set(citations.map(c => c.citationId)).size;
-  const inlineRefs = (content.match(/\[([A-Z]+-SRC-\d+)\]/g) || []).length;
+  const inlineRefs = (content.match(/\[([A-Z][A-Z0-9_-]*-\d+)\]/g) || []).length;
 
   if (uniqueCited === 0 && inlineRefs === 0) {
     return { name: 'Citation coverage', score: 0, weight, passed: false, details: 'No citations found' };

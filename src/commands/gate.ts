@@ -42,7 +42,7 @@ export default async function gateHandler(
 
   const checks: Array<{ name: string; passed: boolean; message: string }> = [];
 
-  const citationCount = (content.match(/\[[A-Z]+-SRC-\d+\]/g) || []).length;
+  const citationCount = (content.match(/\[[A-Z][A-Z0-9_-]*-\d+\]/g) || []).length;
   checks.push({
     name: 'Citations present',
     passed: citationCount > 0,
@@ -71,7 +71,7 @@ export default async function gateHandler(
   });
 
   const evidenceIds = evidence.map(e => e.id);
-  const citedIds = [...new Set(content.match(/\[([A-Z]+-SRC-\d+)\]/g) || [])].map(c => c.replace(/[\[\]]/g, ''));
+  const citedIds = [...new Set(content.match(/\[([A-Z][A-Z0-9_-]*-\d+)\]/g) || [])].map(c => c.replace(/[\[\]]/g, ''));
   const validCitations = citedIds.filter(id => evidenceIds.includes(id));
   const invalidCitations = citedIds.filter(id => !evidenceIds.includes(id));
   checks.push({

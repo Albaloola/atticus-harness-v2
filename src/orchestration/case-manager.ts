@@ -6,14 +6,17 @@ import { createRun, updateRun } from '../state/runs.js';
 import { createTask, updateTask } from '../state/tasks.js';
 import { saveCandidate } from '../storage/candidate.js';
 import { resolveConfig } from '../config/loader.js';
-import { tryAutoAccept, type AutoAcceptResult } from '../acceptance/auto-accept.js';
+import { tryAutoAccept, type AutoAcceptResult, type TryAutoAcceptContext } from '../acceptance/auto-accept.js';
 import { buildCaseManagerPrompt } from './prompts.js';
 import { buildCaseMemoryPack, summarizeCaseMemory, type CaseMemoryPack } from './case-memory.js';
 import { saveOrchestrationCheckpoint } from './checkpoint.js';
 import { loadHumanizerPrompt } from '../skills/humanizer.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
+import { verifyCandidateCitations } from '../citation/verify.js';
 import type { ArtifactType, CandidateArtifact, CitationRef } from '../types/artifact.js';
 import type { LLMResponse } from '../types/llm.js';
+import type { AutonomyPolicy } from '../config/schema.js';
+import type { ReviewSeverity } from '../types/review.js';
 
 export type CaseRequestType =
   | 'email'
@@ -210,8 +213,17 @@ export class CaseManager {
         },
       });
 
-      const autoAccept = request.autoAccept
-        ? await tryAutoAccept(candidate, request.matterName, config.autonomy)
+      const shouldAutoAccept = request.autoAccept ?? config.autonomy.autoAcceptCandidates;
+      const autoAcceptContext = shouldAutoAccept
+        ? await this.buildAutoAcceptContext(candidate, config.autonomy)
+        : undefined;
+      if (autoAcceptContext) {
+        candidate.metadata.acceptancePipeline = autoAcceptContext;
+        await saveCandidate(request.matterName, candidate);
+      }
+
+      const autoAccept = shouldAutoAccept
+        ? await tryAutoAccept(candidate, request.matterName, config.autonomy, autoAcceptContext)
         : undefined;
       if (autoAccept) {
         await appendEvent({
@@ -298,6 +310,61 @@ export class CaseManager {
       },
     });
   }
+
+  private async buildAutoAcceptContext(
+    candidate: CandidateArtifact,
+    policy: AutonomyPolicy,
+  ): Promise<TryAutoAcceptContext> {
+    const citationResult = await verifyCandidateCitations(candidate.matterName, candidate);
+    const context: TryAutoAcceptContext = {
+      citationResult,
+      requiredFields: requiredFieldsForType(candidate.type),
+      operatorHandoffNotes: candidate.metadata.externalAction === 'prepare_only'
+        ? 'Prepared for operator review; external sending/filing/serving remains disabled.'
+        : undefined,
+    };
+
+    if (policy.requireHostileReviewForAcceptance) {
+      try {
+        const review = await this.client.chat({
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a hostile legal reviewer. Identify the highest severity risk in this candidate. Use severity labels CRITICAL, HIGH, MEDIUM, LOW.',
+            },
+            {
+              role: 'user',
+              content: candidate.content.slice(0, 12000),
+            },
+          ],
+          config: {
+            model: 'deepseek/deepseek-v4-pro',
+            temperature: 0.2,
+            maxTokens: 2048,
+            disableThinking: true,
+          },
+        });
+        context.reviewSeverity = extractMaxReviewSeverity(review.content);
+        context.reviewFindings = countReviewFindings(review.content);
+        candidate.metadata.hostileReview = {
+          severity: context.reviewSeverity,
+          findingCount: context.reviewFindings,
+          preview: review.content.slice(0, 1200),
+        };
+      } catch (err: unknown) {
+        context.reviewSeverity = 'high';
+        context.reviewFindings = 1;
+        candidate.metadata.hostileReview = {
+          severity: 'high',
+          findingCount: 1,
+          error: (err as Error).message,
+        };
+      }
+    }
+
+    candidate.metadata.citationVerification = citationResult;
+    return context;
+  }
 }
 
 export function inferRequestType(instruction: string): CaseRequestType {
@@ -349,4 +416,33 @@ function extractMatterString(memory: CaseMemoryPack, key: string): string | unde
     if (typeof nested === 'string') return nested;
   }
   return undefined;
+}
+
+function requiredFieldsForType(type: ArtifactType): string[] {
+  switch (type) {
+    case 'email':
+    case 'communication':
+      return ['Dear', 'Yours', 'review'];
+    case 'draft':
+      return ['#'];
+    case 'report':
+      return ['Summary'];
+    case 'task':
+      return [];
+    default:
+      return [];
+  }
+}
+
+function extractMaxReviewSeverity(content: string): ReviewSeverity {
+  const upper = content.toUpperCase();
+  if (/\bCRITICAL\b/.test(upper)) return 'critical';
+  if (/\bHIGH\b/.test(upper)) return 'high';
+  if (/\bMEDIUM\b/.test(upper)) return 'medium';
+  return 'low';
+}
+
+function countReviewFindings(content: string): number {
+  const matches = content.match(/\b(CRITICAL|HIGH|MEDIUM|LOW)\b/gi);
+  return matches?.length ?? 0;
 }

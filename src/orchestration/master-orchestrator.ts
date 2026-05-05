@@ -1,8 +1,9 @@
 import { MiniOrchestrator } from './mini-orchestrator.js';
 import { createTask, updateTask } from '../state/tasks.js';
-import { createRun } from '../state/runs.js';
+import { createRun, updateRun } from '../state/runs.js';
 import { OrchestrationRuntime } from './runtime.js';
 import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
+import { loadMatter, saveMatterIndex } from '../storage/matter.js';
 import type { OrchestratorConfig, OrchestratorResult, AgentStructuredResult } from './types.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
@@ -33,6 +34,7 @@ export class MasterOrchestrator {
     });
 
     await this.runtime.emitRunStarted(masterRun.id, objective);
+    await setMatterStatus(matterName, 'analyzing');
 
     const phaseResults: Array<{ phase: PhaseDefinition; result: AgentStructuredResult }> = [];
     const failedPhases: string[] = [];
@@ -60,6 +62,7 @@ export class MasterOrchestrator {
         maxDepth: (maxDepth || 3) - 1,
         maxConcurrency: maxConcurrency || 4,
         parentRunId: masterRun.id,
+        phaseTaskId: task.id,
       });
 
       const result = await mini.execute();
@@ -78,7 +81,13 @@ export class MasterOrchestrator {
       `Completed ${phaseResults.length - failedPhases.length}/${phaseResults.length} phases`
     );
 
-    return this.synthesize(matterName, objective, phaseResults, failedPhases);
+    const result = this.synthesize(matterName, objective, phaseResults, failedPhases);
+    updateRun(matterName, masterRun.id, {
+      status: result.status === 'failed' ? 'error' : result.status === 'needs_followup' ? 'blocked' : 'completed',
+      summary: result.summary,
+    });
+    await setMatterStatus(matterName, result.status === 'failed' ? 'analyzing' : 'complete');
+    return result;
   }
 
   private synthesize(
@@ -129,5 +138,14 @@ export class MasterOrchestrator {
       risks: allRisks,
       phaseResults: allPhaseResults,
     };
+  }
+}
+
+async function setMatterStatus(matterName: string, status: 'analyzing' | 'complete'): Promise<void> {
+  try {
+    const index = await loadMatter(matterName);
+    index.status = status;
+    await saveMatterIndex(matterName, index);
+  } catch {
   }
 }

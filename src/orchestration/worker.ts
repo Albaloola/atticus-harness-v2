@@ -6,6 +6,7 @@ import { buildWorkerPrompt } from './prompts.js';
 import { ToolRegistry } from '../tools/index.js';
 import { resolveConfig } from '../config/loader.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
+import { synthesizeWorkerOutput, type WorkerSynthesisClient } from './worker-synthesis.js';
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
 import type { QueryLoopConfig, QueryLoopResult } from '../agent/query-loop.js';
 import type { AgentRun } from '../types/state.js';
@@ -23,6 +24,7 @@ export interface WorkerAgentConfig {
   quietMode?: boolean;
   verbose?: boolean;
   queryLoopFactory?: QueryLoopFactory;
+  synthesisClient?: WorkerSynthesisClient;
 }
 
 export class WorkerAgent {
@@ -107,23 +109,15 @@ export class WorkerAgent {
         return parsed;
       }
 
-      const rawStatus =
-        loopResult.status === 'error' ? 'failed' :
-        loopResult.status === 'max_turns' ? 'needs_followup' :
-        'completed';
-
-      const rawResult: AgentStructuredResult = {
-        status: rawStatus,
-        summary: loopResult.finalContent.substring(0, 500) || 'Worker completed but produced no structured output.',
-        findings: [],
-        risks: [],
-        proposedTasks: [],
-        artifactIds: [],
-        nextActions: [],
-      };
+      const rawResult = await synthesizeWorkerOutput({
+        spawn: this.spawn,
+        loopResult,
+        model: 'deepseek/deepseek-v4-pro',
+        client: this.config.synthesisClient,
+      });
 
       updateRun(this.spawn.matterName, this.run.id, {
-        status: loopResult.status === 'error' ? 'error' : 'completed',
+        status: this.mapStatus(rawResult.status),
         turns: loopResult.turns.length,
         summary: rawResult.summary,
       });
@@ -135,8 +129,24 @@ export class WorkerAgent {
         taskId: this.spawn.taskId,
         data: {
           status: rawResult.status,
-          rawOutput: true,
+          rawOutputSynthesized: true,
+          findingCount: rawResult.findings.length,
+          riskCount: rawResult.risks.length,
           depth: this.spawn.depth,
+        },
+        source: 'orchestration',
+      });
+
+      await appendEvent({
+        matterName: this.spawn.matterName,
+        type: 'agent.output.synthesized',
+        runId: this.run.id,
+        taskId: this.spawn.taskId,
+        data: {
+          title: this.spawn.title,
+          status: rawResult.status,
+          findingCount: rawResult.findings.length,
+          riskCount: rawResult.risks.length,
         },
         source: 'orchestration',
       });

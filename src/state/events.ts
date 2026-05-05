@@ -21,6 +21,8 @@ export async function appendEvent(params: AppendEventParams): Promise<MatterEven
     timestamp: new Date().toISOString(),
     type,
     matterName,
+    runId,
+    taskId,
     data,
     source,
   };
@@ -66,6 +68,8 @@ export function listEvents(matterName: string, options?: {
     timestamp: string;
     type: string;
     matter_name: string;
+    run_id: string | null;
+    task_id: string | null;
     data_json: string;
     source: string;
   }>;
@@ -75,6 +79,8 @@ export function listEvents(matterName: string, options?: {
     timestamp: row.timestamp,
     type: row.type as MatterEventType,
     matterName: row.matter_name,
+    runId: row.run_id ?? undefined,
+    taskId: row.task_id ?? undefined,
     data: JSON.parse(row.data_json),
     source: row.source,
   }));

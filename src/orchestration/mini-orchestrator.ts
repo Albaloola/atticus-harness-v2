@@ -1,5 +1,6 @@
 import { WorkerAgent } from './worker.js';
-import { createTask, updateTask, listTasks } from '../state/tasks.js';
+import { createTask, updateTask } from '../state/tasks.js';
+import { createRun, updateRun } from '../state/runs.js';
 import { appendEvent } from '../state/events.js';
 import type { MiniOrchestratorInput, AgentStructuredResult } from './types.js';
 
@@ -11,12 +12,22 @@ export class MiniOrchestrator {
   }
 
   async execute(): Promise<AgentStructuredResult> {
-    const { matterName, phase, objective, maxDepth, maxConcurrency, parentRunId } = this.input;
+    const { matterName, phase, objective, maxDepth, maxConcurrency, parentRunId, phaseTaskId } = this.input;
     const phaseName = phase?.id || 'unknown';
+    const miniRun = createRun({
+      matterName,
+      model: 'deepseek/deepseek-v4-pro',
+      parentRunId,
+      agentType: 'mini_orchestrator',
+      role: 'mini_orchestrator',
+      prompt: objective,
+    });
 
-    appendEvent({
+    await appendEvent({
       matterName,
       type: 'agent.spawned',
+      runId: miniRun.id,
+      taskId: phaseTaskId,
       source: 'agent',
       data: { role: 'mini_orchestrator', phase: phaseName, objective: objective.substring(0, 200) },
     }).catch(() => {});
@@ -34,6 +45,7 @@ export class MiniOrchestrator {
             kind: 'worker',
             type: phaseName,
             title: w.title,
+            parentId: phaseTaskId,
             priority: 'medium',
             depth: (maxDepth || 1) - 1,
             assignedAgent: 'worker',
@@ -45,7 +57,7 @@ export class MiniOrchestrator {
           const worker = new WorkerAgent({
             spawn: {
               matterName,
-              parentRunId,
+              parentRunId: miniRun.id,
               taskId: task.id,
               role: 'worker',
               title: w.title,
@@ -73,7 +85,26 @@ export class MiniOrchestrator {
       results.push(...batchResults);
     }
 
-    return this.synthesize(phaseName, objective, results);
+    const synthesized = this.synthesize(phaseName, objective, results);
+    updateRun(matterName, miniRun.id, {
+      status: synthesized.status === 'failed' ? 'error' : synthesized.status === 'blocked' ? 'blocked' : 'completed',
+      summary: synthesized.summary,
+    });
+    await appendEvent({
+      matterName,
+      type: synthesized.status === 'failed' ? 'agent.run.error' : 'agent.run.completed',
+      runId: miniRun.id,
+      taskId: phaseTaskId,
+      source: 'orchestration',
+      data: {
+        role: 'mini_orchestrator',
+        phase: phaseName,
+        status: synthesized.status,
+        findingCount: synthesized.findings.length,
+        riskCount: synthesized.risks.length,
+      },
+    }).catch(() => {});
+    return synthesized;
   }
 
   private decompose(objective: string, phase: string): Array<{ title: string }> {

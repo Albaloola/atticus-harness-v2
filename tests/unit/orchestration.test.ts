@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { initMatter, deleteMatter } from '../../src/storage/matter.js';
+import { loadMatter } from '../../src/storage/matter.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
+import { listRuns } from '../../src/state/runs.js';
+import { listTasks } from '../../src/state/tasks.js';
+import { deriveSnapshot } from '../../src/state/snapshot.js';
 import { getDefaultPhases } from '../../src/legal/workflow.js';
 
 vi.mock('../../src/llm/client.js', () => ({
@@ -54,6 +58,30 @@ describe('MasterOrchestrator', () => {
     expect(Array.isArray(result.risks)).toBe(true);
     expect(Array.isArray(result.phaseResults)).toBe(true);
     expect(result.phaseResults.length).toBe(10);
+  }, 30000);
+
+  it('closes master and mini runs and preserves task hierarchy', async () => {
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Hierarchy test',
+      maxDepth: 2,
+      maxConcurrency: 2,
+    });
+
+    await orchestrator.run();
+
+    const runs = listRuns(matterName);
+    expect(runs.filter((run) => run.role === 'master' && run.status === 'running')).toHaveLength(0);
+    expect(runs.filter((run) => run.role === 'mini_orchestrator')).toHaveLength(10);
+    const miniRunIds = new Set(runs.filter((run) => run.role === 'mini_orchestrator').map((run) => run.id));
+    expect(runs.some((run) => run.role === 'worker' && run.parentRunId && miniRunIds.has(run.parentRunId))).toBe(true);
+
+    const tasks = listTasks(matterName);
+    expect(tasks.some((task) => task.kind === 'worker' && task.parentId)).toBe(true);
+    expect((await loadMatter(matterName)).status).toBe('complete');
+    const snapshot = await deriveSnapshot(matterName);
+    expect(snapshot.phase).toBe('complete');
+    expect(snapshot.activeAgents).toHaveLength(0);
   }, 30000);
 
   it('returns OrchestratorResult with correct fields', async () => {

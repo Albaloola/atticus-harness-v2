@@ -1,13 +1,5 @@
 import { describe, it, expect } from 'vitest';
-
-// Test the core normalization and matching logic
-function normalizeText(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .replace(/[^\w\s]/g, '')
-    .trim();
-}
+import { collectCitationCandidates, normalizeText, scoreQuoteAgainstSource } from '../../src/citation/verify.js';
 
 describe('citation text normalization', () => {
   it('lowercases text', () => {
@@ -24,6 +16,10 @@ describe('citation text normalization', () => {
 
   it('trims whitespace', () => {
     expect(normalizeText('  hello world  ')).toBe('hello world');
+  });
+
+  it('decomposes PDF ligatures before matching', () => {
+    expect(normalizeText('Of\uFB01ce con\uFB01rmed repairs')).toContain('office confirmed repairs');
   });
 });
 
@@ -56,5 +52,26 @@ describe('quote matching', () => {
     const normalizedSource = normalizeText(sourceText);
     const normalizedQuote = normalizeText(quote);
     expect(normalizedSource.includes(normalizedQuote)).toBe(false);
+  });
+
+  it('supports OCR-tolerant fuzzy quote verification', () => {
+    const result = scoreQuoteAgainstSource(
+      'The accommodation office confirmed that the arrears meeting would review repairs and rent.',
+      'Accommodation Office confirmed the arrears meeting would review repair issues, rent account entries, and next steps.',
+    );
+
+    expect(result.status).toBe('supported');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.72);
+  });
+});
+
+describe('citation collection', () => {
+  it('accepts generic evidence IDs as well as -SRC- IDs', () => {
+    const citations = collectCitationCandidates({
+      content: 'This sentence cites [EV-001] and this one cites [NAP-SRC-0001].',
+      metadata: {},
+    });
+
+    expect(citations.map((citation) => citation.evidenceId)).toEqual(['EV-001', 'NAP-SRC-0001']);
   });
 });

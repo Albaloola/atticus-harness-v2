@@ -25,8 +25,18 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
     blocked: tasks.filter((t) => t.status === 'blocked').length,
   };
 
+  const completedRunIds = new Set(
+    allEvents
+      .filter((event) =>
+        (event.type === 'run.completed' || event.type === 'agent.run.completed') &&
+        typeof event.runId === 'string'
+      )
+      .map((event) => event.runId as string)
+  );
+
   const activeAgents = runs
     .filter((r) => r.status === 'running')
+    .filter((r) => !completedRunIds.has(r.id))
     .map((r) => ({
       runId: r.id,
       role: r.role,
@@ -53,10 +63,11 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
     lastRunCost: runs.length > 0 ? runs.length * 0.01 : 0,
   };
 
-  const phase = derivePhase(index.status, evidence.length, candidates.length);
+  const derivedStatus = deriveRuntimeStatus(index.status, taskCounts, activeAgents.length);
+  const phase = derivePhase(derivedStatus, evidence.length, candidates.length, taskCounts, activeAgents.length);
 
   const nextActions = deriveNextActions(
-    index.status,
+    derivedStatus,
     evidence.length,
     candidates.length,
     activeAgents.length,
@@ -65,7 +76,7 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
   return {
     matterName,
     timestamp: new Date().toISOString(),
-    status: index.status,
+    status: derivedStatus,
     phase,
     activeRunId: activeAgents.length > 0 ? activeAgents[0].runId : undefined,
     currentPhase: phase,
@@ -83,7 +94,13 @@ function derivePhase(
   status: MatterStatus,
   evidenceCount: number,
   candidateCount: number,
+  taskCounts?: TaskCounts,
+  activeAgentCount = 0,
 ): string {
+  if (activeAgentCount === 0 && taskCounts && taskCounts.total > 0 && taskCounts.in_progress === 0 && taskCounts.pending === 0) {
+    if (taskCounts.failed > 0 || taskCounts.blocked > 0) return 'needs-followup';
+    return 'complete';
+  }
   if (evidenceCount === 0) return 'intake';
   if (status === 'pending') return 'intake';
   if (status === 'ingesting') return 'evidence-processing';
@@ -94,6 +111,23 @@ function derivePhase(
   if (status === 'complete') return 'complete';
   if (status === 'archived') return 'archived';
   return 'unknown';
+}
+
+function deriveRuntimeStatus(
+  indexStatus: MatterStatus,
+  taskCounts: TaskCounts,
+  activeAgentCount: number,
+): MatterStatus {
+  if (
+    activeAgentCount === 0 &&
+    taskCounts.total > 0 &&
+    taskCounts.in_progress === 0 &&
+    taskCounts.pending === 0 &&
+    taskCounts.completed + taskCounts.failed + taskCounts.blocked === taskCounts.total
+  ) {
+    return taskCounts.failed > 0 || taskCounts.blocked > 0 ? 'analyzing' : 'complete';
+  }
+  return indexStatus;
 }
 
 function deriveNextActions(

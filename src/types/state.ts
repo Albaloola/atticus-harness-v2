@@ -13,6 +13,7 @@ export type MatterEventType =
   | 'agent.run.error'
   | 'agent.run.max_turns'
   | 'agent.turn.completed'
+  | 'agent.output.synthesized'
   | 'agent.spawned'
   | 'agent.completed'
   | 'tool.called'
@@ -36,6 +37,8 @@ export interface MatterEvent {
   timestamp: string;
   type: MatterEventType;
   matterName: string;
+  runId?: string;
+  taskId?: string;
   data: Record<string, unknown>;
   source: string; // 'operator', 'hermes', 'agent', 'tool'
 }

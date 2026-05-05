@@ -32,7 +32,7 @@ export function checkGates(candidate: CandidateArtifact, context: GateScoringCon
   return computeGateScore(candidate, context);
 }
 
-interface TryAutoAcceptContext {
+export interface TryAutoAcceptContext {
   citationResult?: GateScoringContext['citationResult'];
   reviewSeverity?: ReviewSeverity;
   reviewFindings?: number;

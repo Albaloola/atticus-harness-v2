@@ -40,6 +40,7 @@ export interface MiniOrchestratorInput {
   maxDepth: number;
   maxConcurrency: number;
   parentRunId?: string;
+  phaseTaskId?: string;
 }
 
 export interface AgentStructuredResult

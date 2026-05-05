@@ -19,7 +19,7 @@ export class QualityGateTool implements Tool<{ content: string }, unknown> {
     const content = args.content;
     const checks: GateCheck[] = [];
 
-    const citationCount = (content.match(/\[[A-Z]+-SRC-\d+\]/g) || []).length;
+    const citationCount = (content.match(/\[[A-Z][A-Z0-9_-]*-\d+\]/g) || []).length;
     checks.push({
       name: 'Citations present',
       passed: citationCount > 0,

@@ -12,7 +12,7 @@ export class MiniOrchestrator {
   }
 
   async execute(): Promise<AgentStructuredResult> {
-    const { matterName, phase, objective, maxDepth, maxConcurrency, parentRunId, phaseTaskId } = this.input;
+    const { matterName, phase, objective, maxDepth, maxConcurrency, parentRunId, phaseTaskId, runtime } = this.input;
     const phaseName = phase?.id || 'unknown';
     const miniRun = createRun({
       matterName,
@@ -23,88 +23,124 @@ export class MiniOrchestrator {
       prompt: objective,
     });
 
-    await appendEvent({
-      matterName,
-      type: 'agent.spawned',
-      runId: miniRun.id,
-      taskId: phaseTaskId,
-      source: 'agent',
-      data: { role: 'mini_orchestrator', phase: phaseName, objective: objective.substring(0, 200) },
-    }).catch(() => {});
+    runtime?.trackRun(miniRun.id);
 
-    const workers = this.decompose(objective, phaseName);
-    const results: AgentStructuredResult[] = [];
-    const limit = Math.min(maxConcurrency || 4, workers.length);
+    try {
+      await appendEvent({
+        matterName,
+        type: 'agent.spawned',
+        runId: miniRun.id,
+        taskId: phaseTaskId,
+        source: 'agent',
+        data: { role: 'mini_orchestrator', phase: phaseName, objective: objective.substring(0, 200) },
+      }).catch(() => {});
 
-    for (let i = 0; i < workers.length; i += limit) {
-      const batch = workers.slice(i, i + limit);
-      const batchResults = await Promise.all(
-        batch.map(async (w) => {
-          const task = createTask({
-            matterName,
-            kind: 'worker',
-            type: phaseName,
-            title: w.title,
-            parentId: phaseTaskId,
-            priority: 'medium',
-            depth: (maxDepth || 1) - 1,
-            assignedAgent: 'worker',
-            data: { objective: w.title },
-          });
+      const workers = this.decompose(objective, phaseName);
+      const results: AgentStructuredResult[] = [];
+      const limit = Math.min(maxConcurrency || 4, workers.length);
 
-          appendEvent({ matterName, type: 'task.created', source: 'agent', data: { taskId: task.id, title: w.title } }).catch(() => {});
+      for (let i = 0; i < workers.length; i += limit) {
+        if (runtime?.isAborted()) break;
 
-          const worker = new WorkerAgent({
-            spawn: {
+        const batch = workers.slice(i, i + limit);
+        const batchResults = await Promise.all(
+          batch.map(async (w) => {
+            const task = createTask({
               matterName,
-              parentRunId: miniRun.id,
-              taskId: task.id,
-              role: 'worker',
+              kind: 'worker',
+              type: phaseName,
               title: w.title,
-              objective: w.title,
-              allowedTools: ['read_file', 'search_files', 'exec_sqlite', 'evidence_search', 'draft', 'verify_citations'],
-              maxTurns: 15,
-              maxDepth: (maxDepth || 1) - 1,
-              phaseId: phaseName,
-            },
-            model: 'deepseek/deepseek-v4-flash',
-          });
+              parentId: phaseTaskId,
+              priority: 'medium',
+              depth: 2,
+              assignedAgent: 'worker',
+              data: { objective: w.title },
+            });
 
-          updateTask(matterName, task.id, { status: 'in_progress' } as Parameters<typeof updateTask>[2]);
-          const result = await worker.execute();
+            appendEvent({ matterName, type: 'task.created', source: 'agent', data: { taskId: task.id, title: w.title } }).catch(() => {});
 
-          if (result.status === 'failed') {
-            updateTask(matterName, task.id, { status: 'failed' } as Parameters<typeof updateTask>[2]);
-          } else {
-            updateTask(matterName, task.id, { status: 'completed' } as Parameters<typeof updateTask>[2]);
-          }
+            const worker = new WorkerAgent({
+              spawn: {
+                matterName,
+                parentRunId: miniRun.id,
+                taskId: task.id,
+                role: 'worker',
+                title: w.title,
+                objective: w.title,
+                allowedTools: ['read_file', 'search_files', 'exec_sqlite', 'evidence_search', 'draft', 'verify_citations'],
+                maxTurns: 15,
+                maxDepth: (maxDepth || 1) - 1,
+                depth: 2,
+                phaseId: phaseName,
+              },
+              model: 'deepseek/deepseek-v4-flash',
+              runtime,
+            });
 
-          return result;
-        })
-      );
-      results.push(...batchResults);
+            updateTask(matterName, task.id, { status: 'in_progress' } as Parameters<typeof updateTask>[2]);
+            const result = await worker.execute();
+
+            if (result.status === 'failed') {
+              updateTask(matterName, task.id, { status: 'failed' } as Parameters<typeof updateTask>[2]);
+            } else if (result.status === 'blocked' || result.status === 'needs_followup') {
+              updateTask(matterName, task.id, { status: 'blocked' } as Parameters<typeof updateTask>[2]);
+            } else {
+              updateTask(matterName, task.id, { status: 'completed' } as Parameters<typeof updateTask>[2]);
+            }
+
+            return result;
+          })
+        );
+        results.push(...batchResults);
+      }
+
+      const synthesized = this.synthesize(phaseName, objective, results);
+      updateRun(matterName, miniRun.id, {
+        status: synthesized.status === 'failed' ? 'error' : synthesized.status === 'blocked' ? 'blocked' : 'completed',
+        summary: synthesized.summary,
+      });
+      await appendEvent({
+        matterName,
+        type: synthesized.status === 'failed' ? 'agent.run.error' : synthesized.status === 'blocked' ? 'agent.run.blocked' : 'agent.run.completed',
+        runId: miniRun.id,
+        taskId: phaseTaskId,
+        source: 'orchestration',
+        data: {
+          role: 'mini_orchestrator',
+          phase: phaseName,
+          status: synthesized.status,
+          findingCount: synthesized.findings.length,
+          riskCount: synthesized.risks.length,
+        },
+      }).catch(() => {});
+      return synthesized;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      updateRun(matterName, miniRun.id, {
+        status: 'error',
+        summary: `Mini-orchestrator failed: ${msg}`,
+        error: msg,
+      });
+      await appendEvent({
+        matterName,
+        type: 'agent.run.error',
+        runId: miniRun.id,
+        taskId: phaseTaskId,
+        source: 'orchestration',
+        data: { role: 'mini_orchestrator', phase: phaseName, error: msg },
+      }).catch(() => {});
+      return {
+        status: 'failed',
+        summary: `Mini-orchestrator failed: ${msg}`,
+        findings: [],
+        risks: [{ risk: msg, severity: 'high', mitigation: 'Escalate phase to operator' }],
+        proposedTasks: [],
+        artifactIds: [],
+        nextActions: ['Escalate phase to operator'],
+      };
+    } finally {
+      runtime?.untrackRun(miniRun.id);
     }
-
-    const synthesized = this.synthesize(phaseName, objective, results);
-    updateRun(matterName, miniRun.id, {
-      status: synthesized.status === 'failed' ? 'error' : synthesized.status === 'blocked' ? 'blocked' : 'completed',
-      summary: synthesized.summary,
-    });
-    await appendEvent({
-      matterName,
-      type: synthesized.status === 'failed' ? 'agent.run.error' : 'agent.run.completed',
-      runId: miniRun.id,
-      taskId: phaseTaskId,
-      source: 'orchestration',
-      data: {
-        role: 'mini_orchestrator',
-        phase: phaseName,
-        status: synthesized.status,
-        findingCount: synthesized.findings.length,
-        riskCount: synthesized.risks.length,
-      },
-    }).catch(() => {});
-    return synthesized;
   }
 
   private decompose(objective: string, phase: string): Array<{ title: string }> {

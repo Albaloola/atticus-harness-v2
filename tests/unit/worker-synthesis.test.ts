@@ -69,4 +69,54 @@ describe('WorkerAgent structured synthesis fallback', () => {
     expect(synthesisClient.chat).toHaveBeenCalledOnce();
     expect(listEvents(matterName).map((event) => event.type)).toContain('agent.output.synthesized');
   });
+
+  it('marks max-turn fallback synthesis as blocked instead of completed', async () => {
+    const synthesisClient = {
+      chat: vi.fn(async (_request: LLMRequest): Promise<LLMResponse> => ({
+        content: JSON.stringify({
+          status: 'needs_followup',
+          summary: 'Worker hit the turn budget before final synthesis.',
+          findings: [],
+          risks: [{ risk: 'Turn budget exhausted', severity: 'medium', mitigation: 'Run a focused follow-up worker' }],
+          proposedTasks: [],
+          artifactIds: [],
+          nextActions: ['Run focused follow-up worker'],
+        }),
+      })),
+    };
+
+    const worker = new WorkerAgent({
+      spawn: {
+        matterName,
+        parentRunId: 'master-1',
+        taskId: 'task-2',
+        role: 'worker',
+        title: 'Research limitation',
+        objective: 'Assess limitation and procedural risk',
+        allowedTools: [],
+        phaseId: 'procedural_route_planning',
+      },
+      model: 'deepseek/deepseek-v4-flash',
+      quietMode: true,
+      synthesisClient,
+      queryLoopFactory: (_config: QueryLoopConfig) => ({
+        run: async (): Promise<QueryLoopResult> => ({
+          turns: [],
+          finalContent: 'Partial notes without JSON.',
+          status: 'max_turns',
+          history: [
+            { role: 'user', content: 'Assess limitation' },
+            { role: 'assistant', content: 'Partial notes without JSON.' },
+          ],
+        }),
+      }),
+    });
+
+    const result = await worker.execute();
+    const eventTypes = listEvents(matterName).map((event) => event.type);
+
+    expect(result.status).toBe('needs_followup');
+    expect(eventTypes).toContain('agent.run.blocked');
+    expect(eventTypes).not.toContain('agent.run.completed');
+  });
 });

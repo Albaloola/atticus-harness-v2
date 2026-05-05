@@ -1,6 +1,7 @@
 import type { AgentStructuredResult as BaseAgentStructuredResult } from '../agent/result-schema.js';
 import type { PhaseDefinition } from '../legal/workflow.js';
 import type { AutonomyPolicy } from '../config/schema.js';
+import type { OrchestrationRuntime } from './runtime.js';
 
 export interface OrchestratorConfig {
   matterName: string;
@@ -41,6 +42,7 @@ export interface MiniOrchestratorInput {
   maxConcurrency: number;
   parentRunId?: string;
   phaseTaskId?: string;
+  runtime?: OrchestrationRuntime;
 }
 
 export interface AgentStructuredResult

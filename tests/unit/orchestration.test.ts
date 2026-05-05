@@ -82,6 +82,7 @@ describe('MasterOrchestrator', () => {
     const snapshot = await deriveSnapshot(matterName);
     expect(snapshot.phase).toBe('complete');
     expect(snapshot.activeAgents).toHaveLength(0);
+    expect(orchestrator.getActiveRunCount()).toBe(0);
   }, 30000);
 
   it('returns OrchestratorResult with correct fields', async () => {
@@ -124,6 +125,24 @@ describe('MasterOrchestrator', () => {
       expect(pr.phaseName).toBeTruthy();
       expect(['completed', 'failed', 'blocked']).toContain(pr.status);
     }
+  }, 30000);
+
+  it('does not mark an aborted orchestration as completed', async () => {
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Abort before work starts',
+      maxDepth: 2,
+      maxConcurrency: 2,
+    });
+
+    orchestrator.abort();
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe('needs_followup');
+    expect(result.summary).toContain('aborted');
+    expect(result.phaseResults).toHaveLength(0);
+    expect((await loadMatter(matterName)).status).toBe('analyzing');
+    expect(orchestrator.getActiveRunCount()).toBe(0);
   }, 30000);
 });
 

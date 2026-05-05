@@ -10,6 +10,8 @@ import { synthesizeWorkerOutput, type WorkerSynthesisClient } from './worker-syn
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
 import type { QueryLoopConfig, QueryLoopResult } from '../agent/query-loop.js';
 import type { AgentRun } from '../types/state.js';
+import type { MatterEventType } from '../types/state.js';
+import type { OrchestrationRuntime } from './runtime.js';
 
 export interface QueryLoopLike {
   run(userMessage: string): Promise<QueryLoopResult>;
@@ -25,6 +27,7 @@ export interface WorkerAgentConfig {
   verbose?: boolean;
   queryLoopFactory?: QueryLoopFactory;
   synthesisClient?: WorkerSynthesisClient;
+  runtime?: OrchestrationRuntime;
 }
 
 export class WorkerAgent {
@@ -49,6 +52,8 @@ export class WorkerAgent {
   }
 
   async execute(): Promise<AgentStructuredResult> {
+    this.config.runtime?.trackRun(this.run.id, { worker: true });
+
     try {
       await appendEvent({
         matterName: this.spawn.matterName,
@@ -64,6 +69,28 @@ export class WorkerAgent {
         },
         source: 'orchestration',
       });
+
+      if (this.config.runtime?.isAborted()) {
+        this.aborted = true;
+        const result = this.makeBlockedResult('Aborted before worker execution');
+        updateRun(this.spawn.matterName, this.run.id, {
+          status: 'blocked',
+          summary: result.summary,
+        });
+        await appendEvent({
+          matterName: this.spawn.matterName,
+          type: 'agent.run.blocked',
+          runId: this.run.id,
+          taskId: this.spawn.taskId,
+          data: {
+            status: result.status,
+            summary: result.summary,
+            depth: this.spawn.depth,
+          },
+          source: 'orchestration',
+        });
+        return result;
+      }
 
       const userMessage = [
         `Task: ${this.spawn.title}`,
@@ -90,10 +117,7 @@ export class WorkerAgent {
 
         await appendEvent({
           matterName: this.spawn.matterName,
-          type:
-            parsed.status === 'failed' ? 'agent.run.error' :
-            parsed.status === 'blocked' || parsed.status === 'needs_followup' ? 'agent.run.blocked' :
-            'agent.run.completed',
+          type: this.eventTypeForStatus(parsed.status),
           runId: this.run.id,
           taskId: this.spawn.taskId,
           data: {
@@ -124,7 +148,7 @@ export class WorkerAgent {
 
       await appendEvent({
         matterName: this.spawn.matterName,
-        type: loopResult.status === 'error' ? 'agent.run.error' : 'agent.run.completed',
+        type: this.eventTypeForStatus(rawResult.status),
         runId: this.run.id,
         taskId: this.spawn.taskId,
         data: {
@@ -183,6 +207,8 @@ export class WorkerAgent {
         artifactIds: [],
         nextActions: ['Escalate to operator'],
       };
+    } finally {
+      this.config.runtime?.untrackRun(this.run.id);
     }
   }
 
@@ -257,6 +283,18 @@ export class WorkerAgent {
     }
   }
 
+  private eventTypeForStatus(status: AgentStructuredResult['status']): MatterEventType {
+    switch (status) {
+      case 'completed': return 'agent.run.completed';
+      case 'blocked':
+      case 'needs_followup':
+        return 'agent.run.blocked';
+      case 'failed':
+      default:
+        return 'agent.run.error';
+    }
+  }
+
   private makeFailedResult(reason: string): AgentStructuredResult {
     return {
       status: 'failed',
@@ -266,6 +304,18 @@ export class WorkerAgent {
       proposedTasks: [],
       artifactIds: [],
       nextActions: [],
+    };
+  }
+
+  private makeBlockedResult(reason: string): AgentStructuredResult {
+    return {
+      status: 'blocked',
+      summary: reason,
+      findings: [],
+      risks: [{ risk: reason, severity: 'medium', mitigation: 'Resume or rerun when the runtime is active' }],
+      proposedTasks: [],
+      artifactIds: [],
+      nextActions: ['Resume or rerun the task'],
     };
   }
 }

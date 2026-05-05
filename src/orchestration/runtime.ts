@@ -6,6 +6,7 @@ export class OrchestrationRuntime {
   private maxConcurrency: number;
   private maxBudgetUsd?: number;
   private running = new Set<string>();
+  private runningWorkers = new Set<string>();
   private aborted = false;
   private depth = 0;
   private totalCost = 0;
@@ -26,16 +27,18 @@ export class OrchestrationRuntime {
     if (this.aborted) return false;
     if (depth >= this.maxDepth) return false;
     if (this.maxBudgetUsd && this.totalCost >= this.maxBudgetUsd) return false;
-    return this.running.size < this.maxConcurrency;
+    return this.runningWorkers.size < this.maxConcurrency;
   }
 
-  trackRun(runId: string): void {
+  trackRun(runId: string, options?: { worker?: boolean }): void {
     this.running.add(runId);
-    this.depth = Math.max(this.depth, this.running.size);
+    if (options?.worker) this.runningWorkers.add(runId);
+    this.depth = Math.max(this.depth, this.runningWorkers.size);
   }
 
   untrackRun(runId: string): void {
     this.running.delete(runId);
+    this.runningWorkers.delete(runId);
   }
 
   addCost(usd: number): void {
@@ -58,6 +61,10 @@ export class OrchestrationRuntime {
 
   getActiveCount(): number {
     return this.running.size;
+  }
+
+  getActiveWorkerCount(): number {
+    return this.runningWorkers.size;
   }
 
   getTotalCost(): number {

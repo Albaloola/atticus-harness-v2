@@ -10,6 +10,7 @@ import { tryAutoAccept, type AutoAcceptResult } from '../acceptance/auto-accept.
 import { CASE_MANAGER_PROMPT } from './prompts.js';
 import { buildCaseMemoryPack, summarizeCaseMemory, type CaseMemoryPack } from './case-memory.js';
 import { saveOrchestrationCheckpoint } from './checkpoint.js';
+import { loadHumanizerPrompt } from '../skills/humanizer.js';
 import type { ArtifactType, CandidateArtifact, CitationRef } from '../types/artifact.js';
 import type { LLMResponse } from '../types/llm.js';
 
@@ -126,7 +127,13 @@ export class CaseManager {
         },
       });
 
-      const response = await this.generate(request, requestedType, memory);
+      const humanizer = await loadHumanizerPrompt({
+        objective: request.instruction,
+        requestedType,
+        jurisdiction: extractMatterString(memory, 'jurisdiction'),
+        matterType: extractMatterString(memory, 'type'),
+      });
+      const response = await this.generate(request, requestedType, memory, humanizer);
       const parsed = parseCaseManagerResponse(response.content);
       const title = parsed.title || defaultTitle(requestedType, request.instruction);
       const content = parsed.content || response.content;
@@ -151,6 +158,7 @@ export class CaseManager {
           dashboardStatus: memory.dashboard.status,
           dashboardPhase: memory.dashboard.phase,
           autonomy: config.autonomy,
+          humanizerSkill: humanizer?.skillName,
         },
       };
 
@@ -233,10 +241,17 @@ export class CaseManager {
     request: CaseManagerRequest,
     requestedType: CaseRequestType,
     memory: CaseMemoryPack,
+    humanizer?: { skillName: string; prompt: string },
   ): Promise<LLMResponse> {
     return this.client.chat({
       messages: [
         { role: 'system', content: CASE_MANAGER_PROMPT },
+        ...(humanizer
+          ? [{
+              role: 'system' as const,
+              content: `Apply this output-style skill to the final candidate without changing facts, citations, dates, amounts, source IDs, or legal uncertainty:\n\n## Active Skill: ${humanizer.skillName}\n${humanizer.prompt}`,
+            }]
+          : []),
         {
           role: 'user',
           content: [
@@ -296,4 +311,16 @@ function makeCandidateId(type: string): string {
 function defaultTitle(type: string, instruction: string): string {
   const trimmed = instruction.replace(/\s+/g, ' ').trim();
   return `${type}: ${trimmed.slice(0, 80) || 'case instruction'}`;
+}
+
+function extractMatterString(memory: CaseMemoryPack, key: string): string | undefined {
+  const matter = memory.matter as unknown as Record<string, unknown>;
+  const direct = matter[key];
+  if (typeof direct === 'string') return direct;
+  const config = matter.config;
+  if (config && typeof config === 'object') {
+    const nested = (config as Record<string, unknown>)[key];
+    if (typeof nested === 'string') return nested;
+  }
+  return undefined;
 }

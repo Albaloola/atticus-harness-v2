@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseSkillContent, SkillParseError } from '../../src/skills/parser.ts';
+import { chooseHumanizerSkill } from '../../src/skills/humanizer.ts';
 
 const BASIC_SKILL = `---
 name: test-skill
@@ -56,5 +57,36 @@ describe('parseSkillContent', () => {
     const skill = parseSkillContent('Just body text', 'test.md');
     expect(skill.skillId).toBe('test');
     expect(skill.body).toBe('Just body text');
+  });
+});
+
+describe('chooseHumanizerSkill', () => {
+  it('chooses the regular humanizer for general prose', () => {
+    expect(chooseHumanizerSkill({
+      objective: 'Humanize this product update so it sounds less AI generated.',
+      requestedType: 'report',
+    })).toBe('humanizer');
+  });
+
+  it('chooses the Scots legal humanizer for Scottish legal drafts', () => {
+    expect(chooseHumanizerSkill({
+      objective: 'Humanise this simple procedure response for sheriff court.',
+      requestedType: 'draft',
+      jurisdiction: 'Scotland',
+    })).toBe('scots-legal-humanizer');
+  });
+
+  it('does not use Scots legal terminology for generic legal prose without Scottish signals', () => {
+    expect(chooseHumanizerSkill({
+      objective: 'Humanize this legal update for a general audience.',
+      requestedType: 'report',
+    })).toBe('humanizer');
+  });
+
+  it('does not attach a humanizer for internal non-human-facing work', () => {
+    expect(chooseHumanizerSkill({
+      objective: 'Run evidence extraction and update internal task graph.',
+      requestedType: 'case_management',
+    })).toBeUndefined();
   });
 });

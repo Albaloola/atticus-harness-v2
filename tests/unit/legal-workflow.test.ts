@@ -319,4 +319,28 @@ describe('skills router', () => {
     const results = selectSkills(skills, 'BATNA WATNA analysis');
     expect(results[0].skill.skillId).toBe('body-matcher');
   });
+
+  it('prefers the regular humanizer for non-legal humanization work', () => {
+    const skills: SkillDefinition[] = [
+      skillDef('humanizer', 'Remove signs of AI-generated writing from general prose'),
+      skillDef('scots-legal-humanizer', 'Rewrite Scottish legal and formal procedural prose'),
+    ];
+
+    const results = selectSkills(skills, 'humanize this project update so it sounds natural');
+    expect(results[0].skill.skillId).toBe('humanizer');
+  });
+
+  it('prefers the Scots legal humanizer for Scottish legal humanization work', () => {
+    const skills: SkillDefinition[] = [
+      skillDef('humanizer', 'Remove signs of AI-generated writing from general prose'),
+      skillDef('scots-legal-humanizer', 'Rewrite Scottish legal and formal procedural prose'),
+    ];
+
+    const results = selectSkills(
+      skills,
+      'humanise this simple procedure claim for sheriff court',
+      { jurisdiction: 'Scotland', documentType: 'claim' },
+    );
+    expect(results[0].skill.skillId).toBe('scots-legal-humanizer');
+  });
 });

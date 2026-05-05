@@ -212,7 +212,7 @@ src/
 ├── types/              # Shared TypeScript interfaces
 ├── skills/             # SKILL.md parser and loader
 └── permissions/        # Approval decision engine (plan)
-skills/                 # 26 bundled SKILL.md files
+skills/                 # 27 bundled SKILL.md files
 tests/                  # Unit coverage for CLI, state, tools, orchestration, extraction
 ```
 
@@ -242,7 +242,7 @@ npm run dev          # Watch mode
 - ✅ 10-phase legal workflow (intake through operator handoff)
 - ✅ 10-gate quality scoring with policy-controlled auto-acceptance
 - ✅ Review quorum with hostile reviewer agent
-- ✅ 26 bundled legal skills
+- ✅ 27 bundled legal and writing skills
 - ✅ SQLite + JSONL dual persistence for audit trails
 
 ## What it doesn't do

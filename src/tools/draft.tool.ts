@@ -1,5 +1,6 @@
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
 import { OpenRouterClient } from '../llm/client.js';
+import { loadHumanizerPrompt } from '../skills/humanizer.js';
 
 export class DraftTool implements Tool<{ matterName: string; brief: string; docType?: string }, string> {
   readonly name = 'draft';
@@ -27,6 +28,16 @@ export class DraftTool implements Tool<{ matterName: string; brief: string; docT
       ).join('\n');
     }
 
+    const humanizer = await loadHumanizerPrompt({
+      objective: args.brief,
+      docType: args.docType || 'legal-document',
+      sourceText: evidenceContext,
+    });
+
+    const humanizerPrompt = humanizer
+      ? `\n\nOUTPUT STYLE SKILL:\nApply ${humanizer.skillName} to the final draft. Preserve all facts, dates, amounts, evidence IDs, citations, legal caveats, and uncertainty. Do not invent authorities or make the case stronger than the evidence permits.\n\n${humanizer.prompt}`
+      : '';
+
     const systemPrompt = `You are a legal drafting assistant. Draft a ${args.docType || 'legal document'} based on the following brief and evidence.
 
 BRIEF: ${args.brief}
@@ -38,7 +49,7 @@ Instructions:
 - Structure the document properly with sections
 - Cite evidence where applicable using format [EVIDENCE_ID]
 - Use clear, professional legal language
-- Include a date and matter reference`;
+- Include a date and matter reference${humanizerPrompt}`;
 
     try {
       const client = new OpenRouterClient();

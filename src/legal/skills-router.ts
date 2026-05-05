@@ -92,6 +92,7 @@ const RELEVANCE_KEYWORDS: Record<string, string[]> = {
   strategy: ['strategy', 'plan', 'route', 'pathway', 'batna', 'litigation'],
   evidence: ['evidence', 'chronology', 'fact', 'extraction', 'ingestion'],
   intake: ['intake', 'triage', 'client', 'interview', 'normalisation'],
+  humanize: ['humanize', 'humanise', 'naturalise', 'naturalize', 'de-ai', 'ai tone', 'sound human'],
 };
 
 function deriveKeywordCategories(objective: string): string[] {
@@ -125,6 +126,29 @@ function categoryBonus(skill: SkillDefinition, categories: string[]): number {
   return score;
 }
 
+function humanizerSelectionBonus(skill: SkillDefinition, objective: string, metadata: MatterMetadata): number {
+  const lower = [
+    objective,
+    metadata.jurisdiction,
+    metadata.type,
+    metadata.forum,
+    metadata.documentType,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLowerCase();
+  const wantsHumanizer = RELEVANCE_KEYWORDS.humanize.some((term) => lower.includes(term));
+  if (!wantsHumanizer) return 0;
+
+  const isScottishLegal = /\b(scotland|scottish|scots|sheriff|simple procedure|ordinary cause|court of session|lord ordinary|sheriff appeal court|pursuer|defender|sist|interlocutor|decree|spso|slcc)\b/.test(lower);
+
+  if (skill.skillId === 'scots-legal-humanizer' && isScottishLegal) return 10;
+  if (skill.skillId === 'humanizer' && !isScottishLegal) return 10;
+  if (skill.skillId === 'humanizer' || skill.skillId === 'scots-legal-humanizer') return 4;
+
+  return 0;
+}
+
 export function selectSkills(
   skills: SkillDefinition[],
   objective: string,
@@ -149,6 +173,7 @@ export function selectSkills(
     score += phaseSkillBonus(skill.skillId, phase);
 
     score += categoryBonus(skill, categories);
+    score += humanizerSelectionBonus(skill, objective, matterMeta);
 
     if (matterMeta.jurisdiction || matterMeta.type) {
       score += tagScore(skill.skillId, matterMeta) * 0.5;

@@ -73,18 +73,22 @@ describe('CaseManager', () => {
   });
 
   it('produces a follow-up email candidate from persisted case memory and records continuity events', async () => {
+    let capturedRequest: LLMRequest | undefined;
     const client = {
-      chat: async (_request: LLMRequest): Promise<LLMResponse> => ({
-        content: JSON.stringify({
-          title: 'Email to accommodation office',
-          type: 'email',
-          content: 'Dear Accommodation Team,\n\nPlease confirm the repair appointment.\n\nYours sincerely,',
-          summary: 'Prepared a follow-up email using case memory.',
-          nextActions: ['Review before sending'],
-          risks: [{ risk: 'Recipient details need operator confirmation', severity: 'medium', mitigation: 'Check recipient before sending' }],
-          citations: [{ citationId: 'c1', evidenceId: 'EV-001', quote: 'repair appointment' }],
-        }),
-      }),
+      chat: async (request: LLMRequest): Promise<LLMResponse> => {
+        capturedRequest = request;
+        return {
+          content: JSON.stringify({
+            title: 'Email to accommodation office',
+            type: 'email',
+            content: 'Dear Accommodation Team,\n\nPlease confirm the repair appointment.\n\nYours sincerely,',
+            summary: 'Prepared a follow-up email using case memory.',
+            nextActions: ['Review before sending'],
+            risks: [{ risk: 'Recipient details need operator confirmation', severity: 'medium', mitigation: 'Check recipient before sending' }],
+            citations: [{ citationId: 'c1', evidenceId: 'EV-001', quote: 'repair appointment' }],
+          }),
+        };
+      },
     };
 
     const manager = new CaseManager({ client });
@@ -102,7 +106,9 @@ describe('CaseManager', () => {
     expect(candidates).toHaveLength(1);
     expect(candidates[0].metadata.source).toBe('hermes');
     expect(candidates[0].metadata.externalAction).toBe('prepare_only');
+    expect(candidates[0].metadata.humanizerSkill).toBe('humanizer');
     expect(candidates[0].metadata.caseMemorySummary).toContain(`Matter ${matterName}`);
+    expect(capturedRequest?.messages.some((message) => message.content.includes('Active Skill: humanizer'))).toBe(true);
 
     const events = listEvents(matterName);
     expect(events.map((event) => event.type)).toEqual(

@@ -109,6 +109,7 @@ export const PHASES: PhaseDefinition[] = [
     suggestedSkills: [
       'document-generation',
       'scots-legal-humanizer',
+      'humanizer',
       'contract-review',
       'docx-processing-anthropic',
       'tech-contract-negotiation-patrick-munro',
@@ -137,6 +138,7 @@ export const PHASES: PhaseDefinition[] = [
       'document-generation',
       'docx-processing-anthropic',
       'scots-legal-humanizer',
+      'humanizer',
     ],
   },
   {
@@ -148,6 +150,8 @@ export const PHASES: PhaseDefinition[] = [
     suggestedSkills: [
       'meeting-briefing-anthropic',
       'canned-responses-anthropic',
+      'humanizer',
+      'scots-legal-humanizer',
       'escalation-framework',
     ],
   },

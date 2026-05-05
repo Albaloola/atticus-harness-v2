@@ -107,6 +107,9 @@ candidate history, evidence, sources, inbox, tasks, runs, autonomy policy, tool
 policy, and acceptance settings. It produces prepare-only candidates; it does not
 send, file, serve, or contact externally.
 
+Hermes/OpenClaw operators should follow the runbook in
+[`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
+
 ### Draft, verify, review, gate
 
 ```bash

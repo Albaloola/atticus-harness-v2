@@ -11,6 +11,7 @@ import { CASE_MANAGER_PROMPT } from './prompts.js';
 import { buildCaseMemoryPack, summarizeCaseMemory, type CaseMemoryPack } from './case-memory.js';
 import { saveOrchestrationCheckpoint } from './checkpoint.js';
 import { loadHumanizerPrompt } from '../skills/humanizer.js';
+import { SkillSelectionWorker } from '../skills/selection-worker.js';
 import type { ArtifactType, CandidateArtifact, CitationRef } from '../types/artifact.js';
 import type { LLMResponse } from '../types/llm.js';
 
@@ -133,7 +134,19 @@ export class CaseManager {
         jurisdiction: extractMatterString(memory, 'jurisdiction'),
         matterType: extractMatterString(memory, 'type'),
       });
-      const response = await this.generate(request, requestedType, memory, humanizer);
+      const skillSelector = new SkillSelectionWorker();
+      const skillContext = await skillSelector.buildContext({
+        objective: request.instruction,
+        requestedType,
+        matterMeta: {
+          jurisdiction: extractMatterString(memory, 'jurisdiction') ?? 'Scotland',
+          type: extractMatterString(memory, 'type'),
+        },
+        limit: 3,
+        maxBodyChars: 1600,
+        excludeSkillIds: humanizer?.skillName ? [humanizer.skillName] : [],
+      });
+      const response = await this.generate(request, requestedType, memory, humanizer, skillContext.promptSection);
       const parsed = parseCaseManagerResponse(response.content);
       const title = parsed.title || defaultTitle(requestedType, request.instruction);
       const content = parsed.content || response.content;
@@ -159,6 +172,10 @@ export class CaseManager {
           dashboardPhase: memory.dashboard.phase,
           autonomy: config.autonomy,
           humanizerSkill: humanizer?.skillName,
+          selectedSkills: skillContext.selectedSkills.map(({ skill, score }) => ({
+            skillId: skill.skillId,
+            score,
+          })),
         },
       };
 
@@ -242,6 +259,7 @@ export class CaseManager {
     requestedType: CaseRequestType,
     memory: CaseMemoryPack,
     humanizer?: { skillName: string; prompt: string },
+    skillPromptSection?: string,
   ): Promise<LLMResponse> {
     return this.client.chat({
       messages: [
@@ -250,6 +268,12 @@ export class CaseManager {
           ? [{
               role: 'system' as const,
               content: `Apply this output-style skill to the final candidate without changing facts, citations, dates, amounts, source IDs, or legal uncertainty:\n\n## Active Skill: ${humanizer.skillName}\n${humanizer.prompt}`,
+            }]
+          : []),
+        ...(skillPromptSection
+          ? [{
+              role: 'system' as const,
+              content: skillPromptSection,
             }]
           : []),
         {

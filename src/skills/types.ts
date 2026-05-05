@@ -14,4 +14,9 @@ export interface SkillFrontmatter {
   stage?: string;
   taskTypes?: string[];
   allowedTools?: string[];
+  tags?: string[];
+  atticusRefined?: boolean;
+  jurisdictionFocus?: string;
+  requiresLiveSourceVerification?: boolean;
+  externalActionMode?: string;
 }

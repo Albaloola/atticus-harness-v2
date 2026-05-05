@@ -79,6 +79,37 @@ function phaseSkillBonus(skillId: string, phase?: PhaseDefinition): number {
   return phase.suggestedSkills.includes(skillId) ? 5 : 0;
 }
 
+function manifestTagBonus(skill: SkillDefinition, objective: string, metadata: MatterMetadata): number {
+  const haystack = [
+    objective,
+    metadata.jurisdiction,
+    metadata.type,
+    metadata.forum,
+    metadata.documentType,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLowerCase();
+  const tags = skill.manifest.tags ?? [];
+  let score = 0;
+  for (const tag of tags) {
+    const lowerTag = tag.toLowerCase();
+    if (lowerTag && haystack.includes(lowerTag)) score += 2;
+    if (lowerTag === 'scots' || lowerTag === 'scotland') {
+      if (/\b(scotland|scottish|scots|sheriff|simple procedure|ordinary cause|court of session)\b/.test(haystack)) {
+        score += 4;
+      }
+    }
+    if (lowerTag === 'uk' && /\b(uk|united kingdom|england|wales|scotland|northern ireland)\b/.test(haystack)) {
+      score += 2;
+    }
+  }
+  if (skill.manifest.atticusRefined && /\b(scotland|scottish|scots|uk|legal|court|tribunal|complaint|claim|evidence)\b/.test(haystack)) {
+    score += 2;
+  }
+  return score;
+}
+
 const RELEVANCE_KEYWORDS: Record<string, string[]> = {
   review: ['review', 'analysis', 'assess', 'evaluate', 'check', 'audit'],
   research: ['research', 'law', 'statute', 'regulation', 'authority', 'jurisprudence', 'case law'],
@@ -174,6 +205,7 @@ export function selectSkills(
 
     score += categoryBonus(skill, categories);
     score += humanizerSelectionBonus(skill, objective, matterMeta);
+    score += manifestTagBonus(skill, objective, matterMeta);
 
     if (matterMeta.jurisdiction || matterMeta.type) {
       score += tagScore(skill.skillId, matterMeta) * 0.5;

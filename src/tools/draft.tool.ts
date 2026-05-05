@@ -1,6 +1,7 @@
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
 import { OpenRouterClient } from '../llm/client.js';
 import { loadHumanizerPrompt } from '../skills/humanizer.js';
+import { SkillSelectionWorker } from '../skills/selection-worker.js';
 
 export class DraftTool implements Tool<{ matterName: string; brief: string; docType?: string }, string> {
   readonly name = 'draft';
@@ -37,6 +38,18 @@ export class DraftTool implements Tool<{ matterName: string; brief: string; docT
     const humanizerPrompt = humanizer
       ? `\n\nOUTPUT STYLE SKILL:\nApply ${humanizer.skillName} to the final draft. Preserve all facts, dates, amounts, evidence IDs, citations, legal caveats, and uncertainty. Do not invent authorities or make the case stronger than the evidence permits.\n\n${humanizer.prompt}`
       : '';
+    const skillSelector = new SkillSelectionWorker();
+    const skillContext = await skillSelector.buildContext({
+      objective: args.brief,
+      requestedType: args.docType || 'draft',
+      matterMeta: { jurisdiction: 'Scotland' },
+      limit: 3,
+      maxBodyChars: 1400,
+      excludeSkillIds: humanizer?.skillName ? [humanizer.skillName] : [],
+    });
+    const selectedSkillPrompt = skillContext.promptSection
+      ? `\n\n${skillContext.promptSection}`
+      : '';
 
     const systemPrompt = `You are a legal drafting assistant. Draft a ${args.docType || 'legal document'} based on the following brief and evidence.
 
@@ -49,7 +62,7 @@ Instructions:
 - Structure the document properly with sections
 - Cite evidence where applicable using format [EVIDENCE_ID]
 - Use clear, professional legal language
-- Include a date and matter reference${humanizerPrompt}`;
+- Include a date and matter reference${humanizerPrompt}${selectedSkillPrompt}`;
 
     try {
       const client = new OpenRouterClient();

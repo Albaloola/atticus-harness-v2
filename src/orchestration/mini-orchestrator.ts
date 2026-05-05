@@ -53,6 +53,7 @@ export class MiniOrchestrator {
               allowedTools: ['read_file', 'search_files', 'exec_sqlite', 'evidence_search', 'draft', 'verify_citations'],
               maxTurns: 15,
               maxDepth: (maxDepth || 1) - 1,
+              phaseId: phaseName,
             },
             model: 'deepseek/deepseek-v4-flash',
           });

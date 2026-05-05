@@ -107,6 +107,7 @@ describe('CaseManager', () => {
     expect(candidates[0].metadata.source).toBe('hermes');
     expect(candidates[0].metadata.externalAction).toBe('prepare_only');
     expect(candidates[0].metadata.humanizerSkill).toBe('humanizer');
+    expect(candidates[0].metadata.selectedSkills).toBeDefined();
     expect(candidates[0].metadata.caseMemorySummary).toContain(`Matter ${matterName}`);
     expect(capturedRequest?.messages.some((message) => message.content.includes('Active Skill: humanizer'))).toBe(true);
 

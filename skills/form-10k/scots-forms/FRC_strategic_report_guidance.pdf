@@ -1,0 +1,1761 @@
+
+
+<!doctype html>
+<html lang="en" class="govuk-template ">
+    <head>
+        
+        <meta charset="utf-8" />
+        <title>Guidance on the Strategic Report</title>
+        <meta name="description" content="In 2014, at the request of the Department for Business, Energy and Industrial Strategy (BEIS – formerly BIS) the FRC developed and published non-mandatory guidance on the application of the strategic report requirements introduced into The Companies Act 2006 by The Companies Act 2006 (Strategic Report and Directors&#x27; Report) Regulations 2013 (SI 2013/1970) (the Regulations)." />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+        <meta name="theme-color" content="#0b0c0c">
+
+        
+        
+
+        
+
+        
+    
+        
+        <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+            new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+                                                      j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+                'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+        })(window,document,'script','dataLayer','GTM\u002DN6RGNTC');</script>
+    
+
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+    <link rel="manifest" href="/site.webmanifest">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#ffffff">
+
+    
+    <meta property="fb:app_id" content="" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="/library/standards-codes-policy/accounting-and-reporting/annual-corporate-reporting/guidance-on-the-strategic-report/" />
+    <meta property="og:title" content="Guidance on the Strategic Report" />
+    
+        
+    
+    <meta property="og:description" content="" />
+    <meta property="og:site_name" content="FRC (Financial Reporting Council)" />
+    <link rel="canonical" href="https://www.frc.org.uk/library/standards-codes-policy/accounting-and-reporting/annual-corporate-reporting/guidance-on-the-strategic-report/">
+
+
+        
+        <link rel="stylesheet" type="text/css" href="/static/css/main.3976b90678c8.css">
+
+        
+    <!-- OneTrust Cookies Consent Notice start for www.frc.org.uk -->
+    <script type="text/javascript" src="https://cdn.cookielaw.org/consent/980bc658-e7cc-41f5-a104-be005a67a8d7/OtAutoBlock.js" ></script>
+    <script src="https://cdn.cookielaw.org/scripttemplates/otSDKStub.js"  type="text/javascript" charset="UTF-8" data-domain-script="980bc658-e7cc-41f5-a104-be005a67a8d7" ></script>
+    <script type="text/javascript">
+        function OptanonWrapper() { }
+    </script>
+    <!-- OneTrust Cookies Consent Notice end for www.frc.org.uk -->
+
+
+
+        
+    </head>
+
+    <body class="template-information-page">
+        <script>
+            document.body.className = ((document.body.className) ? document.body.className + ' js-enabled' : 'js-enabled');
+        </script>
+        
+    
+        
+        <noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-N6RGNTC"
+                          height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+    
+
+
+        <svg style="display: none;" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <symbol id="magnifying-glass" viewBox="0 0 43 43">
+        <path d="M40.372 43 24.665 27.293c-1.194 1.035-2.588 1.841-4.18 2.419-1.593.577-3.285.866-5.077.866-4.3 0-7.943-1.493-10.929-4.48C1.493 23.114 0 19.51 0 15.289c0-4.22 1.493-7.823 4.48-10.809C7.464 1.493 11.087 0 15.348 0c4.22 0 7.813 1.493 10.78 4.48 2.966 2.985 4.449 6.588 4.449 10.809 0 1.712-.279 3.364-.836 4.957-.558 1.592-1.394 3.085-2.509 4.479L43 40.372 40.372 43ZM15.35 26.994c3.225 0 5.972-1.144 8.241-3.434 2.27-2.289 3.404-5.046 3.404-8.271 0-3.225-1.134-5.982-3.404-8.272-2.27-2.289-5.016-3.434-8.241-3.434-3.265 0-6.042 1.145-8.332 3.434-2.289 2.29-3.434 5.047-3.434 8.272 0 3.225 1.145 5.982 3.434 8.271 2.29 2.29 5.067 3.434 8.332 3.434Z" fill="currentColor"/>
+    </symbol>
+
+    <symbol id="x-fka-twitter" viewBox="0 0 24 24" fill="currentColor">
+        <path d="m13.1 10.7l6.4 9.6h-4.7l-4.3-6.4-5.4 6.4h-1.4l6.1-7.4-6.1-9.2h4.7l4.1 6.1 5.1-6.1h1.4l-5.9 7zm-1.9 2.3l4.2 6.3h2.2l-5.2-7.7-0.7-0.9-4-6h-2.1l5 7.4 0.6 0.9z"></path>
+    </symbol>
+
+    <symbol id="facebook" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"></path>
+    </symbol>
+
+    <symbol id="chevron" viewBox="0 0 15 25">
+        <path d="M10.5 12.95.6 3.05 2.75.9 14.8 12.95 2.75 25 .6 22.85l9.9-9.9Z" fill="currentColor" />
+    </symbol>
+
+    <symbol id="timer" viewBox="0 0 36 42">
+        <path fill="currentColor" d="M12 3V0h12v3H12Zm4.5 22.35h3v-11.5h-3v11.5Zm1.5 16.6c-2.467 0-4.792-.475-6.975-1.425A18.387 18.387 0 0 1 5.3 36.65a18.386 18.386 0 0 1-3.875-5.725C.475 28.742 0 26.417 0 23.95c0-2.467.475-4.792 1.425-6.975A18.386 18.386 0 0 1 5.3 11.25a18.386 18.386 0 0 1 5.725-3.875C13.208 6.425 15.533 5.95 18 5.95c2.233 0 4.333.375 6.3 1.125a17.346 17.346 0 0 1 5.25 3.125l2.55-2.55 2.1 2.1-2.55 2.55c1.2 1.333 2.225 2.95 3.075 4.85.85 1.9 1.275 4.167 1.275 6.8 0 2.467-.475 4.792-1.425 6.975A18.387 18.387 0 0 1 30.7 36.65a18.387 18.387 0 0 1-5.725 3.875c-2.183.95-4.508 1.425-6.975 1.425Zm0-3c4.167 0 7.708-1.458 10.625-4.375S33 28.117 33 23.95s-1.458-7.708-4.375-10.625S22.167 8.95 18 8.95s-7.708 1.458-10.625 4.375S3 19.783 3 23.95s1.458 7.708 4.375 10.625S13.833 38.95 18 38.95Z"/>
+    </symbol>
+
+    <symbol id="arrow" viewBox="0 0 30 24">
+        <path fill="currentColor" d="m11.986 23.407 2.52-2.52-7.652-7.652H30V9.671H7.015l7.46-7.088L12.02 0 0 11.418l11.986 11.99Z" />
+    </symbol>
+
+    <symbol id="microphone" viewBox="0 0 70 70">
+        <path fill="currentColor" d="M35.242 51.42a13.605 13.605 0 0 0 13.59-13.59V13.59a13.589 13.589 0 1 0-27.18 0v24.24a13.606 13.606 0 0 0 13.59 13.59Zm-10.68-15.527h4.861a1.455 1.455 0 1 0 0-2.91h-4.86v-5.818h4.86a1.455 1.455 0 0 0 0-2.909h-4.86v-5.819h4.86a1.455 1.455 0 1 0 0-2.909h-4.86V13.59a10.68 10.68 0 1 1 21.359 0v2.037a1.424 1.424 0 0 0-.497-.098h-4.862a1.454 1.454 0 1 0 0 2.91h4.861c.171-.005.34-.038.498-.1v6.018a1.424 1.424 0 0 0-.497-.1h-4.862a1.454 1.454 0 0 0 0 2.91h4.861c.171-.005.34-.039.498-.101v6.02a1.424 1.424 0 0 0-.497-.101h-4.862a1.455 1.455 0 0 0 0 2.91h4.861c.171-.005.34-.039.498-.101v2.036a10.68 10.68 0 1 1-21.36 0v-1.936Z"/>
+        <path fill="currentColor" d="M55.009 38.036v-5.483a1.455 1.455 0 0 0-2.91 0v5.483a16.858 16.858 0 0 1-33.715 0v-5.483a1.455 1.455 0 0 0-2.91 0v5.483a19.782 19.782 0 0 0 18.313 19.693v9.362h-7.183a1.455 1.455 0 1 0 0 2.909H43.88a1.455 1.455 0 1 0 0-2.91h-7.183V57.73A19.783 19.783 0 0 0 55.01 38.036ZM10.994 26.678a1.453 1.453 0 0 0-2.025.365 14.503 14.503 0 0 0 0 16.2 1.454 1.454 0 0 0 2.39-1.658 11.597 11.597 0 0 1 0-12.884 1.455 1.455 0 0 0-.365-2.023Z"/><path fill="#044996" d="M5.421 48.519a1.455 1.455 0 0 0 1.164-2.328 18.444 18.444 0 0 1 0-22.097 1.455 1.455 0 1 0-2.327-1.745 21.357 21.357 0 0 0 0 25.59 1.454 1.454 0 0 0 1.163.58ZM58.816 43.609a1.454 1.454 0 0 0 2.024-.365 14.496 14.496 0 0 0 0-16.2 1.454 1.454 0 0 0-2.39 1.658 11.226 11.226 0 0 1 1.957 6.444 11.39 11.39 0 0 1-1.955 6.443 1.455 1.455 0 0 0 .364 2.02Z"/>
+        <path fill="currentColor" d="M64.383 48.52a1.454 1.454 0 0 0 1.164-.582 21.357 21.357 0 0 0 0-25.592 1.455 1.455 0 0 0-2.328 1.746 18.444 18.444 0 0 1 0 22.098 1.455 1.455 0 0 0 1.164 2.327v.003Z"/>
+    </symbol>
+
+    <symbol id="external" viewBox="0 0 36 36">
+        <path fill="currentColor" d="M3 36c-.8 0-1.5-.3-2.1-.9-.6-.6-.9-1.3-.9-2.1V3C0 2.2.3 1.5.9.9 1.5.3 2.2 0 3 0h13.95v3H3v30h30V19.05h3V33c0 .8-.3 1.5-.9 2.1-.6.6-1.3.9-2.1.9H3Zm10.1-10.95L11 22.9 30.9 3H19.95V0H36v16.05h-3V5.15l-19.9 19.9Z"/>
+    </symbol>
+
+    <symbol id="globe" viewBox="0 0 40 40">
+        <path fill="currentColor" d="M20 40c-2.8 0-5.417-.525-7.85-1.575-2.433-1.05-4.55-2.475-6.35-4.275-1.8-1.8-3.217-3.925-4.25-6.375S0 22.7 0 19.9s.517-5.408 1.55-7.825S4 7.55 5.8 5.75c1.8-1.8 3.917-3.208 6.35-4.225C14.583.508 17.2 0 20 0s5.417.508 7.85 1.525S32.4 3.95 34.2 5.75c1.8 1.8 3.217 3.908 4.25 6.325C39.483 14.492 40 17.1 40 19.9s-.517 5.425-1.55 7.875S36 32.35 34.2 34.15c-1.8 1.8-3.917 3.225-6.35 4.275C25.417 39.475 22.8 40 20 40Zm0-2.9a16.64 16.64 0 0 0 2.925-4.125c.783-1.55 1.425-3.392 1.925-5.525H15.2c.467 2 1.092 3.8 1.875 5.4A17.037 17.037 0 0 0 20 37.1Zm-4.25-.6a23.907 23.907 0 0 1-2.15-4.1c-.6-1.467-1.1-3.117-1.5-4.95H4.6c1.267 2.367 2.733 4.225 4.4 5.575 1.667 1.35 3.917 2.508 6.75 3.475Zm8.55-.05A20.02 20.02 0 0 0 30.775 33a17.907 17.907 0 0 0 4.625-5.55h-7.45c-.433 1.8-.942 3.433-1.525 4.9a22.696 22.696 0 0 1-2.125 4.1Zm-20.7-12h7.95c-.1-.9-.158-1.708-.175-2.425a91.224 91.224 0 0 1-.025-2.125c0-.833.017-1.575.05-2.225.033-.65.1-1.375.2-2.175h-8a14.58 14.58 0 0 0-.475 2.15A17.522 17.522 0 0 0 3 19.9c0 .867.042 1.642.125 2.325.083.683.242 1.425.475 2.225Zm11.05 0H25.4c.133-1.033.217-1.875.25-2.525a39.61 39.61 0 0 0 0-3.95 35.22 35.22 0 0 0-.25-2.475H14.65a35.22 35.22 0 0 0-.25 2.475 39.61 39.61 0 0 0 0 3.95c.033.65.117 1.492.25 2.525Zm13.75 0h8c.233-.8.392-1.542.475-2.225.083-.683.125-1.458.125-2.325 0-.867-.042-1.617-.125-2.25a14.58 14.58 0 0 0-.475-2.15h-7.95c.1 1.167.167 2.058.2 2.675s.05 1.192.05 1.725c0 .733-.025 1.425-.075 2.075-.05.65-.125 1.475-.225 2.475Zm-.5-11.95h7.5c-1.1-2.3-2.608-4.217-4.525-5.75-1.917-1.533-4.125-2.617-6.625-3.25a21.793 21.793 0 0 1 2.125 4c.583 1.433 1.092 3.1 1.525 5Zm-12.7 0h9.7a19.501 19.501 0 0 0-1.85-5.125C22.183 5.725 21.167 4.267 20 3c-1.067.9-1.967 2.083-2.7 3.55-.733 1.467-1.433 3.45-2.1 5.95Zm-10.6 0h7.55c.367-1.8.833-3.408 1.4-4.825A23.738 23.738 0 0 1 15.7 3.55c-2.5.633-4.683 1.7-6.55 3.2-1.867 1.5-3.383 3.417-4.55 5.75Z"/>
+    </symbol>
+
+    <symbol id="comment" viewBox="0 0 40 40">
+        <path fill="currentColor" d="M8 24.05h15.65v-3H8v3Zm0-6.5h24v-3H8v3Zm0-6.5h24v-3H8v3ZM0 40V3C0 2.2.3 1.5.9.9 1.5.3 2.2 0 3 0h34c.8 0 1.5.3 2.1.9.6.6.9 1.3.9 2.1v26c0 .8-.3 1.5-.9 2.1-.6.6-1.3.9-2.1.9H8l-8 8Zm6.7-11H37V3H3v30l3.7-4Z"/>
+    </symbol>
+
+    <symbol id="link" viewBox="0 0 40 20">
+        <path fill="currentColor" d="M18.5 20H10c-2.767 0-5.125-.975-7.075-2.925C.975 15.125 0 12.767 0 10c0-2.767.975-5.125 2.925-7.075C4.875.975 7.233 0 10 0h8.5v3H10c-1.944 0-3.597.68-4.958 2.038C3.68 6.397 3 8.048 3 9.988c0 1.941.68 3.595 2.042 4.962C6.402 16.317 8.056 17 10 17h8.5v3Zm-6.25-8.5v-3h15.5v3h-15.5ZM21.5 20v-3H30c1.944 0 3.597-.68 4.958-2.038 1.361-1.36 2.042-3.01 2.042-4.95 0-1.941-.68-3.595-2.042-4.962C33.598 3.683 31.944 3 30 3h-8.5V0H30c2.767 0 5.125.975 7.075 2.925C39.025 4.875 40 7.233 40 10c0 2.767-.975 5.125-2.925 7.075C35.125 19.025 32.767 20 30 20h-8.5Z"/>
+    </symbol>
+
+    <symbol id="attachment" viewBox="0 0 20 12">
+        <path fill="currentColor" d="M5.5 11.5c-1.533 0-2.833-.533-3.9-1.6C.533 8.833 0 7.533 0 6s.533-2.833 1.6-3.9C2.667 1.033 3.967.5 5.5.5H16c1.1 0 2.042.392 2.825 1.175C19.608 2.458 20 3.4 20 4.5s-.392 2.042-1.175 2.825C18.042 8.108 17.1 8.5 16 8.5H6.5c-.7 0-1.292-.242-1.775-.725C4.242 7.292 4 6.7 4 6s.242-1.292.725-1.775C5.208 3.742 5.8 3.5 6.5 3.5H16V5H6.5a.968.968 0 0 0-.713.287A.968.968 0 0 0 5.5 6c0 .283.096.52.287.713.192.191.43.287.713.287H16c.7 0 1.292-.242 1.775-.725.483-.483.725-1.075.725-1.775s-.242-1.292-.725-1.775C17.292 2.242 16.7 2 16 2H5.5c-1.1 0-2.042.392-2.825 1.175C1.892 3.958 1.5 4.9 1.5 6s.392 2.042 1.175 2.825C3.458 9.608 4.4 10 5.5 10H16v1.5H5.5Z"/>
+    </symbol>
+
+    <symbol id="close-circle" viewBox="0 0 20 20">
+        <path fill="currentColor" d="M10 0a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm4.25 12.83a1 1 0 1 1-1.42 1.41L10 11.41l-2.82 2.83a1 1 0 1 1-1.42-1.41L8.59 10 5.76 7.17a1 1 0 1 1 1.42-1.41L10 8.59l2.82-2.83a1 1 0 1 1 1.42 1.41L11.42 10l2.83 2.83Z"/>
+    </symbol>
+
+    <symbol id="print" viewBox="0 0 20 18">
+        <path fill="currentColor" d="M14 5V2H6v3H4V0h12v5h-2Zm2 4.5c.283 0 .52-.096.712-.287A.967.967 0 0 0 17 8.5a.967.967 0 0 0-.288-.713A.968.968 0 0 0 16 7.5a.968.968 0 0 0-.713.287A.967.967 0 0 0 15 8.5c0 .283.096.52.287.713.192.191.43.287.713.287ZM14 16v-4H6v4h8Zm2 2H4v-4H0V8c0-.85.292-1.563.875-2.138S2.167 5 3 5h14c.85 0 1.563.287 2.137.862C19.712 6.438 20 7.15 20 8v6h-4v4Zm2-6V8a.967.967 0 0 0-.288-.713A.968.968 0 0 0 17 7H3a.968.968 0 0 0-.712.287A.968.968 0 0 0 2 8v4h2v-2h12v2h2Z" />
+    </symbol>
+    <symbol id="vimeo" viewBox="0 0 120 120">
+        <path fill="currentColor" d="M87 17.9c-7.5 2.3-12.2 6.6-16.6 15.2-3.2 6.3-3.1 6.9 1 6.2 9.9-1.6 12.9 5.5 7.1 16.7-6.2 12.1-12.1 18.4-15 16-2.6-2.1-5.2-11.1-7.9-27-3.2-18.1-5.2-23.1-10.3-25.5-3-1.4-4.2-1.5-7.4-.6-4.1 1.3-12.1 7.1-21.7 15.9L10 40.5l2.2 2.8 2.3 2.8 4.1-2.2c2.2-1.2 4.8-2 5.7-1.6 2.9 1.1 6.3 9.7 11.6 29 5.7 21 7.4 25 12.6 29.5 4.4 3.9 8 4.1 15.1.8 14.2-6.6 38.8-38 44.6-57 3.6-11.8 1.1-22.2-6.2-25.8-3.6-1.8-10.6-2.2-15-.9z"/>
+    </symbol>
+    <symbol id="linkedin" viewBox="0 0 635 540">
+        <path fill="currentColor" d="M27.8 2.4C17.3 6.2 7.7 15.1 3.8 24.8l-2.3 5.7v475l2.3 5.7c3.1 7.6 10.5 15.6 18.4 19.9l6.3 3.4h480l6.2-3.4c7.7-4.1 14.6-11.3 18.1-18.9l2.7-5.7v-477l-2.7-5.7c-3.5-7.6-10.9-15.3-18.3-19.2l-6-3.1L270 1.3C75.5 1.1 30.8 1.3 27.8 2.4zm105.1 73.5c8.4 2.6 13.7 5.9 20.2 12.8 6.3 6.6 8.9 11.1 11.4 19.7 2.3 7.7 1.6 19.9-1.4 27.8-9.6 24.9-38.7 36.8-62.4 25.5-29.4-13.9-35.8-52.1-12.6-74.7 11.9-11.5 29.5-15.9 44.8-11.1zm253.8 120.7c4.5.8 12 2.8 16.7 4.5 28.5 10.3 43.7 31.6 50.9 71.4 2.2 11.7 2.2 13.9 2.2 98v86h-79l-.6-78c-.5-71-.7-78.5-2.3-84-2.8-9.3-6.6-16.2-11.3-20.6-6.5-6-12.1-8.1-23.5-8.7-22.3-1.1-36 5.8-43.8 22.3-6.4 13.7-6.4 13.5-7 95l-.5 74h-79l-.3-127.8L209 201h77v35.5l2.7-4c13.5-20.2 35.7-34.2 59-37.4 8.4-1.2 28-.4 39 1.5zM159.8 328.7l-.3 127.8h-79l-.3-127.8L80 201h80l-.2 127.7zm421.5 141.8c-4.3 2.1-8.7 5.3-10.9 7.8-14.6 16.7-11.4 42.5 6.6 54.6 7.3 4.8 14 6.5 23.5 5.9 27.2-1.8 42.3-32.7 27.4-56-3.7-5.7-7.4-9-14.3-12.5-4.3-2.3-6.7-2.8-15.1-3.1-9.9-.4-10.1-.3-17.2 3.3zm29 2.8c7.4 3.4 13.1 8.8 16.4 15.5 2.4 4.8 2.8 7 2.8 13.7 0 6.6-.5 9-2.7 13.7-11.7 25-46.6 25.2-58.8.3-3.4-6.8-3.5-19.7-.4-26.6 7.7-16.6 26.6-24 42.7-16.6z"/>
+        <path fill="currentColor" d="M585 503v19h2.5c2.5 0 2.5-.1 2.5-8.5V505h3.4c3.1 0 3.7.6 8.7 8.5 4.7 7.4 5.7 8.5 8.2 8.5 3.2 0 3.4.6-3.4-9.7l-4.8-7.1 2.7-.7c6.5-1.6 9.6-8.3 6.8-14.8-2-4.8-4.5-5.7-16.7-5.7H585v19zm20.2-13.3c1 .9 1.8 3 1.8 4.9 0 4.7-2.9 6.4-10.7 6.4H590v-13h6.7c4.8 0 7.2.5 8.5 1.7z"/>
+    </symbol>
+    <symbol id="event" viewBox="0 0 18 20">
+        <path fill="currentColor" d="M11.5 16c-.7 0-1.292-.242-1.775-.725C9.242 14.792 9 14.2 9 13.5s.242-1.292.725-1.775C10.208 11.242 10.8 11 11.5 11s1.292.242 1.775.725c.483.483.725 1.075.725 1.775s-.242 1.292-.725 1.775c-.483.483-1.075.725-1.775.725ZM2 20c-.55 0-1.02-.196-1.413-.587A1.926 1.926 0 0 1 0 18V4c0-.55.196-1.02.588-1.413A1.926 1.926 0 0 1 2 2h1V0h2v2h8V0h2v2h1c.55 0 1.02.196 1.413.587C17.803 2.98 18 3.45 18 4v14c0 .55-.196 1.02-.587 1.413A1.926 1.926 0 0 1 16 20H2Zm0-2h14V8H2v10ZM2 6h14V4H2v2Z"/>
+    </symbol>
+</svg>
+
+
+
+        
+
+        
+    
+
+<a href="#main-content" class="skip-link" data-skip-link>Skip to main content</a>
+
+
+
+    <a href="#page-anchors-desktop" class="skip-link skip-link--desktop" data-skip-link>Skip to table of contents</a>
+
+
+
+    <a href="#page-anchors-mobile" class="skip-link skip-link--mobile" data-skip-link>Skip to table of contents</a>
+
+
+
+
+    
+        <a href="#search-results" class="skip-link" data-skip-link>Skip to results</a>
+        <a href="#filters" class="skip-link" data-skip-link>Skip to page filters</a>
+    
+
+
+
+
+
+<header class="header">
+    <div class="header__top">
+        <div class="header__top-background layout layout--sidebar">
+            
+            <div class="header__secondary-nav">
+                
+
+<nav aria-label="Secondary">
+    <ul class="secondary-nav">
+        
+            <li class="secondary-nav__item">
+                
+
+
+    <a class="secondary-nav__link" href="/about-us/careers/" >
+        Careers at the FRC
+    </a>
+
+
+            </li>
+        
+            <li class="secondary-nav__item">
+                
+
+
+    <a class="secondary-nav__link" href="/contact-us/" >
+        Contact us
+    </a>
+
+
+            </li>
+        
+    </ul>
+</nav>
+            </div>
+            <div class="header__search-wrapper">
+                
+                    <form action="/library/" method="get" role="search" class="tbxforms header__search">
+                        <input class="tbxforms-input header__search-input" id="search" type="text" placeholder="Search…" name="query">
+                        <label class="u-sr-only" for="search">Search this website</label>
+                        <button class="header__search-button" type="submit">
+                            
+
+
+
+<svg
+    class="icon icon--magnifying-glass header__search-button-icon"
+    aria-hidden="true"
+    focusable="false"
+>
+    <use xlink:href="#magnifying-glass" href="#magnifying-glass"></use>
+</svg>
+
+                            <span class="u-sr-only">Search</span>
+                        </button>
+                    </form>
+                
+            </div>
+        </div>
+    </div>
+
+    <div class="header__inner">
+        <a href="/" class="header__logo-link" aria-label="Financial Reporting Council Homepage">
+            <img class="header__logo" src="/static/images/frc-logo.b3966863da67.svg" alt="Financial Reporting Council Logo">
+
+            <span class="header__logo-text">
+                Financial Reporting Council
+            </span>
+        </a>
+
+        <div class="header__menu-toggle">
+            <button class="button button-menu-toggle" data-mobile-menu-toggle aria-haspopup="true" aria-expanded="false" aria-label="Mobile menu toggle">
+                <span class="button-menu-toggle__line"></span>
+                <span class="button-menu-toggle__line"></span>
+                <span class="button-menu-toggle__line"></span>
+                <span class="button-menu-toggle__line"></span>
+            </button>
+        </div>
+
+        <div class="header__menus header__menus--desktop">
+            <div data-desktop-menu>
+                
+
+<nav aria-label="Primary">
+    <ul class="primary-nav" data-primary-nav>
+        
+            <li class="primarynav__item" >
+                
+
+
+    <a class="primary-nav__link" href="/library/" data-nav-link>
+        Library
+    </a>
+
+
+            </li>
+        
+            <li class="primarynav__item" data-has-subnav>
+                
+
+<button class="primary-nav__link" aria-expanded="false" data-open-subnav>
+    About the FRC
+
+    
+
+
+
+<svg
+    class="icon icon--chevron primary-nav__link-icon"
+    aria-hidden="true"
+    focusable="false"
+>
+    <use xlink:href="#chevron" href="#chevron"></use>
+</svg>
+
+</button>
+
+<div class="dropdown" data-subnav>
+    <div class="layout layout--padding">
+        <ul>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/" data-nav-link>
+        About the FRC
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/our-purpose/" data-nav-link>
+        Our Purpose
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/structure/" data-nav-link>
+        FRC Structure
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/role-and-responsibilities/" data-nav-link>
+        Role and Responsibilities
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/reports-plans-and-budgets/" data-nav-link>
+        Reports, Plans and Budgets
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/policies-and-procedures/" data-nav-link>
+        Policies and Procedures
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/governance-reporting/" data-nav-link>
+        Governance Reporting
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/funding/" data-nav-link>
+        Funding
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/responses-to-external-consultations/" data-nav-link>
+        FRC Responses to External Consultations
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/tribunals/" data-nav-link>
+        Tribunals
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/international-activity/" data-nav-link>
+        The FRC&#x27;s International Activity
+    </a>
+
+
+                </li>
+            
+        </ul>
+    </div>
+</div>
+            </li>
+        
+            <li class="primarynav__item" >
+                
+
+
+    <a class="primary-nav__link" href="/consultations/" data-nav-link>
+        Consultations
+    </a>
+
+
+            </li>
+        
+            <li class="primarynav__item" >
+                
+
+
+    <a class="primary-nav__link" href="/news-and-events/" data-nav-link>
+        News and events
+    </a>
+
+
+            </li>
+        
+    </ul>
+</nav>
+
+            </div>
+        </div>
+
+        <div class="header__menus header__menus--mobile" data-mobile-menu>
+            
+
+<nav aria-label="Primary">
+    <ul class="primary-nav" data-primary-nav>
+        
+            <li class="primarynav__item" >
+                
+
+
+    <a class="primary-nav__link" href="/library/" data-nav-link>
+        Library
+    </a>
+
+
+            </li>
+        
+            <li class="primarynav__item" data-has-subnav>
+                
+
+<button class="primary-nav__link" aria-expanded="false" data-open-subnav>
+    About the FRC
+
+    
+
+
+
+<svg
+    class="icon icon--chevron primary-nav__link-icon"
+    aria-hidden="true"
+    focusable="false"
+>
+    <use xlink:href="#chevron" href="#chevron"></use>
+</svg>
+
+</button>
+
+<div class="dropdown" data-subnav>
+    <div class="layout layout--padding">
+        <ul>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/" data-nav-link>
+        About the FRC
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/our-purpose/" data-nav-link>
+        Our Purpose
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/structure/" data-nav-link>
+        FRC Structure
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/role-and-responsibilities/" data-nav-link>
+        Role and Responsibilities
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/reports-plans-and-budgets/" data-nav-link>
+        Reports, Plans and Budgets
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/policies-and-procedures/" data-nav-link>
+        Policies and Procedures
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/governance-reporting/" data-nav-link>
+        Governance Reporting
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/funding/" data-nav-link>
+        Funding
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/responses-to-external-consultations/" data-nav-link>
+        FRC Responses to External Consultations
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/tribunals/" data-nav-link>
+        Tribunals
+    </a>
+
+
+                </li>
+            
+                <li class="dropdown__item">
+                    
+
+
+    <a class="dropdown__link" href="/about-us/international-activity/" data-nav-link>
+        The FRC&#x27;s International Activity
+    </a>
+
+
+                </li>
+            
+        </ul>
+    </div>
+</div>
+            </li>
+        
+            <li class="primarynav__item" >
+                
+
+
+    <a class="primary-nav__link" href="/consultations/" data-nav-link>
+        Consultations
+    </a>
+
+
+            </li>
+        
+            <li class="primarynav__item" >
+                
+
+
+    <a class="primary-nav__link" href="/news-and-events/" data-nav-link>
+        News and events
+    </a>
+
+
+            </li>
+        
+    </ul>
+</nav>
+
+
+            
+
+<nav aria-label="Secondary">
+    <ul class="secondary-nav">
+        
+            <li class="secondary-nav__item">
+                
+
+
+    <a class="secondary-nav__link" href="/about-us/careers/" >
+        Careers at the FRC
+    </a>
+
+
+            </li>
+        
+            <li class="secondary-nav__item">
+                
+
+
+    <a class="secondary-nav__link" href="/contact-us/" >
+        Contact us
+    </a>
+
+
+            </li>
+        
+    </ul>
+</nav>
+        </div>
+    </div>
+</header>
+
+
+    <div class="overlay" data-overlay></div>
+
+
+        
+            
+
+
+    <div class="layout layout--padding layout--breadcrumbs">
+        <div class="govuk-breadcrumbs">
+            <ol class="govuk-breadcrumbs__list">
+                
+                    
+                
+                    
+                        
+                            <li class="govuk-breadcrumbs__list-item">
+                                <a class="govuk-breadcrumbs__link" href="/">Home</a>
+                            </li>
+                        
+                    
+                
+                    
+                        
+                            <li class="govuk-breadcrumbs__list-item">
+                                <a class="govuk-breadcrumbs__link" href="/library/">Library</a>
+                            </li>
+                        
+                    
+                
+                    
+                        
+                            <li class="govuk-breadcrumbs__list-item">
+                                <a class="govuk-breadcrumbs__link" href="/library/standards-codes-policy/">Standards, codes &amp; policy</a>
+                            </li>
+                        
+                    
+                
+                    
+                        
+                            <li class="govuk-breadcrumbs__list-item">
+                                <a class="govuk-breadcrumbs__link" href="/library/standards-codes-policy/accounting-and-reporting/">Accounting and Reporting</a>
+                            </li>
+                        
+                    
+                
+                    
+                        
+                            <li class="govuk-breadcrumbs__list-item">
+                                <a class="govuk-breadcrumbs__link" href="/library/standards-codes-policy/accounting-and-reporting/annual-corporate-reporting/">Annual Corporate Reporting</a>
+                            </li>
+                        
+                    
+                
+            </ol>
+        </div>
+    </div>
+
+
+        
+
+        <main id="main-content" role="main">
+            <div class="container">
+                <div class="layout layout--padding layout--sidebar">
+                    
+                </div>
+
+                
+    <div class="layout layout--padding">
+        
+        <div class="page page__heading page__heading--flush ">
+            <h1 class="heading heading--one page__title">Guidance on the Strategic Report</h1>
+            
+
+            <div class="page__meta page__meta--flush">
+                
+
+                
+
+                
+                    <p class="page__meta-item page__reading-time">
+                        
+
+
+
+<svg
+    class="icon icon--timer page__reading-time-icon"
+    aria-hidden="true"
+    focusable="false"
+>
+    <use xlink:href="#timer" href="#timer"></use>
+</svg>
+
+
+                        <span class="page__meta-item label">4 minute read</span>
+                    </p>
+                
+            </div>
+        </div>
+    </div>
+
+    <div class="layout layout--sidebar layout--padding">
+        <div class="page page--body">
+            
+
+            
+    <div id="page-anchors-mobile" class="page-anchors page-anchors--mobile">
+        <nav role="navigation" class="gem-c-related-navigation__nav-section govuk-!-margin-bottom-4">
+            <h2 class="body body--feature bold">On this page</h2>
+
+            <ul class="page-anchors__list">
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#introduction-34295163">Introduction
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#scoping-tables-d50351dc">Scoping tables
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#communication-principles-bad1785b">Communication principles
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#clarifications-of-the-regulations-a9e6fca7">Clarifications of the Regulations
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#further-information-including-previous-editions-03959434">Further information including previous editions
+                            </a>
+                        </li>
+                    
+                
+            </ul>
+        </nav>
+    </div>
+
+
+
+            
+
+
+    
+
+<div class="file-list importance-primary">
+    <table class="govuk-table">
+        <caption id="files-list-document">
+            <div class="file-list__heading">
+                Document
+            </div>
+            
+        </caption>
+
+        <tbody class="govuk-table__body file-list__table">
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/9098/Guidance_on_the_Strategic_Report_February_2026.pdf" target="_blank" rel="noreferrer noopener">Guidance on the Strategic Report (February 2026)</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            4 February 2026
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Guidance</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 867.7 KB
+                    </td>
+                </tr>
+            
+        </tbody>
+    </table>
+</div>
+
+
+    
+    <h2 id="introduction-34295163" class="heading heading--two heading--sf">Introduction</h2>
+
+
+
+    <div class="rich-text"><p data-block-key="iqdto">In 2014, at the request of the Department for Business, Innovation and Skills (BIS, now the Department for Business and Trade (DBT)) the FRC developed and published non-mandatory guidance on the application of the strategic report requirements introduced into the Companies Act 2006 by 'The Companies Act 2006 (Strategic Report and Directors' Report) Regulations 2013<i>'</i> (SI 2013/1970) (the 2013 Regulations).</p><p data-block-key="bkn9a">The Guidance on the Strategic Report (the Guidance) is set in the context of the annual report as a whole to recognise that the strategic report does not exist in isolation from other aspects of corporate reporting.</p><p data-block-key="3juk6">The Guidance includes communication principles that emphasise the qualities of good corporate reporting. It encourages companies to focus on the application of materiality to disclosures, and to be innovative in the structuring of information to 'tell their story' and improve the clarity, conciseness and cohesiveness of information.</p><p data-block-key="drv5g">The Guidance is intended to serve as a proportionate and practical guide to help entities meet their reporting obligations in a way that is proportionate and supports high-quality reporting. High-quality strategic reports provide shareholders and other primary users with a holistic and meaningful picture of the entity's development, performance, position and future prospects.</p><p data-block-key="bfpm">The Guidance was revised in 2018 and in 2022 to incorporate additional reporting requirements introduced into the Companies Act 2006.</p><p data-block-key="76lj7">In 2025 Appendices II, III, IV(a) and IV(b) in the Guidance on the Strategic Report (2022) were superseded by an updated Scoping Tables document (see below).</p><p data-block-key="fhb9v">The Guidance was revised in 2026 following a comprehensive periodic review, with amendments made to restructure the guidance, to reflect changes to the reporting framework (including changes to the disclosure requirements in the Companies Act 2006 relating to directors' reports and the UK Corporate Governance Code 2024) and limited other updates to the good practice guidance. The FRC expects to make further amendments to the Guidance to reflect any changes to reporting requirements resulting from DBT's ongoing 'Modernising Corporate Reporting' programme.</p></div>
+
+    
+    <h2 id="scoping-tables-d50351dc" class="heading heading--two heading--sf">Scoping tables</h2>
+
+
+
+    <div class="rich-text"><p data-block-key="z38wn">Tables summarising the disclosure requirements of the Companies Act 2006 and its associated regulations for companies, qualifying partnerships and limited liability partnerships (LLPs) in respect of the strategic report, the directors' report, and the energy and carbon report.</p><p data-block-key="d8sc7">Companies should refer to the relevant edition of the Scoping Tables considering their financial year and the effective date of legislation.</p></div>
+
+    
+
+<div class="file-list importance-primary">
+    <table class="govuk-table">
+        <caption id="files-list-february-2026">
+            <div class="file-list__heading">
+                February 2026
+            </div>
+            
+        </caption>
+
+        <tbody class="govuk-table__body file-list__table">
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/9100/Companies_Act_2006_Scoping_Tables_Disclosure_Requirements_for_the_Strategic_Report_Directors_Report_and_Energy_and_Carbon_Report_February_2026.pdf" target="_blank" rel="noreferrer noopener">Companies Act 2006 Disclosure Requirements for the Strategic Report, Directors&#x27; Report and Energy and Carbon Report: Scoping Tables (February 2026)</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            4 February 2026
+                        </td>
+                    </tr>
+                
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Notes</th>
+                        <td class="file-list__table-cell">Effective from 1 January 2026<br><br>The document was updated to include the disclosures introduced by The Companies (Directors&#x27; Report) (Payment Reporting) Regulations 2025 (SI 2025/1152) that are effective for financial years beginning on or after 1 January 2026, along with minor editorial changes.</td>
+                    </tr>
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 584.3 KB
+                    </td>
+                </tr>
+            
+        </tbody>
+    </table>
+</div>
+
+
+    
+
+<div class="file-list importance-secondary">
+    <table class="govuk-table">
+        <caption id="files-list-march-2025">
+            <div class="file-list__heading">
+                March 2025
+            </div>
+            
+        </caption>
+
+        <tbody class="govuk-table__body file-list__table">
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/8135/Companies_Act_2006_Scoping_Tables.pdf" target="_blank" rel="noreferrer noopener">Companies Act 2006 Disclosure Requirements for the Strategic Report, Directors&#x27; Report and Energy and Carbon Report: Scoping Tables (March 2025)</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            21 March 2025
+                        </td>
+                    </tr>
+                
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Notes</th>
+                        <td class="file-list__table-cell">Effective from 6 April 2025<br><br>The March 2025 edition reflected amendments introduced by The Companies (Accounts and Reports) (Amendment and Transitional Provision) Regulations 2024 (SI 2024/1303) effective for financial years beginning on or after 6 April 2025. In addition, the tables incorporated the following updates: a summary column of the relevant requirement, explanations of scoping categories and<br>a number of other amendments to align with legislative requirements and improve usability.</td>
+                    </tr>
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 460.2 KB. <a href="/docs/8135/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+        </tbody>
+    </table>
+</div>
+
+
+    
+    <h2 id="communication-principles-bad1785b" class="heading heading--two heading--sf">Communication principles</h2>
+
+
+
+    <div class="rich-text"><p data-block-key="aj0pi">The strategic report and the annual report are communication between companies and their shareholders. We encourage companies to use the following communication principles to enhance the quality of their corporate reporting.</p><p data-block-key="f6ig2"><a href="/documents/9099/FRC_Communication_Principles.pdf">Communication Principles infographic (February 2026)</a></p></div>
+
+    
+    <h2 id="clarifications-of-the-regulations-a9e6fca7" class="heading heading--two heading--sf">Clarifications of the Regulations</h2>
+
+
+
+    <div class="rich-text"><ol><li data-block-key="e68f4">While developing the initial 2014 Guidance, the FRC worked closely with the Department for Business, Innovation and Skills (BIS), now the Department for Business and Trade (DBT). During the consultation process the FRC received a number of queries on legal matters related to the 2013 Regulations. BIS provided clarifications on these matters in a <a href="/documents/4174/BIS_letter_guidance_on_narrative_reporting.pdf">letter to the FRC</a> (PDF).</li><li data-block-key="bqpmp">In respect of 'The Companies (Miscellaneous Reporting) Regulations 2018', the Department for Business, Energy and Industrial Strategy (BEIS), now DBT, issued some <a href="https://www.gov.uk/government/publications/corporate-governance-new-reporting-regulations">frequently asked questions</a> to support the legislative requirements. Guidance on the application of the section 172 duty is provided by the GC100 and the Investor Group.</li><li data-block-key="2pf14"><a href="https://www.gov.uk/government/publications/climate-related-financial-disclosures-for-companies-and-limited-liability-partnerships-llps">Guidance in the form of non-binding Q&amp;A</a> to support companies and LLPs in their application of the climate-related financial requirements was prepared by BEIS, now the Department for Energy Security and Net Zero (DESNZ).</li></ol></div>
+
+    
+    <h2 id="further-information-including-previous-editions-03959434" class="heading heading--two heading--sf">Further information including previous editions</h2>
+
+
+
+    
+
+<div class="file-list importance-secondary">
+    <table class="govuk-table">
+        <caption id="files-list-documents">
+            <div class="file-list__heading">
+                Documents
+            </div>
+            
+        </caption>
+
+        <tbody class="govuk-table__body file-list__table">
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/3725/Strategic_Report_Guidance.pdf" target="_blank" rel="noreferrer noopener">Guidance on the Strategic Report (June 2022)</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            16 June 2022
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Guidance</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 895.2 KB. <a href="/docs/3725/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/6463/Strategic_Report_Editorial_amendments.pdf" target="_blank" rel="noreferrer noopener">Strategic Report Editorial amendments</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            30 June 2020
+                        </td>
+                    </tr>
+                
+                
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 102.0 KB. <a href="/docs/6463/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/6464/Guidance_on_the_Strategic_Report__Appendix_II_and_Appendix_III.pdf" target="_blank" rel="noreferrer noopener">Guidance on the Strategic Report – Appendix II and Appendix III</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            31 May 2020
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Editorial correction</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 99.5 KB. <a href="/docs/6464/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/1665/Guidance_on_the_Strategic_Report_aontvWr.pdf" target="_blank" rel="noreferrer noopener">Guidance on the Strategic Report</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            31 July 2018
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Guidance</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 1.4 MB. <a href="/docs/1665/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/3162/Feedback_Statement_Amendments_to_the_Guidance_on_the_Strategic_Report.pdf" target="_blank" rel="noreferrer noopener">Feedback Statement: Amendments to the Guidance on the Strategic Report</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            31 July 2018
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Feedback paper</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 425.3 KB. <a href="/docs/3162/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/6369/Invitation_to_comment_Draft_Amendments_to_Strategic_Report_uCGEAuA.pdf" target="_blank" rel="noreferrer noopener">Invitation to comment: Draft Amendments to Strategic Report</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            17 August 2017
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Exposure draft</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 460.3 KB
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/5477/Non-Financial_Reporting_Directive_Factsheet.pdf" target="_blank" rel="noreferrer noopener">Non-Financial Reporting Directive Factsheet</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            26 July 2017
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Information sheet</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 161.9 KB. <a href="/docs/5477/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/6465/2014_Guidance_on_the_Strategic_Report.pdf" target="_blank" rel="noreferrer noopener">2014 Guidance on the Strategic Report</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            30 June 2014
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Guidance</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 674.7 KB. <a href="/docs/6465/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/2646/Feedback_Statement_Guidance_on_the_Strategic_Report.pdf" target="_blank" rel="noreferrer noopener">Feedback Statement: Guidance on the Strategic Report</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            9 June 2014
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Feedback paper</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 680.1 KB. <a href="/docs/2646/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/6466/Exposure_Draft_-_Guidance_on_the_Strategic_Report_2013.pdf" target="_blank" rel="noreferrer noopener">Exposure Draft - Guidance on the Strategic Report 2013</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            31 August 2013
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Exposure draft</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 463.4 KB
+                    </td>
+                </tr>
+            
+                <tr class="govuk-table__row file-list__table-row">
+                    <th scope="row" class="file-list__table-heading">Name</th>
+                    <td class="file-list__table-cell">
+                        <a href="/documents/3164/FRC_Staff_Guidance_Note_-_Strategic_Report_Regulations.pdf" target="_blank" rel="noreferrer noopener">FRC Staff Guidance Note - Strategic Report Regulations</a>
+                    </td>
+                </tr>
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Publication date</th>
+                        <td class="file-list__table-cell">
+                            15 August 2013
+                        </td>
+                    </tr>
+                
+                
+                
+                    <tr class="govuk-table__row file-list__table-row">
+                        <th scope="row" class="file-list__table-heading">Type</th>
+                        <td class="file-list__table-cell file-list__table-cell--type">Guidance</td>
+                    </tr>
+                
+                
+                <tr class="govuk-table__row file-list__table-row file-list__table-row--last">
+                    <th scope="row" class="file-list__table-heading">Format</th>
+                    
+                    <td class="file-list__table-cell">
+                        
+                        PDF, 151.1 KB. <a href="/docs/3164/html/">View HTML version</a>
+                    </td>
+                </tr>
+            
+        </tbody>
+    </table>
+</div>
+
+
+
+
+            
+        </div>
+
+        <div class="page page--sidebar" id="page-anchors-desktop">
+            
+
+            
+    <div id="" class="page-anchors page-anchors--desktop">
+        <nav role="navigation" class="gem-c-related-navigation__nav-section govuk-!-margin-bottom-4">
+            <h2 class="body body--feature bold">On this page</h2>
+
+            <ul class="page-anchors__list">
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#introduction-34295163">Introduction
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#scoping-tables-d50351dc">Scoping tables
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#communication-principles-bad1785b">Communication principles
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#clarifications-of-the-regulations-a9e6fca7">Clarifications of the Regulations
+                            </a>
+                        </li>
+                    
+                
+                    
+                        <li class="page-anchors__list-item">
+                            <a
+                                class="side_navigation__heading page-anchors__link"
+                                href="#further-information-including-previous-editions-03959434">Further information including previous editions
+                            </a>
+                        </li>
+                    
+                
+            </ul>
+        </nav>
+    </div>
+
+
+
+            
+                
+                    
+                        <h2 class="body body--feature bold">
+                            Topics
+                        </h2>
+                    
+
+                    
+                        <ul class="tags">
+                            
+                                <li class="tags__tag">
+                                    <a href="/library/?topics=accounting" class="tags__tag-link">Accounting</a>
+                                </li>
+                            
+                                <li class="tags__tag">
+                                    <a href="/library/?topics=corporate-reporting" class="tags__tag-link">Corporate Reporting</a>
+                                </li>
+                            
+                        </ul>
+                    
+                
+            
+
+            
+
+            <div class="page__related">
+                
+
+
+
+
+
+            </div>
+
+            
+                
+
+<div class="back-to-top" data-back-to-top>
+    
+
+
+
+<svg
+    class="icon icon--arrow back-to-top__icon"
+    aria-hidden="true"
+    focusable="false"
+>
+    <use xlink:href="#arrow" href="#arrow"></use>
+</svg>
+
+    <a href="#main-content" class="back-to-top__link">
+        Back to top
+    </a>
+</div>
+
+            
+        </div>
+    </div>
+
+
+            </div>
+        </main>
+
+        
+    
+    
+
+<div class="layout layout--padding">
+    <div class="feedback-widget">
+        <div class="feedback-widget__content" id="feedback-widget" data-feedback-widget>
+            <h2 class="feedback-widget__heading heading">
+                Is this page useful?
+            </h2>
+            <ul class="feedback-widget__buttons">
+                <li>
+                    <form
+                        action="/feedback/new/"
+                        method="post"
+                        class="feedback-widget__button-form"
+                        
+                        hx-post="/feedback/new/"
+                        hx-target="#feedback-widget"
+                        hx-swap="innerHTML show:top"
+                    >
+                        <input type="hidden" name="csrfmiddlewaretoken" value="NKi2bf7f0Bt88e1E8HWw8AHOTOTq7unb2qAOEAmsjQnWhAi6szio8nszCnKTrHzh">
+                        <input type="hidden" name="page_url" value="https://www.frc.org.uk/library/standards-codes-policy/accounting-and-reporting/annual-corporate-reporting/guidance-on-the-strategic-report/"/>
+                        <input type="hidden" name="feedback_sentiment" value="1"/>
+                        <button class="button button--primary feedback-widget__button js-page-is-useful" data-track-category="yesNoFeedbackForm" data-track-action="ffYesClick" data-ga4-event="{&quot;event_name&quot;:&quot;form_submit&quot;,&quot;type&quot;:&quot;feedback&quot;,&quot;text&quot;:&quot;Yes&quot;, &quot;section&quot;: &quot;Is this page useful?&quot;}">
+                            Yes <span class="govuk-visually-hidden">this page is useful</span>
+                        </button>
+                    </form>
+                </li>
+                <li>
+                    <form action="/feedback/new/"
+                          method="post"
+                          class="feedback-widget__button-form"
+                        
+                          hx-post="/feedback/new/"
+                          hx-target="#feedback-widget"
+                          hx-swap="innerHTML show:top"
+                    >
+                        <input type="hidden" name="csrfmiddlewaretoken" value="NKi2bf7f0Bt88e1E8HWw8AHOTOTq7unb2qAOEAmsjQnWhAi6szio8nszCnKTrHzh">
+                        <input type="hidden" name="page_url" value="https://www.frc.org.uk/library/standards-codes-policy/accounting-and-reporting/annual-corporate-reporting/guidance-on-the-strategic-report/"/>
+                        <input type="hidden" name="feedback_sentiment" value="-1"/>
+                        <button class="button button--primary feedback-widget__button js-page-is-useful" data-track-category="yesNoFeedbackForm" data-track-action="ffNoClick" aria-controls="page-is-not-useful" aria-expanded="false" data-ga4-event="{&quot;event_name&quot;:&quot;form_submit&quot;,&quot;type&quot;:&quot;feedback&quot;,&quot;text&quot;:&quot;No&quot;, &quot;section&quot;: &quot;Is this page useful?&quot;}">
+                            No <span class="govuk-visually-hidden">this page is not useful</span>
+                        </button>
+                    </form>
+                </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+
+
+    
+
+<footer class="footer">
+    <div class="footer__background layout layout--sidebar">
+        <div class="footer__inner">
+            
+
+<ul class="footer__links">
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/freedom-of-information/" >
+        Freedom of Information
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/about-us/policies-and-procedures/privacy/" >
+        Privacy
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/individual-rights-policy/" >
+        Individual Rights (Data Privacy) Policy
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/about-us/policies-and-procedures/modern-slavery-statement/" >
+        Modern Slavery Statement
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/about-us/policies-and-procedures/disclaimer-and-copyright/" >
+        Disclaimer and Copyright
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/cookies/" >
+        Cookies
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/accessibility-statement/" >
+        Accessibility Statement
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/about-us/policies-and-procedures/whistleblowing/" >
+        Whistleblowing
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/complaints/" >
+        Complaints
+    </a>
+
+</span>
+        </li>
+    
+        <li>
+            <span class="footer__link-text">
+
+
+    <a class="footer__link" href="/about-us/policies-and-procedures/the-regulators-code/" >
+        Regulators&#x27; Code
+    </a>
+
+</span>
+        </li>
+    
+</ul>
+
+
+            <div class="footer__social">
+                
+                    
+                        <div class="footer__social-links">
+                            
+                            
+                                <a target="_blank" rel="noopener noreferrer" href="https://vimeo.com/ukfrc" class="footer__social-link" aria-label="FRC on Vimeo">
+                                    
+
+
+
+<svg
+    class="icon icon--vimeo footer__social-link-icon"
+    aria-hidden="true"
+    focusable="false"
+>
+    <use xlink:href="#vimeo" href="#vimeo"></use>
+</svg>
+
+                                </a>
+                            
+                            
+                                <a target="_blank" rel="noopener noreferrer" href="https://uk.linkedin.com/company/financial-reporting-council" class="footer__social-link" aria-label="View FRC Linkedin Profile">
+                                    
+
+
+
+<svg
+    class="icon icon--linkedin footer__social-link-icon"
+    aria-hidden="true"
+    focusable="false"
+>
+    <use xlink:href="#linkedin" href="#linkedin"></use>
+</svg>
+
+                                </a>
+                            
+                        </div>
+                    
+                
+
+                <div class="footer__smallprint">
+                    <p>The Financial Reporting Council Limited is a company limited by guarantee. Registered in England number 2486368. Registered Oﬃce: 13th Floor, 1 Harbour Exchange Square, London E14 9GE</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer__newsletter">
+            <h2 class="footer__header">Stay up to date</h2>
+
+            <div class="rich-text">
+                <p>Subscribe to our news alerts to receive our latest updates.</p>
+            </div>
+
+            <a href="/sign-up/" class="search__form-submit button button--primary">
+                Sign up to our news alerts
+            </a>
+        </div>
+    </div>
+</footer>
+
+
+
+        <script src="/static/js/main.5ce2f19795cc.js"></script>
+
+        
+    
+
+    <script src="/static/js/htmx.fa024468390c.js" defer></script>
+
+    
+        <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebPage", "url": "https://www.frc.org.uk/library/standards-codes-policy/accounting-and-reporting/annual-corporate-reporting/guidance-on-the-strategic-report/", "name": "Guidance on the Strategic Report", "description": "", "inLanguage": "en-GB", "publisher": {"@type": "Organization", "name": "FRC (Financial Reporting Council)", "url": "https://www.frc.org.uk/"}, "breadcrumb": {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://www.frc.org.uk/"}, {"@type": "ListItem", "position": 2, "name": "Library", "item": "https://www.frc.org.uk/library/"}, {"@type": "ListItem", "position": 3, "name": "Standards, codes \u0026 policy", "item": "https://www.frc.org.uk/library/standards-codes-policy/"}, {"@type": "ListItem", "position": 4, "name": "Accounting and Reporting", "item": "https://www.frc.org.uk/library/standards-codes-policy/accounting-and-reporting/"}, {"@type": "ListItem", "position": 5, "name": "Annual Corporate Reporting", "item": "https://www.frc.org.uk/library/standards-codes-policy/accounting-and-reporting/annual-corporate-reporting/"}]}}</script>
+    
+
+
+        <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "@id": "WebSite", "url": "https://www.frc.org.uk/", "potentialAction": {"@type": "SearchAction", "target": {"@type": "EntryPoint", "urlTemplate": "https://www.frc.org.uk/library/?query={search_term_string}", "inLanguage": "en-GB"}, "query-input": "required name=search_term_string"}, "inLanguage": "en-GB"}</script>
+    </body>
+</html>

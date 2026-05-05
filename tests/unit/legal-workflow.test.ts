@@ -343,4 +343,19 @@ describe('skills router', () => {
     );
     expect(results[0].skill.skillId).toBe('scots-legal-humanizer');
   });
+
+  it('boosts refined Scots/UK skill metadata for Scottish legal tasks', () => {
+    const refined = skillDef('authority-verification', 'Checks legal sources and authority');
+    refined.manifest.tags = ['SCOTS', 'UK', 'Scotland', 'legal', 'source-verification'];
+    refined.manifest.atticusRefined = true;
+    refined.manifest.jurisdictionFocus = 'Scotland / UK';
+    const generic = skillDef('generic-source-check', 'Checks legal sources and authority');
+
+    const results = selectSkills(
+      [generic, refined],
+      'verify sources for a Scottish sheriff court claim',
+      { jurisdiction: 'Scotland' },
+    );
+    expect(results[0].skill.skillId).toBe('authority-verification');
+  });
 });

@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { SkillRegistry } from './index.js';
+import { loadSkillCatalog } from './selection-worker.js';
 
 export type HumanizerSkillName = 'humanizer' | 'scots-legal-humanizer';
 
@@ -102,8 +102,7 @@ export async function loadHumanizerPrompt(
   const skillName = chooseHumanizerSkill(input);
   if (!skillName) return undefined;
 
-  const registry = new SkillRegistry();
-  await registry.loadFromDir(skillsDir);
-  const prompt = registry.getSystemPrompt(skillName);
+  const skills = await loadSkillCatalog(skillsDir);
+  const prompt = skills.find((skill) => skill.skillId === skillName)?.body;
   return prompt ? { skillName, prompt } : undefined;
 }

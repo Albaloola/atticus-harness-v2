@@ -32,6 +32,20 @@ allowed-tools:
 ## Role
 You are a citation reviewer.`;
 
+const REFINED_SCOTS_SKILL = `---
+name: refined-skill
+language: en
+description: Refined Scots legal skill
+tags:
+  - SCOTS, UK, Scotland, legal
+atticus_refined: true
+jurisdiction_focus: Scotland / UK
+requires_live_source_verification: true
+external_action_mode: prepare-only unless operator explicitly authorises filing/service/sending
+---
+
+# Refined Skill`;
+
 describe('parseSkillContent', () => {
   it('parses basic frontmatter', () => {
     const skill = parseSkillContent(BASIC_SKILL, 'test.md');
@@ -51,6 +65,15 @@ describe('parseSkillContent', () => {
     expect(skill.manifest.stage).toBe('S6');
     expect(skill.manifest.taskTypes).toEqual(['verify_citations', 'hostile_review']);
     expect(skill.manifest.allowedTools).toEqual(['Read', 'Grep', 'Search']);
+  });
+
+  it('parses refined Atticus metadata fields', () => {
+    const skill = parseSkillContent(REFINED_SCOTS_SKILL, 'refined.md');
+    expect(skill.manifest.tags).toEqual(['SCOTS', 'UK', 'Scotland', 'legal']);
+    expect(skill.manifest.atticusRefined).toBe(true);
+    expect(skill.manifest.jurisdictionFocus).toBe('Scotland / UK');
+    expect(skill.manifest.requiresLiveSourceVerification).toBe(true);
+    expect(skill.manifest.externalActionMode).toContain('prepare-only');
   });
 
   it('handles missing frontmatter gracefully', () => {

@@ -1,0 +1,1 @@
+UK investor information rights resources. Companies Act 2006 (ss 170-177 directors' duties, ss 386-389 accounting records, ss 431-432 inspection rights). FCA Handbook for fund regulation. HMRC rules on carried interest and EIS/SEIS/VCT tax-advantaged schemes. MAR (Market Abuse Regulation) for insider information considerations. UK GDPR guidance from ICO: https://ico.org.uk.

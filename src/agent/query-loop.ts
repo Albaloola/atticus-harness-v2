@@ -10,6 +10,7 @@ import { appendEvent } from '../state/events.js';
 import type { AutonomyPolicy } from '../config/schema.js';
 
 const MAX_TOOL_OUTPUT_CHARS = 5000;
+const DEFAULT_MAX_HISTORY_CHARS = 60000;
 
 export interface QueryLoopConfig {
   model?: string;
@@ -25,6 +26,7 @@ export interface QueryLoopConfig {
   quietMode?: boolean;
   verbose?: boolean;
   autonomy?: AutonomyPolicy;
+  maxHistoryChars?: number;
 }
 
 export interface QueryLoopResult {
@@ -62,6 +64,7 @@ export class QueryLoop {
       }
 
       const tools = this.toolRegistry.getAllDefinitions();
+      this.compactHistoryIfNeeded();
 
       let response;
       try {
@@ -233,6 +236,35 @@ export class QueryLoop {
     } catch {
       return undefined;
     }
+  }
+
+  private compactHistoryIfNeeded(): void {
+    const maxChars = this.config.maxHistoryChars ?? DEFAULT_MAX_HISTORY_CHARS;
+    const totalChars = this.history.reduce((sum, message) => sum + message.content.length, 0);
+    if (totalChars <= maxChars || this.history.length <= 10) return;
+
+    const system = this.history[0];
+    const recent = this.history.slice(-8);
+    const compacted = this.history.slice(1, -8);
+    const summary = compacted
+      .map((message) => {
+        const label = message.toolName ? `${message.role}:${message.toolName}` : message.role;
+        return `- ${label}: ${truncateText(message.content.replace(/\s+/g, ' '), 300)}`;
+      })
+      .join('\n');
+
+    this.history = [
+      system,
+      {
+        role: 'system',
+        content: [
+          '## Compacted Prior Context',
+          'Earlier conversation/tool context was compacted to keep the worker alive. Preserve these facts, evidence IDs, conclusions, blockers, selected skills, and next actions.',
+          summary,
+        ].join('\n'),
+      },
+      ...recent,
+    ];
   }
 }
 

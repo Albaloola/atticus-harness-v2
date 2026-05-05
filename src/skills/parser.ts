@@ -49,6 +49,14 @@ export function parseSkillContent(content: string, sourcePath: string): SkillDef
       stage: parsed.stage ? String(parsed.stage) : undefined,
       taskTypes: Array.isArray(parsed.task_types) ? parsed.task_types.map(String) : undefined,
       allowedTools: Array.isArray(parsed['allowed-tools']) ? parsed['allowed-tools'].map(String) : undefined,
+      tags: normalizeTags(parsed.tags),
+      atticusRefined: typeof parsed.atticus_refined === 'boolean' ? parsed.atticus_refined : undefined,
+      jurisdictionFocus: parsed.jurisdiction_focus ? String(parsed.jurisdiction_focus) : undefined,
+      requiresLiveSourceVerification:
+        typeof parsed.requires_live_source_verification === 'boolean'
+          ? parsed.requires_live_source_verification
+          : undefined,
+      externalActionMode: parsed.external_action_mode ? String(parsed.external_action_mode) : undefined,
     };
   } catch (err) {
     throw new SkillParseError(
@@ -68,6 +76,18 @@ export function parseSkillContent(content: string, sourcePath: string): SkillDef
     references: [], // Loaded separately
     examples: [],
   };
+}
+
+function normalizeTags(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const tags = value.flatMap((item) => String(item).split(',')).map((tag) => tag.trim()).filter(Boolean);
+    return tags.length > 0 ? tags : undefined;
+  }
+  if (typeof value === 'string') {
+    const tags = value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    return tags.length > 0 ? tags : undefined;
+  }
+  return undefined;
 }
 
 export function validateSkillFrontmatter(manifest: SkillFrontmatter): string[] {

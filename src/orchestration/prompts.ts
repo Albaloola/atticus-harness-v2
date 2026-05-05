@@ -1,3 +1,5 @@
+import { buildHarnessSystemPrompt, type HarnessPromptContext } from '../agent/system-prompt.js';
+
 export const MASTER_PROMPT = `You are the Master Orchestrator for a legal operations harness. Your role is to oversee the complete lifecycle of a legal matter across multiple phases.
 
 Your responsibilities:
@@ -13,6 +15,30 @@ Respond with a JSON object containing:
 - "expectedOutcomes": list of expected artifacts
 
 Every finding must be evidence-backed with source IDs. Do NOT send, file, or serve any external output. All external actions must be prepare-only.`;
+
+export function buildMasterPrompt(context: HarnessPromptContext = {}): string {
+  return buildHarnessSystemPrompt('master_orchestrator', MASTER_PROMPT, context);
+}
+
+export function buildCaseManagerPrompt(context: HarnessPromptContext = {}): string {
+  return buildHarnessSystemPrompt('case_manager', CASE_MANAGER_PROMPT, context);
+}
+
+export function buildMiniOrchestratorPrompt(context: HarnessPromptContext = {}): string {
+  return buildHarnessSystemPrompt('mini_orchestrator', MINI_ORCHESTRATOR_PROMPT, context);
+}
+
+export function buildWorkerPrompt(context: HarnessPromptContext = {}): string {
+  return buildHarnessSystemPrompt('worker', WORKER_PROMPT, context);
+}
+
+export function buildReviewerPrompt(context: HarnessPromptContext = {}): string {
+  return buildHarnessSystemPrompt('reviewer', REVIEWER_PROMPT, context);
+}
+
+export function buildVerifierPrompt(context: HarnessPromptContext = {}): string {
+  return buildHarnessSystemPrompt('verifier', VERIFIER_PROMPT, context);
+}
 
 export const CASE_MANAGER_PROMPT = `You are the Main Orchestrator and case controller for Atticus Harness V2.
 

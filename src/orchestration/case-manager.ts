@@ -7,7 +7,7 @@ import { createTask, updateTask } from '../state/tasks.js';
 import { saveCandidate } from '../storage/candidate.js';
 import { resolveConfig } from '../config/loader.js';
 import { tryAutoAccept, type AutoAcceptResult } from '../acceptance/auto-accept.js';
-import { CASE_MANAGER_PROMPT } from './prompts.js';
+import { buildCaseManagerPrompt } from './prompts.js';
 import { buildCaseMemoryPack, summarizeCaseMemory, type CaseMemoryPack } from './case-memory.js';
 import { saveOrchestrationCheckpoint } from './checkpoint.js';
 import { loadHumanizerPrompt } from '../skills/humanizer.js';
@@ -146,7 +146,22 @@ export class CaseManager {
         maxBodyChars: 1600,
         excludeSkillIds: humanizer?.skillName ? [humanizer.skillName] : [],
       });
-      const response = await this.generate(request, requestedType, memory, humanizer, skillContext.promptSection);
+      const systemPrompt = buildCaseManagerPrompt({
+        matterName: request.matterName,
+        matter: memory.matter,
+        model: this.model ?? config.model ?? DEFAULT_MODEL,
+        providerName: config.providerName,
+        providerPolicy: config.providerPolicy,
+        autonomy: config.autonomy,
+        toolPolicy: config.toolPolicy,
+        skillSection: [
+          humanizer
+            ? `Apply this output-style skill to the final candidate without changing facts, citations, dates, amounts, source IDs, or legal uncertainty:\n\n## Active Skill: ${humanizer.skillName}\n${humanizer.prompt}`
+            : undefined,
+          skillContext.promptSection,
+        ].filter(Boolean).join('\n\n') || undefined,
+      });
+      const response = await this.generate(request, requestedType, memory, systemPrompt);
       const parsed = parseCaseManagerResponse(response.content);
       const title = parsed.title || defaultTitle(requestedType, request.instruction);
       const content = parsed.content || response.content;
@@ -258,24 +273,11 @@ export class CaseManager {
     request: CaseManagerRequest,
     requestedType: CaseRequestType,
     memory: CaseMemoryPack,
-    humanizer?: { skillName: string; prompt: string },
-    skillPromptSection?: string,
+    systemPrompt: string,
   ): Promise<LLMResponse> {
     return this.client.chat({
       messages: [
-        { role: 'system', content: CASE_MANAGER_PROMPT },
-        ...(humanizer
-          ? [{
-              role: 'system' as const,
-              content: `Apply this output-style skill to the final candidate without changing facts, citations, dates, amounts, source IDs, or legal uncertainty:\n\n## Active Skill: ${humanizer.skillName}\n${humanizer.prompt}`,
-            }]
-          : []),
-        ...(skillPromptSection
-          ? [{
-              role: 'system' as const,
-              content: skillPromptSection,
-            }]
-          : []),
+        { role: 'system', content: systemPrompt },
         {
           role: 'user',
           content: [

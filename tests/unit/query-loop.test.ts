@@ -178,6 +178,40 @@ describe('QueryLoop', () => {
     });
   });
 
+  describe('history compaction', () => {
+    it('keeps workers alive by summarizing older tool context when history grows', async () => {
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(new FakeTool('large_tool', makeSuccessToolResult('important evidence EV-001 '.repeat(80))));
+      const fakeClient = new FakeLLMClient([
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeResponse({ content: 'Final answer after compaction' }),
+      ]);
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Use tools and preserve evidence IDs.',
+          tools: toolRegistry,
+          maxTurns: 10,
+          maxHistoryChars: 1200,
+          quietMode: true,
+        },
+        fakeClient as unknown as FakeLLMClient & typeof fakeClient,
+      );
+
+      const result = await loop.run('Analyze the large record');
+
+      expect(result.status).toBe('completed');
+      expect(result.finalContent).toBe('Final answer after compaction');
+      expect(result.history.some((message) => message.content.includes('## Compacted Prior Context'))).toBe(true);
+      expect(result.history.some((message) => message.content.includes('EV-001'))).toBe(true);
+    });
+  });
+
   describe('events (matterName)', () => {
     let tmpDir: string;
     let originalCwd: string;

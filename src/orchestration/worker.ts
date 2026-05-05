@@ -2,7 +2,7 @@ import { QueryLoop } from '../agent/query-loop.js';
 import { parseStructuredResult } from '../agent/result-schema.js';
 import { createRun, updateRun } from '../state/runs.js';
 import { appendEvent } from '../state/events.js';
-import { WORKER_PROMPT } from './prompts.js';
+import { buildWorkerPrompt } from './prompts.js';
 import { ToolRegistry } from '../tools/index.js';
 import { resolveConfig } from '../config/loader.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
@@ -210,7 +210,15 @@ export class WorkerAgent {
       temperature: this.config.temperature ?? 0.1,
       maxTurns,
       maxTokens: 8192,
-      systemPrompt: [WORKER_PROMPT, skillContext.promptSection].filter(Boolean).join('\n\n'),
+      systemPrompt: buildWorkerPrompt({
+        matterName: this.spawn.matterName,
+        model: this.config.model,
+        providerName: resolvedConfig.providerName,
+        providerPolicy: resolvedConfig.providerPolicy,
+        autonomy: resolvedConfig.autonomy,
+        toolPolicy: resolvedConfig.toolPolicy,
+        skillSection: skillContext.promptSection,
+      }),
       tools: toolRegistry,
       matterName: this.spawn.matterName,
       runId: this.run.id,

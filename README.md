@@ -5,11 +5,12 @@ Standalone terminal-native agent for legal work. Ingests evidence, runs hierarch
 
 ## Current status and architecture research
 
-Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, OpenRouter tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, daemon scheduling, and 915 bundled legal/writing skills.
+Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, OpenRouter tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, and 915 bundled legal/writing skills.
 
-A detailed comparative research paper now documents the V1 Python control-plane architecture, the V2 TypeScript agent architecture, architecture diagrams, migration trade-offs, and recommended next steps:
+The architecture papers now separate the legacy control-plane reference from the current TypeScript agent architecture:
 
-- [Atticus Harness V1 and V2: Comparative Architecture Research Paper](docs/architecture-v1-v2-research-paper.md)
+- [Atticus Harness V1 Architecture Research Paper](docs/architecture-v1-research-paper.md)
+- [Atticus Harness V2 Architecture Research Paper](docs/architecture-v2-research-paper.md)
 
 ## Quick Install
 
@@ -157,12 +158,17 @@ harness schedule list my-case --json
 harness schedule delete my-case <job-id>
 ```
 
-### Daemon control
+Scheduler and task execution use durable leases with owner, heartbeat, expiry, blocked-reason, and fencing-token metadata so stale background workers cannot silently overwrite newer work.
+
+### Daemon and control-panel commands
 
 ```bash
 harness daemon start                  # Start background daemon
 harness daemon status --json          # Check daemon status
 harness daemon stop                   # Stop daemon
+harness control-panel status my-case  # Read-only operator control panel
+harness control-panel agent-packet my-case --json # Agent handoff packet
+harness monitor my-case               # Control-panel status alias
 harness pause my-case                 # Pause active run
 harness resume my-case                # Resume paused run
 harness cancel my-case --run <run-id> # Cancel a run
@@ -201,21 +207,22 @@ orchestrate → [intake → evidence → issue-spot → research → merits → 
 
 ## Architecture
 
-For the full V1/V2 comparison and diagrams, see [the architecture research paper](docs/architecture-v1-v2-research-paper.md). The summary below describes the current V2 repository layout.
+For the legacy safety reference, see [the V1 architecture paper](docs/architecture-v1-research-paper.md). For the current TypeScript CLI architecture, governance model, and diagrams, see [the V2 architecture paper](docs/architecture-v2-research-paper.md). The summary below describes the current V2 repository layout.
 
 ```
 src/
 ├── cli.ts              # Commander entry point (30+ commands)
 ├── agent/              # QueryLoop + AgentLoop wrapper + structured results
 ├── commands/           # Command handlers
-├── config/             # Global control panel (providers, autonomy, secrets)
-├── state/              # Event-sourced matter store (SQLite + JSONL)
+├── config/             # Global control panel (providers, autonomy, secrets, fail-closed provider policy)
+├── state/              # Event-sourced matter store (SQLite + JSONL, leases, reducer packets, migrations)
 ├── orchestration/      # Master → Mini → Worker hierarchical pipeline
-├── scheduler/          # 5-field cron parser + scheduled job loop
+├── scheduler/          # 5-field cron parser + leased scheduled job loop
 ├── daemon/             # Background process manager, supervisor, control queue
 ├── research/           # Web search/fetch, source snapshots, citation verification
 ├── legal/              # 10-phase workflow, 24 artifact types, templates, skills router
 ├── acceptance/         # 10-gate scoring, auto-acceptance, review quorum
+├── reducer/            # Reducer packets + canonical writer boundary
 ├── extraction/         # PDF/DOCX/DOC/image/text extraction pipeline
 ├── llm/                # OpenRouter client (DeepSeek V4 flash/pro)
 ├── storage/            # Flat-file matter storage + SQLite FTS5 evidence store
@@ -229,10 +236,14 @@ tests/                  # Unit coverage for CLI, state, tools, orchestration, ex
 
 ### Key architecture principles
 
-- **Event-sourced**: Every agent thought, tool call, candidate, gate, reviewer result, source snapshot, and decision is recorded as an event. Status is derived from state, not inferred from model output.
+- **Event-sourced**: Every agent thought, tool call, candidate, gate, reviewer result, source snapshot, reducer decision, lease transition, and acceptance decision is recorded as an event or durable state row. Status is derived from state, not inferred from model output.
 - **Hierarchical**: Master orchestrator decomposes matters into mini-orchestrators, which spawn workers for bounded tasks. Depth-limited recursion with configurable concurrency.
 - **Autonomy-configurable**: Safety is policy, not hard-coded. Five autonomy modes from `operator_safe` to `full_local_autonomy`. External dispatch is always prepare-only in this version.
-- **Daemon-capable, CLI-controlled**: Run work asynchronously, inspect state without interrupting inference.
+- **Daemon-capable, CLI-controlled**: Run work asynchronously, inspect state without interrupting inference, and use `control-panel`/`monitor` for read-only supervision.
+- **Reducer-governed**: Candidate artifacts cross an explicit reducer packet and canonical writer boundary before becoming accepted artifacts.
+- **Lease-fenced**: Tasks and scheduler jobs use durable leases, heartbeats, expiry, blocked reasons, and fencing tokens to protect concurrent/background execution.
+- **Fail-closed provider policy**: Provider/model routes require explicit allow-list configuration; silent fallback, denied models, and unknown routes are rejected by default.
+- **Migration-registered**: State schema evolution is represented in versioned migration registries and schema records.
 
 ## Development
 
@@ -255,10 +266,14 @@ npm run dev          # Watch mode
 - ✅ Review quorum with hostile reviewer agent
 - ✅ 915 bundled legal and writing skills, including UK/Scots refined skills
 - ✅ SQLite + JSONL dual persistence for audit trails
+- ✅ Reducer packets and canonical writer boundary for accepted artifacts
+- ✅ Task and scheduler leases with fencing tokens, heartbeat/expiry tracking, and blocked reasons
+- ✅ Fail-closed provider policy with explicit allow/deny model routing and no silent fallback
+- ✅ State migration registry and read-only control-panel/monitor snapshots
 
 ## What it doesn't do
 
-- No TUI, no web UI — pure CLI
+- No web UI — operator supervision remains CLI-first through status, watch, control-panel, and monitor commands
 - No external legal dispatch — all outputs are prepare-only
 - No cloud bridge, no remote sessions
 - No MCP or plugin marketplace

@@ -57,6 +57,21 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
 
   const candidateIds = candidates.map((c) => c.id);
 
+  const leases = tasks
+    .filter((task) => task.leaseId)
+    .map((task) => ({
+      taskId: task.id,
+      leaseId: task.leaseId!,
+      owner: task.leaseOwner,
+      role: task.leaseRole,
+      expiresAt: task.leaseExpiresAt,
+      stale: task.leaseExpiresAt ? new Date(task.leaseExpiresAt).getTime() <= Date.now() : false,
+    }));
+
+  const blockedReasons = tasks
+    .filter((task) => task.status === 'blocked' || task.blockedReason)
+    .map((task) => ({ taskId: task.id, reason: task.blockedReason || 'blocked' }));
+
   const totalEvents = getEventCount(matterName);
   const costs: RuntimeCosts = {
     estimatedTotal: totalEvents * 0.002,
@@ -87,6 +102,8 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
     candidates: candidateIds,
     costs,
     nextActions,
+    leases,
+    blockedReasons,
   };
 }
 

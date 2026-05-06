@@ -3,10 +3,13 @@ import { readFile, rm } from 'fs/promises';
 import { getStateDb, closeStateDb } from '../../src/state/index.js';
 import { appendEvent, listEvents, getEventCount } from '../../src/state/events.js';
 import { createTask, updateTask, getTask, listTasks } from '../../src/state/tasks.js';
+import { acquireTaskLease, completeTaskLease, expireTaskLeases } from '../../src/state/leases.js';
 import { createRun, updateRun, getRun, listRuns } from '../../src/state/runs.js';
 import { deriveSnapshot } from '../../src/state/snapshot.js';
 import { appendInboxMessage, listInboxMessages } from '../../src/state/inbox.js';
 import { initMatter, deleteMatter, getMatterPath } from '../../src/storage/matter.js';
+import { saveCandidate, acceptCandidate } from '../../src/storage/candidate.js';
+import { listReducerPackets } from '../../src/reducer/canonical-writer.js';
 import type { MatterEventType, TaskStatus, AgentRunStatus } from '../../src/types/state.js';
 
 // ── Schema migration ───────────────────────────────────────────────
@@ -37,15 +40,19 @@ describe('Schema migration', () => {
     expect(tableNames).toContain('scheduler_jobs');
     expect(tableNames).toContain('runtime_kv');
     expect(tableNames).toContain('schema_version');
+    expect(tableNames).toContain('schema_migrations');
+    expect(tableNames).toContain('reducer_packets');
   });
 
-  it('records schema version 1', () => {
+  it('records schema migrations through V3', () => {
     const db = getStateDb(matterName);
-    const row = db.prepare('SELECT version FROM schema_version WHERE version = 1').get() as {
+    const row = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as {
       version: number;
     };
     expect(row).toBeTruthy();
-    expect(row.version).toBe(1);
+    expect(row.version).toBe(3);
+    const migrations = db.prepare('SELECT version_from, version_to FROM schema_migrations ORDER BY version_to').all() as Array<{ version_from: number; version_to: number }>;
+    expect(migrations.map((m) => `${m.version_from}->${m.version_to}`)).toEqual(['0->1', '1->2', '2->3']);
   });
 
   it('can be called twice safely (idempotent)', () => {
@@ -56,7 +63,7 @@ describe('Schema migration', () => {
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
       .all() as { name: string }[];
-    expect(tables.length).toBe(8);
+    expect(tables.length).toBe(10);
   });
 });
 
@@ -338,6 +345,70 @@ describe('Task CRUD', () => {
 
     const refetched = getTask(matterName, task.id);
     expect(refetched!.status).toBe('completed');
+  });
+});
+
+
+// ── V3 leases and reducer boundary ────────────────────────────────────────
+describe('Task leases and reducer boundary', () => {
+  const matterName = 'test-v3-governance';
+
+  beforeEach(async () => {
+    await initMatter(matterName);
+  });
+
+  afterEach(async () => {
+    closeStateDb(matterName);
+    await deleteMatter(matterName);
+  });
+
+  it('acquires and completes a fenced task lease', () => {
+    const task = createTask({ matterName, type: 'analysis', title: 'Lease me' });
+    const lease = acquireTaskLease({ matterName, taskId: task.id, owner: 'worker-a', ttlMs: 60_000 });
+    expect(lease.leaseId).toMatch(/^lease-/);
+
+    const leasedTask = getTask(matterName, task.id)!;
+    expect(leasedTask.status).toBe('in_progress');
+    expect(leasedTask.leaseOwner).toBe('worker-a');
+    expect(leasedTask.leaseFencingToken).toBe(1);
+    expect(leasedTask.attemptCount).toBe(1);
+
+    const completed = completeTaskLease(matterName, task.id, lease.leaseId, 'completed');
+    expect(completed.status).toBe('completed');
+    expect(completed.leaseId).toBeUndefined();
+  });
+
+  it('expires stale task leases back to pending', () => {
+    const task = createTask({ matterName, type: 'analysis', title: 'Stale lease' });
+    const lease = acquireTaskLease({ matterName, taskId: task.id, owner: 'worker-a', ttlMs: 1 });
+    const db = getStateDb(matterName);
+    db.prepare("UPDATE tasks SET lease_expires_at = ? WHERE id = ? AND matter_name = ?").run('2000-01-01T00:00:00.000Z', task.id, matterName);
+
+    const expired = expireTaskLeases(matterName, task.id);
+    expect(expired).toEqual([lease.leaseId]);
+    const refetched = getTask(matterName, task.id)!;
+    expect(refetched.status).toBe('pending');
+    expect(refetched.leaseId).toBeUndefined();
+  });
+
+  it('promotes candidates through reducer packets', async () => {
+    await saveCandidate(matterName, {
+      id: 'cand-v3',
+      matterName,
+      type: 'analysis',
+      title: 'Reducer candidate',
+      content: 'Supported analysis.',
+      status: 'candidate',
+      created: new Date().toISOString(),
+      metadata: { citations: [] },
+    });
+
+    const artifact = await acceptCandidate(matterName, 'cand-v3');
+    expect(artifact.id).toBe('cand-v3');
+    const packets = listReducerPackets(matterName);
+    expect(packets).toHaveLength(1);
+    expect(packets[0].decision).toBe('accept');
+    expect(packets[0].artifactId).toBe('cand-v3');
   });
 });
 

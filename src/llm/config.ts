@@ -7,8 +7,12 @@ export interface ProviderConfig {
   apiKey?: string;
   baseUrl?: string;
   defaultModel?: string;
+  fallbackModel?: string;
   timeoutMs?: number;
   maxRetries?: number;
+  providerName?: string;
+  providerPolicy?: import('../config/schema.js').ProviderPolicy;
+  providers?: import('../config/schema.js').ProvidersConfig;
 }
 
 export function loadConfig(): ProviderConfig {
@@ -35,6 +39,9 @@ export async function loadConfigFromStore(): Promise<ProviderConfig> {
       defaultModel: resolved.model ?? DEFAULT_MODEL,
       timeoutMs: resolved.provider.timeoutMs ?? 180_000,
       maxRetries: resolved.provider.maxRetries ?? 3,
+      providerName: resolved.providerName,
+      providerPolicy: resolved.providerPolicy,
+      providers: { [resolved.providerName]: resolved.provider },
     };
   } catch {
     return loadConfig();

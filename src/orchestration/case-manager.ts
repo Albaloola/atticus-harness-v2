@@ -164,7 +164,7 @@ export class CaseManager {
           skillContext.promptSection,
         ].filter(Boolean).join('\n\n') || undefined,
       });
-      const response = await this.generate(request, requestedType, memory, systemPrompt);
+      const response = await this.generate(request, requestedType, memory, systemPrompt, humanizer?.skillName);
       const parsed = parseCaseManagerResponse(response.content);
       const title = parsed.title || defaultTitle(requestedType, request.instruction);
       const content = parsed.content || response.content;
@@ -286,7 +286,9 @@ export class CaseManager {
     requestedType: CaseRequestType,
     memory: CaseMemoryPack,
     systemPrompt: string,
+    activeSkillName?: string,
   ): Promise<LLMResponse> {
+    const activeSkillMarker = activeSkillName ? `Active Skill: ${activeSkillName}` : /Active Skill: [^\n]+/.exec(systemPrompt)?.[0];
     return this.client.chat({
       messages: [
         { role: 'system', content: systemPrompt },
@@ -294,6 +296,7 @@ export class CaseManager {
           role: 'user',
           content: [
             `Requested output type: ${requestedType}`,
+            ...(activeSkillMarker ? [activeSkillMarker] : []),
             `Instruction from ${request.source ?? 'hermes'}: ${request.instruction}`,
             '',
             'Persisted case memory pack:',

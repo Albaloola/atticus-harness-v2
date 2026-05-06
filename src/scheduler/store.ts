@@ -91,6 +91,7 @@ export function deleteScheduledJob(matterName: string, jobId: string): boolean {
 }
 
 export function getDueJobs(): ScheduledJob[] {
+  expireSchedulerJobLeases();
   const now = new Date().toISOString();
   const matters = listMattersSync();
   const results: ScheduledJob[] = [];
@@ -106,27 +107,66 @@ export function getDueJobs(): ScheduledJob[] {
   return results;
 }
 
-export function markJobRunning(matterName: string, jobId: string): void {
+export function markJobRunning(matterName: string, jobId: string, owner = 'scheduler', ttlMs = 15 * 60 * 1000): ScheduledJob | null {
   const db = getStateDb(matterName);
   const now = new Date().toISOString();
-  db.prepare(
-    "UPDATE scheduler_jobs SET status = 'running', last_run_at = ? WHERE id = ? AND matter_name = ?"
-  ).run(now, jobId, matterName);
+  const leaseId = `job-lease-${randomUUID()}`;
+  const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+  const result = db.prepare(
+    `UPDATE scheduler_jobs
+     SET status = 'running', last_run_at = ?, lease_id = ?, lease_owner = ?,
+         lease_fencing_token = COALESCE(lease_fencing_token, 0) + 1,
+         lease_expires_at = ?, lease_acquired_at = ?, lease_heartbeat_at = ?,
+         attempt_count = COALESCE(attempt_count, 0) + 1, blocked_reason = NULL
+     WHERE id = ? AND matter_name = ? AND (lease_id IS NULL OR lease_expires_at <= ?)`
+  ).run(now, leaseId, owner, expiresAt, now, now, jobId, matterName, now);
+  if (result.changes === 0) return null;
+  return getScheduledJob(matterName, jobId);
 }
 
 export function markJobCompleted(matterName: string, jobId: string, cron: string, recurring: boolean): void {
   const db = getStateDb(matterName);
-  const now = new Date().toISOString();
   if (recurring) {
     const nextRun = nextRunTime(cron);
     db.prepare(
-      "UPDATE scheduler_jobs SET status = 'pending', next_run_at = ? WHERE id = ? AND matter_name = ?"
+      `UPDATE scheduler_jobs SET status = 'pending', next_run_at = ?, lease_id = NULL,
+       lease_owner = NULL, lease_expires_at = NULL, lease_acquired_at = NULL,
+       lease_heartbeat_at = NULL WHERE id = ? AND matter_name = ?`
     ).run(nextRun.toISOString(), jobId, matterName);
   } else {
     db.prepare(
-      "UPDATE scheduler_jobs SET status = 'completed', next_run_at = NULL WHERE id = ? AND matter_name = ?"
+      `UPDATE scheduler_jobs SET status = 'completed', next_run_at = NULL, lease_id = NULL,
+       lease_owner = NULL, lease_expires_at = NULL, lease_acquired_at = NULL,
+       lease_heartbeat_at = NULL WHERE id = ? AND matter_name = ?`
     ).run(jobId, matterName);
   }
+}
+
+export function getScheduledJob(matterName: string, jobId: string): ScheduledJob | null {
+  const db = getStateDb(matterName);
+  const row = db.prepare('SELECT * FROM scheduler_jobs WHERE id = ? AND matter_name = ?').get(jobId, matterName) as JobRow | undefined;
+  return row ? rowToJob(row) : null;
+}
+
+export function expireSchedulerJobLeases(): string[] {
+  const now = new Date().toISOString();
+  const expired: string[] = [];
+  for (const matterName of listMattersSync()) {
+    const db = getStateDb(matterName);
+    const rows = db.prepare(
+      `SELECT id, lease_id FROM scheduler_jobs
+       WHERE lease_id IS NOT NULL AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?`
+    ).all(now) as Array<{ id: string; lease_id: string }>;
+    for (const row of rows) {
+      db.prepare(
+        `UPDATE scheduler_jobs SET status = 'pending', lease_id = NULL, lease_owner = NULL,
+         lease_expires_at = NULL, lease_acquired_at = NULL, lease_heartbeat_at = NULL,
+         blocked_reason = ?, next_run_at = COALESCE(next_run_at, ?) WHERE id = ? AND matter_name = ?`
+      ).run(`lease expired: ${row.lease_id}`, now, row.id, matterName);
+      expired.push(row.lease_id);
+    }
+  }
+  return expired;
 }
 
 function listMattersSync(): string[] {
@@ -180,6 +220,12 @@ interface JobRow {
   next_run_at: string | null;
   last_run_at: string | null;
   metadata_json: string;
+  lease_id?: string | null;
+  lease_owner?: string | null;
+  lease_fencing_token?: number | null;
+  lease_expires_at?: string | null;
+  blocked_reason?: string | null;
+  attempt_count?: number | null;
 }
 
 function rowToJob(row: JobRow): ScheduledJob {
@@ -196,5 +242,11 @@ function rowToJob(row: JobRow): ScheduledJob {
     nextRunAt: row.next_run_at,
     lastRunAt: row.last_run_at,
     metadata: JSON.parse(row.metadata_json),
+    leaseId: row.lease_id ?? undefined,
+    leaseOwner: row.lease_owner ?? undefined,
+    leaseFencingToken: row.lease_fencing_token ?? undefined,
+    leaseExpiresAt: row.lease_expires_at ?? undefined,
+    blockedReason: row.blocked_reason ?? undefined,
+    attemptCount: row.attempt_count ?? 0,
   };
 }

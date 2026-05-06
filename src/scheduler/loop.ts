@@ -24,7 +24,8 @@ function processDueJobs(): void {
   const dueJobs = getDueJobs();
   for (const job of dueJobs) {
     try {
-      markJobRunning(job.matterName, job.id);
+      const leased = markJobRunning(job.matterName, job.id);
+      if (!leased) continue;
       createRun({
         matterName: job.matterName,
         model: 'deepseek/deepseek-v4-flash',

@@ -30,7 +30,12 @@ export type MatterEventType =
   | 'case.instruction.received'
   | 'case.memory.loaded'
   | 'case.output.created'
-  | 'case.auto_accept.evaluated';
+  | 'case.auto_accept.evaluated'
+  | 'task.lease.acquired'
+  | 'task.lease.completed'
+  | 'task.lease.blocked'
+  | 'task.lease.expired'
+  | 'reducer.packet.recorded';
 
 export interface MatterEvent {
   id: string;
@@ -68,6 +73,15 @@ export interface TaskDagNode {
   created: string;
   updated: string;
   data: Record<string, unknown>;
+  leaseId?: string;
+  leaseOwner?: string;
+  leaseRole?: 'worker' | 'reducer';
+  leaseFencingToken?: number;
+  leaseExpiresAt?: string;
+  leaseAcquiredAt?: string;
+  leaseHeartbeatAt?: string;
+  blockedReason?: string;
+  attemptCount?: number;
 }
 
 // ── Agent Run ────────────────────────────────────────────────
@@ -113,6 +127,8 @@ export interface MatterRuntimeSnapshot {
   candidates: string[];
   costs: RuntimeCosts;
   nextActions: string[];
+  leases?: Array<{ taskId: string; leaseId: string; owner?: string; role?: string; expiresAt?: string; stale: boolean }>;
+  blockedReasons?: Array<{ taskId: string; reason: string }>;
 }
 
 export interface TaskCounts {
@@ -174,6 +190,12 @@ export interface ScheduledJob {
   nextRunAt: string | null;
   lastRunAt: string | null;
   metadata: Record<string, unknown>;
+  leaseId?: string;
+  leaseOwner?: string;
+  leaseFencingToken?: number;
+  leaseExpiresAt?: string;
+  blockedReason?: string;
+  attemptCount?: number;
 }
 
 export interface CronField {

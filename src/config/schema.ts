@@ -81,6 +81,16 @@ export interface ProviderPolicy {
   timeoutMs: number;
   concurrentRequests: number;
   perProviderRateLimit?: Record<string, { rpm?: number; tpm?: number }>;
+  /** Fail closed unless provider/model are explicitly permitted. Default: true. */
+  failClosed?: boolean;
+  /** Additional explicit allow-list beyond named route models. */
+  allowedModels?: string[];
+  /** Explicit deny-list for held, free, reserved, or unsafe models. */
+  deniedModels?: string[];
+  /** Silent fallback is denied unless this is true. Default: false. */
+  allowFallback?: boolean;
+  /** Require every network request to carry an explicit model. Default: true. */
+  requireExplicitModel?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +206,19 @@ export const DEFAULTS: GlobalHarnessConfig = {
     retries: 3,
     timeoutMs: 180_000,
     concurrentRequests: 4,
+    failClosed: true,
+    allowedModels: [
+      'deepseek/deepseek-v4-flash',
+      'deepseek/deepseek-v4-pro',
+    ],
+    deniedModels: [
+      'anthropic/claude-opus-4.1',
+      'openrouter/auto',
+      'deepseek/deepseek-v4-flash:free',
+      'deepseek/deepseek-v4-pro:free',
+    ],
+    allowFallback: false,
+    requireExplicitModel: true,
   },
   autonomy: {
     mode: 'operator_safe',

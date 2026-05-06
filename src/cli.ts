@@ -384,6 +384,42 @@ program
       })
   );
 
+
+// Control panel / monitor snapshot
+program
+  .command('control-panel')
+  .alias('panel')
+  .description('Operator control-panel workflow')
+  .addCommand(
+    new Command('status')
+      .description('Show read-only matter control panel')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleControlPanelStatus } = await import('./commands/control-panel.js');
+        await handleControlPanelStatus(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('agent-packet')
+      .description('Emit read-only operator/agent handoff packet')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleControlPanelAgentPacket } = await import('./commands/control-panel.js');
+        await handleControlPanelAgentPacket(matterName, options);
+      })
+  );
+
+program.command('monitor <matter-name>')
+  .alias('console')
+  .description('Read-only monitor snapshot (control-panel status alias)')
+  .option('--json', 'JSON output')
+  .action(async (matterName, options) => {
+    const { handleControlPanelStatus } = await import('./commands/control-panel.js');
+    await handleControlPanelStatus(matterName, options);
+  });
+
 // Watch
 program.command('watch <matter-name>')
   .description('Watch matter progress in real time')

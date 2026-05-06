@@ -15,6 +15,7 @@ import {
   type ProviderConfig,
   type ResolvedHarnessConfig,
 } from './schema.js';
+import { canonicalProviderPolicy, assertProviderPolicyAllowed } from './provider-policy.js';
 
 function deepMerge<T extends Record<string, unknown>>(
   base: T,
@@ -150,15 +151,30 @@ export async function resolveConfig(
     }
   }
 
+  const selectedProviderName = providerName ?? globalConfig.providerPolicy.defaultProvider ?? 'openrouter';
+  const providerPolicy = canonicalProviderPolicy({
+    ...globalConfig.providerPolicy,
+    allowedModels: Array.from(new Set([
+      ...(globalConfig.providerPolicy.allowedModels ?? []),
+      globalConfig.defaultModel,
+      model,
+    ].filter(Boolean))),
+  });
   const provider = await buildProviderConfig(
     globalConfig.providers,
-    providerName
+    selectedProviderName
   );
+  assertProviderPolicyAllowed({
+    policy: providerPolicy,
+    providers: globalConfig.providers,
+    providerName: selectedProviderName,
+    model,
+  });
 
   const result: ResolvedHarnessConfig = {
     provider,
-    providerName: providerName ?? 'openrouter',
-    providerPolicy: globalConfig.providerPolicy,
+    providerName: selectedProviderName,
+    providerPolicy,
     model,
     autonomy,
     toolPolicy,

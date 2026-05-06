@@ -96,6 +96,7 @@ describe('CaseManager', () => {
       matterName,
       instruction: 'Draft an email to the accommodation office asking them to confirm the repair appointment.',
       source: 'hermes',
+      autoAccept: false,
     });
 
     expect(result.type).toBe('email');

@@ -6,3 +6,5 @@ export { createRun, updateRun, getRun, listRuns, type CreateRunParams } from './
 export { deriveSnapshot } from './snapshot.js';
 export { appendInboxMessage, listInboxMessages, type InboxMessage } from './inbox.js';
 export { setRuntimeValue, getRuntimeValue, deleteRuntimeValue } from './runtime-kv.js';
+
+export { acquireTaskLease, requireActiveTaskLease, heartbeatTaskLease, completeTaskLease, blockTaskLease, expireTaskLeases, LeaseError, type TaskLease, type LeaseRole } from './leases.js';

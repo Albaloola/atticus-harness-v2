@@ -38,6 +38,7 @@ export function createTask(params: CreateTaskParams): TaskDagNode {
     created: now,
     updated: now,
     data: params.data || {},
+    attemptCount: 0,
   };
 
   db.prepare(
@@ -139,6 +140,15 @@ interface TaskRow {
   created: string;
   updated: string;
   data_json: string;
+  lease_id?: string | null;
+  lease_owner?: string | null;
+  lease_role?: string | null;
+  lease_fencing_token?: number | null;
+  lease_expires_at?: string | null;
+  lease_acquired_at?: string | null;
+  lease_heartbeat_at?: string | null;
+  blocked_reason?: string | null;
+  attempt_count?: number | null;
 }
 
 function rowToTask(row: TaskRow): TaskDagNode {
@@ -158,5 +168,14 @@ function rowToTask(row: TaskRow): TaskDagNode {
     created: row.created,
     updated: row.updated,
     data: JSON.parse(row.data_json),
+    leaseId: row.lease_id ?? undefined,
+    leaseOwner: row.lease_owner ?? undefined,
+    leaseRole: (row.lease_role as 'worker' | 'reducer' | null) ?? undefined,
+    leaseFencingToken: row.lease_fencing_token ?? undefined,
+    leaseExpiresAt: row.lease_expires_at ?? undefined,
+    leaseAcquiredAt: row.lease_acquired_at ?? undefined,
+    leaseHeartbeatAt: row.lease_heartbeat_at ?? undefined,
+    blockedReason: row.blocked_reason ?? undefined,
+    attemptCount: row.attempt_count ?? 0,
   };
 }

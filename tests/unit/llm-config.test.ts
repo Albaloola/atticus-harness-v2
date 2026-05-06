@@ -3,6 +3,8 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { OpenRouterClient } from '../../src/llm/client.ts';
+import { evaluateProviderPolicy } from '../../src/config/provider-policy.ts';
+import { DEFAULTS } from '../../src/config/schema.ts';
 
 describe('OpenRouterClient config resolution', () => {
   let tmpHome: string;
@@ -42,11 +44,34 @@ describe('OpenRouterClient config resolution', () => {
     const client = new OpenRouterClient();
     await client.chat({
       messages: [{ role: 'user', content: 'hello' }],
-      config: { model: 'test-model' },
+      config: { model: 'deepseek/deepseek-v4-flash' },
     });
 
     expect(fetchMock).toHaveBeenCalledOnce();
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers.Authorization).toBe('Bearer secret-store-key');
+  });
+
+  it('fails closed for unknown provider models', () => {
+    const decision = evaluateProviderPolicy({
+      policy: DEFAULTS.providerPolicy,
+      providers: DEFAULTS.providers,
+      providerName: 'openrouter',
+      model: 'unlisted/model',
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('allow-list');
+  });
+
+  it('denies explicit fallback unless policy allows fallback', () => {
+    const decision = evaluateProviderPolicy({
+      policy: DEFAULTS.providerPolicy,
+      providers: DEFAULTS.providers,
+      providerName: 'openrouter',
+      model: DEFAULTS.providerPolicy.models.reasoning,
+      requestedFallback: true,
+    });
+    expect(decision.allowed).toBe(false);
+    expect(decision.reason).toContain('fallback');
   });
 });

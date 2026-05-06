@@ -1,7 +1,6 @@
 import { writeFile, readFile, readdir, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { getMatterPath, saveMatterIndex, loadMatter } from './matter.js';
-import { saveArtifact, listArtifacts } from './artifact.js';
 import type { CandidateArtifact, Artifact } from '../types/artifact.js';
 
 export async function saveCandidate(
@@ -45,34 +44,11 @@ export async function getCandidatePath(matterName: string, candidateId: string):
 }
 
 export async function acceptCandidate(matterName: string, candidateId: string): Promise<Artifact> {
-  const candidates = await listCandidates(matterName);
-  const candidate = candidates.find(c => c.id === candidateId);
-  if (!candidate) {
-    throw new Error(`Candidate "${candidateId}" not found in "${matterName}"`);
-  }
-
-  candidate.status = 'accepted';
-
-  const candidatePath = getMatterPath(matterName, '_candidates', `${candidateId}.json`);
-  await writeFile(candidatePath, JSON.stringify(candidate, null, 2), 'utf-8');
-
-  const artifact = await saveArtifact(matterName, {
-    id: candidate.id,
-    matterName: candidate.matterName,
-    type: candidate.type,
-    title: candidate.title,
-    content: candidate.content,
-    accepted: new Date().toISOString(),
-    acceptedFrom: candidateId,
-    citations: candidate.metadata.citations || [],
+  const { promoteCandidateWithReducer } = await import('../reducer/canonical-writer.js');
+  return promoteCandidateWithReducer(matterName, candidateId, {
+    reducerName: 'accept-command-reducer',
+    rationale: 'Accepted candidate through reducer-only canonical promotion path.',
   });
-
-  const index = await loadMatter(matterName);
-  index.status = 'complete';
-  index.artifactCount = (await listArtifacts(matterName)).length;
-  await saveMatterIndex(matterName, index);
-
-  return artifact;
 }
 
 export async function rejectCandidate(

@@ -6,6 +6,7 @@ import {
   type ProviderConfig,
 } from './config.js';
 import { AuthError, LLMError, classifyError } from './errors.js';
+import { assertProviderPolicyAllowed } from '../config/provider-policy.js';
 import type { LLMConfig, LLMRequest, LLMResponse, LLMUsage } from '../types/llm.js';
 import type { LLMMessage, ToolCall } from '../types/message.js';
 import type { ToolDefinition } from '../types/tool.js';
@@ -67,6 +68,16 @@ export class OpenRouterClient {
 
     if (!this.apiKey) {
       throw new AuthError();
+    }
+
+    const storeConfig = await this.storeConfig;
+    if (storeConfig.providerPolicy && storeConfig.providers) {
+      assertProviderPolicyAllowed({
+        policy: storeConfig.providerPolicy,
+        providers: storeConfig.providers,
+        providerName: storeConfig.providerName ?? 'openrouter',
+        model: request.config.model,
+      });
     }
 
     const payload = this.buildPayload(request);

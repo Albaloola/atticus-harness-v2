@@ -1,5 +1,77 @@
 import Database = require('better-sqlite3');
 
+const CURRENT_SCHEMA_VERSION = 3;
+
+type MigrationFn = (db: Database.Database) => void;
+
+function hasColumn(db: Database.Database, table: string, column: string): boolean {
+  const rows = db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+  return rows.some((row) => row.name === column);
+}
+
+function addColumnIfMissing(db: Database.Database, table: string, column: string, ddl: string): void {
+  if (!hasColumn(db, table, column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
+function ensureMigrationLedger(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_version (
+      version INTEGER PRIMARY KEY,
+      applied_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version_from INTEGER NOT NULL,
+      version_to INTEGER NOT NULL,
+      description TEXT NOT NULL,
+      applied_at TEXT NOT NULL,
+      PRIMARY KEY (version_from, version_to)
+    );
+  `);
+}
+
+function recordMigration(
+  db: Database.Database,
+  from: number,
+  to: number,
+  description: string,
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT OR IGNORE INTO schema_migrations (version_from, version_to, description, applied_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(from, to, description, now);
+  db.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)').run(to, now);
+}
+
+function currentSchemaVersion(db: Database.Database): number {
+  const row = db.prepare('SELECT MAX(version) as v FROM schema_version').get() as
+    | { v: number | null }
+    | undefined;
+  return row?.v ?? 0;
+}
+
+function applyMigration(
+  db: Database.Database,
+  from: number,
+  to: number,
+  description: string,
+  apply: MigrationFn,
+): void {
+  const version = currentSchemaVersion(db);
+  if (version >= to) return;
+  if (version !== from) {
+    throw new Error(`Cannot apply migration ${from}->${to}; current schema version is ${version}`);
+  }
+  const tx = db.transaction(() => {
+    apply(db);
+    recordMigration(db, from, to, description);
+  });
+  tx();
+}
+
 export function initSchema(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS events (
@@ -33,12 +105,23 @@ export function initSchema(db: Database.Database): void {
       dependencies_json TEXT NOT NULL DEFAULT '[]',
       created TEXT NOT NULL,
       updated TEXT NOT NULL,
-      data_json TEXT NOT NULL DEFAULT '{}'
+      data_json TEXT NOT NULL DEFAULT '{}',
+      lease_id TEXT,
+      lease_owner TEXT,
+      lease_role TEXT,
+      lease_fencing_token INTEGER NOT NULL DEFAULT 0,
+      lease_expires_at TEXT,
+      lease_acquired_at TEXT,
+      lease_heartbeat_at TEXT,
+      blocked_reason TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_tasks_matter ON tasks(matter_name);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_lease ON tasks(lease_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_lease_expiry ON tasks(lease_expires_at);
 
     CREATE TABLE IF NOT EXISTS agent_runs (
       id TEXT PRIMARY KEY,
@@ -108,11 +191,20 @@ export function initSchema(db: Database.Database): void {
       created_at TEXT NOT NULL,
       next_run_at TEXT,
       last_run_at TEXT,
-      metadata_json TEXT NOT NULL DEFAULT '{}'
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      lease_id TEXT,
+      lease_owner TEXT,
+      lease_fencing_token INTEGER NOT NULL DEFAULT 0,
+      lease_expires_at TEXT,
+      lease_acquired_at TEXT,
+      lease_heartbeat_at TEXT,
+      blocked_reason TEXT,
+      attempt_count INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_matter ON scheduler_jobs(matter_name);
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_enabled ON scheduler_jobs(enabled);
+    CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_lease_expiry ON scheduler_jobs(lease_expires_at);
 
     CREATE TABLE IF NOT EXISTS runtime_kv (
       matter_name TEXT NOT NULL,
@@ -121,72 +213,82 @@ export function initSchema(db: Database.Database): void {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (matter_name, key)
     );
-
-    CREATE TABLE IF NOT EXISTS schema_version (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL
-    );
   `);
 
-  const currentVersion = (
-    db.prepare('SELECT MAX(version) as v FROM schema_version').get() as
-      | { v: number | null }
-      | undefined
-  );
-  const version = currentVersion?.v ?? 0;
+  ensureMigrationLedger(db);
 
-  if (version < 1) {
-    db.prepare(
-      'INSERT INTO schema_version (version, applied_at) VALUES (1, ?)'
-    ).run(new Date().toISOString());
+  if (currentSchemaVersion(db) === 0) {
+    const now = new Date().toISOString();
+    db.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (1, ?)').run(now);
+    recordMigration(db, 0, 1, 'initial matter state schema');
   }
 
-  if (version < 2) {
-    try {
-      db.exec(`
-        ALTER TABLE events ADD COLUMN run_id TEXT;
-        ALTER TABLE events ADD COLUMN task_id TEXT;
-      `);
-    } catch { /* columns may already exist */ }
-    try {
-      db.exec(`
-        ALTER TABLE tasks ADD COLUMN parent_id TEXT;
-        ALTER TABLE tasks ADD COLUMN run_id TEXT;
-        ALTER TABLE tasks ADD COLUMN kind TEXT NOT NULL DEFAULT '';
-        ALTER TABLE tasks ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium';
-        ALTER TABLE tasks ADD COLUMN depth INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE tasks ADD COLUMN assigned_agent TEXT;
-      `);
-    } catch { /* columns may already exist */ }
-    try {
-      db.exec(`
-        ALTER TABLE agent_runs ADD COLUMN parent_run_id TEXT;
-        ALTER TABLE agent_runs ADD COLUMN agent_type TEXT NOT NULL DEFAULT 'worker';
-        ALTER TABLE agent_runs ADD COLUMN role TEXT NOT NULL DEFAULT 'worker';
-        ALTER TABLE agent_runs ADD COLUMN cost_usd REAL NOT NULL DEFAULT 0.0;
-      `);
-    } catch { /* columns may already exist */ }
-    try {
-      db.exec(`
-        ALTER TABLE citations ADD COLUMN artifact_id TEXT;
-        ALTER TABLE citations ADD COLUMN source_id TEXT;
-        ALTER TABLE citations ADD COLUMN quote TEXT;
-        ALTER TABLE citations ADD COLUMN span_json TEXT;
-        ALTER TABLE citations ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';
-      `);
-    } catch { /* columns may already exist */ }
-    try {
-      db.exec(`
-        ALTER TABLE scheduler_jobs ADD COLUMN cron TEXT NOT NULL DEFAULT '* * * * *';
-        ALTER TABLE scheduler_jobs ADD COLUMN prompt TEXT NOT NULL DEFAULT '';
-        ALTER TABLE scheduler_jobs ADD COLUMN recurring INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE scheduler_jobs ADD COLUMN durable INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE scheduler_jobs ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1;
-      `);
-    } catch { /* columns may already exist */ }
+  applyMigration(db, 1, 2, 'backfill V2 hierarchy, run, citation, and scheduler columns', (txDb) => {
+    addColumnIfMissing(txDb, 'events', 'run_id', 'TEXT');
+    addColumnIfMissing(txDb, 'events', 'task_id', 'TEXT');
+    addColumnIfMissing(txDb, 'tasks', 'parent_id', 'TEXT');
+    addColumnIfMissing(txDb, 'tasks', 'run_id', 'TEXT');
+    addColumnIfMissing(txDb, 'tasks', 'kind', "TEXT NOT NULL DEFAULT ''");
+    addColumnIfMissing(txDb, 'tasks', 'priority', "TEXT NOT NULL DEFAULT 'medium'");
+    addColumnIfMissing(txDb, 'tasks', 'depth', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfMissing(txDb, 'tasks', 'assigned_agent', 'TEXT');
+    addColumnIfMissing(txDb, 'agent_runs', 'parent_run_id', 'TEXT');
+    addColumnIfMissing(txDb, 'agent_runs', 'agent_type', "TEXT NOT NULL DEFAULT 'worker'");
+    addColumnIfMissing(txDb, 'agent_runs', 'role', "TEXT NOT NULL DEFAULT 'worker'");
+    addColumnIfMissing(txDb, 'agent_runs', 'cost_usd', 'REAL NOT NULL DEFAULT 0.0');
+    addColumnIfMissing(txDb, 'citations', 'artifact_id', 'TEXT');
+    addColumnIfMissing(txDb, 'citations', 'source_id', 'TEXT');
+    addColumnIfMissing(txDb, 'citations', 'quote', 'TEXT');
+    addColumnIfMissing(txDb, 'citations', 'span_json', 'TEXT');
+    addColumnIfMissing(txDb, 'citations', 'metadata_json', "TEXT NOT NULL DEFAULT '{}'");
+    addColumnIfMissing(txDb, 'scheduler_jobs', 'cron', "TEXT NOT NULL DEFAULT '* * * * *'");
+    addColumnIfMissing(txDb, 'scheduler_jobs', 'prompt', "TEXT NOT NULL DEFAULT ''");
+    addColumnIfMissing(txDb, 'scheduler_jobs', 'recurring', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfMissing(txDb, 'scheduler_jobs', 'durable', 'INTEGER NOT NULL DEFAULT 0');
+    addColumnIfMissing(txDb, 'scheduler_jobs', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
+  });
 
-    db.prepare(
-      'INSERT INTO schema_version (version, applied_at) VALUES (2, ?)'
-    ).run(new Date().toISOString());
-  }
+  applyMigration(db, 2, CURRENT_SCHEMA_VERSION, 'V3 governance: leases, reducer packets, migration ledger', (txDb) => {
+    const taskColumns: Array<[string, string]> = [
+      ['lease_id', 'TEXT'],
+      ['lease_owner', 'TEXT'],
+      ['lease_role', 'TEXT'],
+      ['lease_fencing_token', 'INTEGER NOT NULL DEFAULT 0'],
+      ['lease_expires_at', 'TEXT'],
+      ['lease_acquired_at', 'TEXT'],
+      ['lease_heartbeat_at', 'TEXT'],
+      ['blocked_reason', 'TEXT'],
+      ['attempt_count', 'INTEGER NOT NULL DEFAULT 0'],
+    ];
+    for (const [column, ddl] of taskColumns) addColumnIfMissing(txDb, 'tasks', column, ddl);
+
+    const jobColumns: Array<[string, string]> = [
+      ['lease_id', 'TEXT'],
+      ['lease_owner', 'TEXT'],
+      ['lease_fencing_token', 'INTEGER NOT NULL DEFAULT 0'],
+      ['lease_expires_at', 'TEXT'],
+      ['lease_acquired_at', 'TEXT'],
+      ['lease_heartbeat_at', 'TEXT'],
+      ['blocked_reason', 'TEXT'],
+      ['attempt_count', 'INTEGER NOT NULL DEFAULT 0'],
+    ];
+    for (const [column, ddl] of jobColumns) addColumnIfMissing(txDb, 'scheduler_jobs', column, ddl);
+
+    txDb.exec(`
+      CREATE TABLE IF NOT EXISTS reducer_packets (
+        id TEXT PRIMARY KEY,
+        matter_name TEXT NOT NULL,
+        candidate_id TEXT NOT NULL,
+        artifact_id TEXT,
+        decision TEXT NOT NULL,
+        reducer_name TEXT NOT NULL,
+        rationale TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+      );
+      CREATE INDEX IF NOT EXISTS idx_reducer_packets_matter ON reducer_packets(matter_name);
+      CREATE INDEX IF NOT EXISTS idx_reducer_packets_candidate ON reducer_packets(candidate_id);
+      CREATE INDEX IF NOT EXISTS idx_reducer_packets_decision ON reducer_packets(decision);
+    `);
+  });
 }

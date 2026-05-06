@@ -91,8 +91,6 @@ export interface ProviderPolicy {
   allowFallback?: boolean;
   /** Require every network request to carry an explicit model. Default: true. */
   requireExplicitModel?: boolean;
-  /** Explicit allow-list of provider names. Default: [defaultProvider]. */
-  allowedProviders?: string[];
 }
 
 // ---------------------------------------------------------------------------

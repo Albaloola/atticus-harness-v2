@@ -7,3 +7,4 @@ matters/*
 *.sqlite-shm
 .env
 tmp/
+.omx/

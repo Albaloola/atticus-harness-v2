@@ -2,6 +2,15 @@
 
 Standalone terminal-native agent for legal work. Ingests evidence, runs hierarchical orchestration with tool-calling, drafts documents, verifies citations, manages matter workflows, schedules recurring jobs, and auto-accepts gated outputs. Built in TypeScript on Node.js.
 
+
+## Current status and architecture research
+
+Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, OpenRouter tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, daemon scheduling, and 915 bundled legal/writing skills.
+
+A detailed comparative research paper now documents the V1 Python control-plane architecture, the V2 TypeScript agent architecture, architecture diagrams, migration trade-offs, and recommended next steps:
+
+- [Atticus Harness V1 and V2: Comparative Architecture Research Paper](docs/architecture-v1-v2-research-paper.md)
+
 ## Quick Install
 
 ```bash
@@ -107,7 +116,7 @@ candidate history, evidence, sources, inbox, tasks, runs, autonomy policy, tool
 policy, and acceptance settings. It produces prepare-only candidates; it does not
 send, file, serve, or contact externally.
 
-Hermes/OpenClaw operators should follow the runbook in
+Hermes (Atticus) operators should follow the runbook in
 [`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
 
 ### Draft, verify, review, gate
@@ -191,6 +200,8 @@ orchestrate → [intake → evidence → issue-spot → research → merits → 
 ```
 
 ## Architecture
+
+For the full V1/V2 comparison and diagrams, see [the architecture research paper](docs/architecture-v1-v2-research-paper.md). The summary below describes the current V2 repository layout.
 
 ```
 src/

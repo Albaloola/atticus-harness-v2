@@ -4,6 +4,7 @@ import { deriveSnapshot } from '../state/snapshot.js';
 import { listEvents } from '../state/events.js';
 import { listReducerPackets } from '../reducer/canonical-writer.js';
 import { getDaemonStatus } from '../daemon/daemon.js';
+import type { ReducerPacket } from '../reducer/canonical-writer.js';
 
 interface ControlPanelPacket {
   matterName: string;
@@ -34,6 +35,26 @@ async function buildPacket(matterName: string): Promise<ControlPanelPacket> {
     daemon,
     nextAction,
     readOnly: true,
+  };
+}
+
+export async function buildControlPanelSnapshot(
+  matterName: string,
+  _options?: { tail?: number },
+): Promise<{
+  matter: { name: string };
+  leases: Array<{ owner?: string; taskId: string; stale: boolean }>;
+  reducerPackets: ReducerPacket[];
+  controls: { pause: string };
+}> {
+  await loadMatter(matterName);
+  const snapshot = await deriveSnapshot(matterName);
+  const reducerPackets = listReducerPackets(matterName).slice(0, _options?.tail ?? 10);
+  return {
+    matter: { name: matterName },
+    leases: snapshot.leases ?? [],
+    reducerPackets,
+    controls: { pause: `harness pause ${matterName}` },
   };
 }
 

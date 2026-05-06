@@ -69,6 +69,8 @@ export interface AutonomyPolicy {
 
 export interface ProviderPolicy {
   defaultProvider: 'openrouter' | 'anthropic' | 'openai-compatible' | 'local';
+  /** Explicit allow-list of provider names for policy-enforced routing. */
+  allowedProviders?: string[];
   models: {
     fast: string;
     reasoning: string;

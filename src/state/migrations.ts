@@ -59,7 +59,7 @@ export const STATE_MIGRATIONS: StateMigration[] = [
   },
   {
     version: 3,
-    description: 'V3 reducer packets and fenced task leases',
+    description: 'reducer packets and fenced task leases',
     up(db) {
       db.exec(`
         CREATE TABLE IF NOT EXISTS task_leases (

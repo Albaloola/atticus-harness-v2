@@ -52,7 +52,7 @@ V1 and V2 solve overlapping but differently-weighted problems.
 1. **V1 is a legal control plane.** It assumes the ledger is the source of truth, model outputs are untrusted candidates, reducers write canonical artifacts, task execution is lease-governed, and provider policy must be deterministic and fail closed.
 2. **V2 is a legal agent product shell.** It assumes the operator will run a terminal CLI around matter folders, agent loops, tool registries, evidence search, source fetches, schedules, daemon control, and candidate acceptance.
 3. **V2 intentionally narrows some V1 complexity.** It collapses V1's 70-table normalized legal graph into per-matter filesystem state plus a compact SQLite ledger. This accelerates usability but leaves fewer explicit invariants encoded in schema.
-4. **The best V3 direction is synthesis rather than replacement.** V2 should keep its TypeScript execution model but port V1's strongest governance patterns where legal risk requires them.
+4. **The best direction is synthesis rather than replacement.** V2 should keep its TypeScript execution model but port V1's strongest governance patterns where legal risk requires them.
 
 ---
 
@@ -462,7 +462,7 @@ A concrete example is canonicalization. In V1, worker outputs, validation, reduc
 4. **Formalize architecture decision records.** Preserve key decisions in `docs/architecture/` ADRs so future agents do not loosen safety boundaries accidentally.
 5. **Track cost and provider health.** V1 has richer provider/cost telemetry. V2 should persist provider health and per-run cost in the state database.
 
-### 6.3 Long-term recommendation: V3 synthesis
+### 6.3 Long-term recommendation: synthesis
 
 The most robust future architecture is a TypeScript agent product that inherits V1's governance spine:
 

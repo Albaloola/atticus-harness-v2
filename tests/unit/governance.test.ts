@@ -17,8 +17,8 @@ import { resolveConfig } from '../../src/config/loader.js';
 import { DEFAULTS } from '../../src/config/schema.js';
 import { buildControlPanelSnapshot } from '../../src/commands/control-panel.js';
 
-describe('V3 reducer-only canonical writes', () => {
-  const matterName = 'test-v3-reducer';
+describe('reducer-only canonical writes', () => {
+  const matterName = 'test-reducer';
 
   beforeEach(async () => {
     await initMatter(matterName);
@@ -83,8 +83,8 @@ describe('V3 reducer-only canonical writes', () => {
   });
 });
 
-describe('V3 task lease lifecycle', () => {
-  const matterName = 'test-v3-leases';
+describe('task lease lifecycle', () => {
+  const matterName = 'test-leases';
 
   beforeEach(async () => {
     await initMatter(matterName);
@@ -127,12 +127,12 @@ describe('V3 task lease lifecycle', () => {
   });
 });
 
-describe('V3 provider policy fail-closed semantics', () => {
+describe('provider policy fail-closed semantics', () => {
   let tmpHome: string;
   let originalHome: string | undefined;
 
   beforeEach(async () => {
-    tmpHome = await mkdtemp(join(tmpdir(), 'harness-v3-home-'));
+    tmpHome = await mkdtemp(join(tmpdir(), 'harness-home-'));
     originalHome = process.env.HOME;
     process.env.HOME = tmpHome;
     mkdirSync(join(tmpHome, '.atticus-harness'), { recursive: true });
@@ -175,8 +175,8 @@ describe('V3 provider policy fail-closed semantics', () => {
   });
 });
 
-describe('V3 migration registry and control panel', () => {
-  const matterName = 'test-v3-control-panel';
+describe('migration registry and control panel', () => {
+  const matterName = 'test-control-panel';
 
   afterEach(async () => {
     closeStateDb(matterName);

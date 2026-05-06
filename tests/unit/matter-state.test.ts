@@ -44,7 +44,7 @@ describe('Schema migration', () => {
     expect(tableNames).toContain('reducer_packets');
   });
 
-  it('records schema migrations through V3', () => {
+  it('records schema migrations', () => {
     const db = getStateDb(matterName);
     const row = db.prepare('SELECT MAX(version) as version FROM schema_version').get() as {
       version: number;
@@ -349,9 +349,9 @@ describe('Task CRUD', () => {
 });
 
 
-// ── V3 leases and reducer boundary ────────────────────────────────────────
+// ── Leases and reducer boundary ────────────────────────────────────────────
 describe('Task leases and reducer boundary', () => {
-  const matterName = 'test-v3-governance';
+  const matterName = 'test-governance';
 
   beforeEach(async () => {
     await initMatter(matterName);
@@ -393,7 +393,7 @@ describe('Task leases and reducer boundary', () => {
 
   it('promotes candidates through reducer packets', async () => {
     await saveCandidate(matterName, {
-      id: 'cand-v3',
+      id: 'cand-reducer',
       matterName,
       type: 'analysis',
       title: 'Reducer candidate',
@@ -403,12 +403,12 @@ describe('Task leases and reducer boundary', () => {
       metadata: { citations: [] },
     });
 
-    const artifact = await acceptCandidate(matterName, 'cand-v3');
-    expect(artifact.id).toBe('cand-v3');
+    const artifact = await acceptCandidate(matterName, 'cand-reducer');
+    expect(artifact.id).toBe('cand-reducer');
     const packets = listReducerPackets(matterName);
     expect(packets).toHaveLength(1);
     expect(packets[0].decision).toBe('accept');
-    expect(packets[0].artifactId).toBe('cand-v3');
+    expect(packets[0].artifactId).toBe('cand-reducer');
   });
 });
 

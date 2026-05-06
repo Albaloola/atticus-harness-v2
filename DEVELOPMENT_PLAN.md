@@ -1,4 +1,4 @@
-# Harness v3 — Development Plan
+# Harness V2 — Development Plan (Upgraded)
 
 ## Standalone Legal Operations Agent (Claude Code Fork)
 
@@ -13,7 +13,7 @@ A standalone terminal-native legal operations agent built by forking Claude Code
 ## 1.2 Project Location
 
 ```
-/home/alba/atticus-harness-v3/
+/home/alba/atticus-harness-v2/
 ```
 
 ## 1.3 Core Principles
@@ -49,7 +49,7 @@ A standalone terminal-native legal operations agent built by forking Claude Code
 ## 2.1 Directory Structure
 
 ```
-/home/alba/atticus-harness-v3/
+/home/alba/atticus-harness-v2/
 ├── package.json                     # Combined Claude Code + legal deps
 ├── tsconfig.json                    # TypeScript config
 ├── .gitignore
@@ -155,7 +155,7 @@ Copy Claude Code's TypeScript source and get it compiling as a standalone projec
 
 #### T0.1: Copy Claude Code source
 ```
-cp -r /home/alba/Claude-Code/alex000kim-original/src/ /home/alba/atticus-harness-v3/src/
+cp -r /home/alba/Claude-Code/alex000kim-original/src/ /home/alba/atticus-harness-v2/src/
 ```
 
 **Files:** ~1900 TypeScript files copied from `/home/alba/Claude-Code/alex000kim-original/src/`
@@ -165,7 +165,7 @@ cp -r /home/alba/Claude-Code/alex000kim-original/src/ /home/alba/atticus-harness
 **package.json:**
 ```json
 {
-  "name": "harness-v3",
+  "name": "harness-v2",
   "version": "0.1.0",
   "description": "Legal Operations Agent — Fork of Claude Code",
   "type": "module",
@@ -587,7 +587,7 @@ function matchesAny(arr: string[] | undefined, targets: string[]): boolean {
 #### T2.4: Copy all 881 skills
 
 ```bash
-	cp -r "/home/alba/Documents/Legal Skills - Ready/"* /home/alba/atticus-harness-v3/skills/
+	cp -r "/home/alba/Documents/Legal Skills - Ready/"* /home/alba/atticus-harness-v2/skills/
 ```
 
 Run the classifier on import:
@@ -1270,7 +1270,7 @@ node dist/cli.js --help  # All commands visible
 ```
 
 ### Deliverables
-- All 37 v2 tests passing under v3
+- All 37 v2 tests passing (upgraded)
 - Skill classification tests
 - Citation verification tests
 - Stage filtering tests

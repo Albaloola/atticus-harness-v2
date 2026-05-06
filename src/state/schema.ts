@@ -248,7 +248,7 @@ export function initSchema(db: Database.Database): void {
     addColumnIfMissing(txDb, 'scheduler_jobs', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
   });
 
-  applyMigration(db, 2, CURRENT_SCHEMA_VERSION, 'V3 governance: leases, reducer packets, migration ledger', (txDb) => {
+  applyMigration(db, 2, CURRENT_SCHEMA_VERSION, 'governance: leases, reducer packets, migration ledger', (txDb) => {
     const taskColumns: Array<[string, string]> = [
       ['lease_id', 'TEXT'],
       ['lease_owner', 'TEXT'],

@@ -111,6 +111,18 @@ export interface AgentRun {
   error?: string;
 }
 
+export interface ReducerPacket {
+  id: string;
+  matterName: string;
+  candidateId: string;
+  decision: 'accept' | 'reject';
+  status: 'decided' | 'written' | 'blocked';
+  createdAt: string;
+  decidedAt: string;
+  leaseId?: string;
+  data: Record<string, unknown>;
+}
+
 // ── Runtime Snapshot ─────────────────────────────────────────
 
 export interface MatterRuntimeSnapshot {

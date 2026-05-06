@@ -3,6 +3,8 @@ import type {
   ToolPolicy,
   ToolCategory,
   ApprovalDecision,
+  GlobalHarnessConfig,
+  ProviderConfig,
 } from './schema.js';
 
 const TOOL_TO_CATEGORY: Record<string, ToolCategory> = {
@@ -113,4 +115,43 @@ export function requiresAuditLog(
   const category = classifyToolCategory(toolName);
   const categoryPolicy = policy[category];
   return categoryPolicy?.requireAuditLog ?? false;
+}
+
+export interface ProviderPolicyValidationInput {
+  config: GlobalHarnessConfig;
+  providerName: string;
+  provider: ProviderConfig;
+  model: string;
+}
+
+export function validateProviderPolicy(input: ProviderPolicyValidationInput): void {
+  const { config, providerName, provider, model } = input;
+  const policy = config.providerPolicy;
+  const configuredProvider = config.providers[providerName];
+
+  if (!configuredProvider) {
+    throw new Error(`Provider policy denied unknown provider "${providerName}"`);
+  }
+
+  const allowedProviders = policy.allowedProviders ?? [policy.defaultProvider];
+  if (!allowedProviders.includes(providerName)) {
+    throw new Error(`Provider policy denied provider "${providerName}"; allowed providers: ${allowedProviders.join(', ')}`);
+  }
+
+  if (provider.reserved) {
+    throw new Error(`Provider policy denied reserved provider "${providerName}"`);
+  }
+
+  const allowedModels = new Set(Object.values(policy.models));
+  if (!allowedModels.has(model)) {
+    throw new Error(`Provider policy denied model "${model}"; model must be explicitly routed`);
+  }
+
+  if (provider.defaultModel && !allowedModels.has(provider.defaultModel)) {
+    throw new Error(`Provider policy denied provider default model "${provider.defaultModel}"; model must be explicitly routed`);
+  }
+
+  if (provider.fallbackModel && !allowedModels.has(provider.fallbackModel)) {
+    throw new Error(`Provider policy denied fallback model "${provider.fallbackModel}"; silent fallback is disabled`);
+  }
 }

@@ -91,6 +91,8 @@ export interface ProviderPolicy {
   allowFallback?: boolean;
   /** Require every network request to carry an explicit model. Default: true. */
   requireExplicitModel?: boolean;
+  /** Explicit allow-list of provider names. Default: [defaultProvider]. */
+  allowedProviders?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +107,8 @@ export interface ProviderConfig {
   maxRetries?: number;
   /** Whether to prefer the secrets.env value over env vars */
   preferSecrets?: boolean;
+  /** Mark this provider as reserved (not available for general use). */
+  reserved?: boolean;
 }
 
 export interface ProvidersConfig {

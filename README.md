@@ -117,6 +117,12 @@ candidate history, evidence, sources, inbox, tasks, runs, autonomy policy, tool
 policy, and acceptance settings. It produces prepare-only candidates; it does not
 send, file, serve, or contact externally.
 
+Before running LLM-backed case work, Hermes should check provider readiness with
+`harness control-panel status --json`. Missing or rejected auth is a setup error:
+do not fall back silently or start a partial run. Accepted artifacts are also
+governed by reducer-only promotion; Hermes should use `harness accept manual` or
+`harness accept auto`, never direct `_artifacts` writes.
+
 Hermes (Atticus) operators should follow the runbook in
 [`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
 

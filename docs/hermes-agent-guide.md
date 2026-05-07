@@ -31,20 +31,40 @@ Run this once on a new machine or profile:
 ```bash
 cd /home/alba/atticus-harness-v2
 npm run setup
-harness config init
-harness secrets set OPENROUTER_API_KEY <key>
+harness control-panel status
+harness control-panel provider auth
 harness policy preset operator-safe
 ```
 
 Check setup:
 
 ```bash
-harness config show --json
+harness control-panel status --json
 harness policy show --json
 harness daemon status --json
 ```
 
 Never print or paste secret values into chat, logs, events, or documents.
+
+### Provider and Auth Preflight
+
+Before Hermes starts any command that calls an LLM, check the active provider and auth state:
+
+```bash
+harness control-panel status --json
+```
+
+If auth is missing or rejected, stop before running case work and fix it through the control panel:
+
+```bash
+harness control-panel provider list
+harness control-panel provider select <provider-name>
+harness control-panel provider auth
+```
+
+Do not silently fall back to a different provider or model. Missing auth, rejected auth, or an unreachable provider is a setup problem, not a case-management result.
+
+Use `harness control-panel model show` when Hermes needs to understand the current task-model routing. Hermes should not expose provider secrets, OAuth tokens, or pricing/cost details in case outputs.
 
 ## Starting a Matter
 
@@ -174,6 +194,27 @@ harness reject <matter-name> <candidate-id> --reason "<reason>"
 
 Hermes should not accept prepare-only external communications as sent. Acceptance means the artifact is ready for operator review/use inside the matter, not that anything external happened.
 
+### Canonical Artifact Governance
+
+Accepted artifacts are reducer-owned. Hermes must never create or advise direct writes into `_artifacts`.
+
+The safe promotion path is:
+
+1. create or receive a candidate
+2. verify, gate, and review when the artifact matters
+3. promote through `harness accept manual` or `harness accept auto`
+4. let the harness record the reducer packet and canonical artifact
+
+If acceptance fails with a reducer-only, packet, lease, or unsafe artifact-id error, do not bypass the guard by editing JSON files. Treat the failure as a real governance error and inspect:
+
+```bash
+harness events <matter-name> --tail 100 --json
+harness control-panel status --json
+harness status <matter-name> --json
+```
+
+Then rerun the candidate flow after the underlying issue is fixed. Canonical writes require an accepted reducer decision, an explicit artifact target, matching candidate ownership, and a safe artifact ID.
+
 ## Autonomy Settings
 
 Use policy presets deliberately:
@@ -214,6 +255,8 @@ harness daemon status --json
 ```
 
 Use the dashboard to decide whether the case is active, paused, blocked, waiting on evidence, waiting on review, or ready for operator handoff.
+
+When background work is active, respect task leases. Do not start duplicate orchestration because a pane looks idle; first inspect status, events, and the control panel. If a lease expires, the harness should reclaim it through its lease lifecycle rather than Hermes manually editing task state.
 
 ## Research and Sources
 
@@ -275,6 +318,9 @@ harness cancel <matter-name> --run <run-id>
 - Do not ask the operator to repeat the case before checking `case resume` and `case memory`.
 - Do not rerun full orchestration for small follow-up outputs.
 - Do not bypass citation verification, gates, or hostile review for important artifacts.
+- Do not bypass reducer-only artifact promotion by editing `_artifacts` directly.
+- Do not ignore provider/auth preflight errors or switch providers without operator intent.
+- Do not manually clear active task leases or mutate SQLite state to make a run appear idle.
 - Do not expose secrets.
 - Do not treat accepted prepare-only artifacts as sent, filed, served, or submitted.
 - Do not delete matter state to recover from orchestrator confusion; use `harness case reset`.
@@ -292,4 +338,3 @@ harness review <matter-name> <candidate-id>
 ```
 
 Then report the candidate ID, summary, risks, and next operator action.
-

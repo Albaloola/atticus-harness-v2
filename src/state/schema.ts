@@ -1,6 +1,6 @@
 import Database = require('better-sqlite3');
 
-const CURRENT_SCHEMA_VERSION = 4;
+const CURRENT_SCHEMA_VERSION = 5;
 
 type MigrationFn = (db: Database.Database) => void;
 
@@ -131,6 +131,8 @@ export function initSchema(db: Database.Database): void {
       skill TEXT,
       prompt TEXT,
       started TEXT NOT NULL,
+      heartbeat_at TEXT,
+      pid INTEGER,
       ended TEXT,
       turns INTEGER NOT NULL DEFAULT 0,
       cost_usd REAL NOT NULL DEFAULT 0.0,
@@ -247,14 +249,28 @@ export function initSchema(db: Database.Database): void {
     ensureGovernanceSchema(txDb);
   });
 
-  applyMigration(db, 3, CURRENT_SCHEMA_VERSION, 'governance: durable lease and reducer packet compatibility', (txDb) => {
+  applyMigration(db, 3, 4, 'governance: durable lease and reducer packet compatibility', (txDb) => {
     ensureGovernanceSchema(txDb);
+  });
+
+  applyMigration(db, 4, 5, 'runtime: agent run heartbeat and process liveness', (txDb) => {
+    ensureRunLivenessSchema(txDb);
   });
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_lease ON tasks(lease_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_lease_expiry ON tasks(lease_expires_at);
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_lease_expiry ON scheduler_jobs(lease_expires_at);
+  `);
+}
+
+function ensureRunLivenessSchema(db: Database.Database): void {
+  addColumnIfMissing(db, 'agent_runs', 'heartbeat_at', 'TEXT');
+  addColumnIfMissing(db, 'agent_runs', 'pid', 'INTEGER');
+  db.exec(`
+    UPDATE agent_runs
+    SET heartbeat_at = COALESCE(heartbeat_at, started)
+    WHERE heartbeat_at IS NULL;
   `);
 }
 

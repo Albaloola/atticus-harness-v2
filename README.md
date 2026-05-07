@@ -5,7 +5,7 @@ Standalone terminal-native agent for legal work. Ingests evidence, runs hierarch
 
 ## Current status and architecture research
 
-Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, OpenRouter tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, and 915 bundled legal/writing skills.
+Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, provider-routed tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, and 915 bundled legal/writing skills.
 
 The architecture papers now separate the legacy control-plane reference from the current TypeScript agent architecture:
 
@@ -49,6 +49,31 @@ harness secrets set OPENROUTER_API_KEY sk-or-v1-...
 # Or via environment variable (legacy)
 export OPENROUTER_API_KEY=sk-or-v1-...
 ```
+
+OpenRouter with DeepSeek is the default profile, not a hard-coded provider
+boundary. Select provider profiles with `harness provider select <profile>` and
+inspect the active model roles with `harness provider show`. Built-in profiles
+cover OpenRouter/DeepSeek, direct DeepSeek, Anthropic OAuth/API key, OpenAI API
+key, OpenRouter custom, local/Ollama, and delegated Codex SDK.
+
+Model-role edits are guarded by the active provider profile. Direct provider
+profiles reject incompatible model ids instead of silently sending them to the
+wrong API; use `openrouter-custom` when the intent is to route a mixed-provider
+model id through OpenRouter.
+
+Reasoning is also provider-profile driven. A single matter-level
+`reasoningEffort` override (`none`, `minimal`, `low`, `medium`, `high`, or
+`xhigh`) is translated into the selected provider's native control: OpenAI Chat
+Completions get `reasoning_effort`, OpenRouter gets nested `reasoning`,
+DeepSeek direct gets `thinking` plus DeepSeek's `reasoning_effort`, Anthropic
+gets `thinking` budgets or adaptive thinking where required, Codex SDK gets
+`modelReasoningEffort`, and local/model-routing profiles do not receive an
+invented provider parameter.
+
+DeepSeek model ids are a hard exception: every DeepSeek model is forced to
+maximum reasoning. OpenRouter DeepSeek ids use `reasoning.effort = "xhigh"`;
+direct DeepSeek ids enable `thinking` and send DeepSeek's maximum
+`reasoning_effort`.
 
 ### Configure autonomy and policies
 
@@ -110,9 +135,12 @@ harness case resume my-case --json
 harness case reset my-case
 ```
 
-Hermes should route case-related emails, communications, task lists, status reports,
-and follow-up documents through `harness case manage`. The main orchestrator rebuilds
-the case from persisted matter memory, dashboard/status, accepted artifacts,
+Hermes should treat these as Codex-orchestrator command templates, not as
+permission to mutate the Harness directly. Case-related emails, communications,
+task lists, status reports, and follow-up documents go through
+`harness case manage`; Hermes inspects read-only state, briefs Codex to execute
+the mutating command, and reports the result. The main orchestrator rebuilds the
+case from persisted matter memory, dashboard/status, accepted artifacts,
 candidate history, evidence, sources, inbox, tasks, runs, autonomy policy, tool
 policy, and acceptance settings. It produces prepare-only candidates; it does not
 send, file, serve, or contact externally.
@@ -120,10 +148,20 @@ send, file, serve, or contact externally.
 Before running LLM-backed case work, Hermes should check provider readiness with
 `harness control-panel status --json`. Missing or rejected auth is a setup error:
 do not fall back silently or start a partial run. Accepted artifacts are also
-governed by reducer-only promotion; Hermes should use `harness accept manual` or
-`harness accept auto`, never direct `_artifacts` writes.
+governed by reducer-only promotion; Codex should use `harness accept manual` or
+`harness accept auto` after Hermes briefs the action. Hermes must never write
+directly to `_artifacts`.
 
-Hermes (Atticus) operators should follow the runbook in
+Codex/ChatGPT-authenticated local runs use the `codex-sdk` provider. Authenticate
+outside the harness with `codex login`; do not paste `CODEX_TOKEN` or Codex cache
+contents into Harness secrets. The Codex SDK profile is deliberately tool-free:
+the Codex command template is
+`harness run <matter> --provider codex-sdk --no-tools`. Use a tool-capable
+provider profile, such as OpenRouter, OpenAI-compatible/custom, direct DeepSeek,
+Anthropic, or a local server that supports tool calls, for the full Harness tool
+loop.
+
+Hermes (Atticus) operators must follow the read-only/briefing runbook in
 [`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
 
 ### Draft, verify, review, gate
@@ -230,7 +268,7 @@ src/
 ├── acceptance/         # 10-gate scoring, auto-acceptance, review quorum
 ├── reducer/            # Reducer packets + canonical writer boundary
 ├── extraction/         # PDF/DOCX/DOC/image/text extraction pipeline
-├── llm/                # OpenRouter client (DeepSeek V4 flash/pro)
+├── llm/                # Provider clients (OpenAI-compatible, Anthropic, Codex SDK)
 ├── storage/            # Flat-file matter storage + SQLite FTS5 evidence store
 ├── tools/              # Policy-aware tools registered for agent use
 ├── types/              # Shared TypeScript interfaces

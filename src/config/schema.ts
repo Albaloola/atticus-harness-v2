@@ -2,6 +2,8 @@
 // Global control-panel types for Harness V2
 // ---------------------------------------------------------------------------
 
+import type { ReasoningEffort } from '../types/llm.js';
+
 export type AutonomyMode =
   | 'operator_safe'
   | 'auto_internal'
@@ -29,8 +31,19 @@ export type ToolCategory =
   | 'agent_spawn'
   | 'config_change';
 
-export type ProviderAuthType = 'api-key' | 'oauth' | 'none';
+export type ProviderKind = 'openai-compatible' | 'anthropic' | 'codex-sdk' | 'local';
+export type ProviderAuthType = 'api-key' | 'oauth' | 'none' | 'delegated';
+/** `codex` is retained only to reject stale on-disk OAuth configs. */
 export type OAuthProvider = 'codex' | 'claude-code';
+export type DelegatedAuthProvider = 'codex-cli';
+export type ReasoningControl =
+  | 'none'
+  | 'model-routing'
+  | 'openai-reasoning'
+  | 'openrouter-reasoning'
+  | 'deepseek-thinking'
+  | 'anthropic-thinking'
+  | 'codex-sdk';
 export type ModelRole = 'fast' | 'reasoning' | 'drafting' | 'reviewer' | 'citation' | 'cheap';
 export type ModelDelegation = Record<ModelRole, string>;
 
@@ -108,16 +121,22 @@ export interface ProviderConfig {
   preferSecrets?: boolean;
   /** Mark this provider as reserved (not available for general use). */
   reserved?: boolean;
+  /** Provider transport/client kind. */
+  providerKind?: ProviderKind;
   /** Auth scheme used after resolving profile credentials. */
   authType?: ProviderAuthType;
   /** Secret/env key name for API-key providers. */
   keyName?: string;
   /** OAuth token provider for OAuth-backed profiles. */
   oauthProvider?: OAuthProvider;
+  /** Delegated local auth provider for non-token brokered profiles. */
+  delegatedAuthProvider?: DelegatedAuthProvider;
   /** API path suffix for chat completions/messages clients. */
   apiPath?: string;
   /** Use Anthropic Messages API request/response format. */
   anthropicFormat?: boolean;
+  /** Provider-native reasoning control strategy. */
+  reasoningControl?: ReasoningControl;
 }
 
 export interface ProvidersConfig {
@@ -134,16 +153,22 @@ export interface ProviderProfile {
   preset: string;
   /** Auth type determines how keys are resolved */
   authType: ProviderAuthType;
+  /** Provider transport/client kind */
+  providerKind?: ProviderKind;
   /** Environment variable / secrets key name (for api-key type) */
   keyName?: string;
   /** OAuth provider name (for oauth type) */
   oauthProvider?: OAuthProvider;
+  /** Delegated local auth provider (for delegated type) */
+  delegatedAuthProvider?: DelegatedAuthProvider;
   /** API base URL */
   baseUrl: string;
   /** API path suffix */
   apiPath?: string;
   /** Anthropic-specific: use Messages API format */
   anthropicFormat?: boolean;
+  /** Provider-native reasoning control strategy */
+  reasoningControl?: ReasoningControl;
   /** Model delegation per task role */
   models: ModelDelegation;
   /** Fallback model (optional) */
@@ -183,6 +208,10 @@ export interface ResolvedHarnessConfig {
   providerPolicy: ProviderPolicy;
   /** Resolved model name */
   model: string;
+  /** Optional per-matter generation overrides */
+  temperature?: number;
+  maxTokens?: number;
+  reasoningEffort?: ReasoningEffort;
   /** Resolved autonomy policy */
   autonomy: AutonomyPolicy;
   /** Resolved tool approval policy */
@@ -202,6 +231,7 @@ export interface MatterConfigOverride {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: ReasoningEffort;
   autonomy?: Partial<AutonomyPolicy>;
   toolPolicy?: ToolPolicy;
 }
@@ -219,9 +249,11 @@ export const DEFAULT_OPENROUTER_PROFILE: ProviderProfile = {
   name: 'openrouter-deepseek',
   label: 'OpenRouter DeepSeek',
   preset: 'openrouter-deepseek',
+  providerKind: 'openai-compatible',
   authType: 'api-key',
   keyName: 'OPENROUTER_API_KEY',
   baseUrl: 'https://openrouter.ai/api/v1',
+  reasoningControl: 'openrouter-reasoning',
   models: DEFAULT_MODEL_DELEGATION,
   fallbackModel: 'deepseek/deepseek-v4-pro',
   isCustom: false,
@@ -244,8 +276,10 @@ export const DEFAULTS: GlobalHarnessConfig = {
       fallbackModel: 'deepseek/deepseek-v4-pro',
       timeoutMs: 180_000,
       maxRetries: 3,
+      providerKind: 'openai-compatible',
       authType: 'api-key',
       keyName: 'OPENROUTER_API_KEY',
+      reasoningControl: 'openrouter-reasoning',
     },
     'openrouter-deepseek': {
       baseUrl: 'https://openrouter.ai/api/v1',
@@ -253,8 +287,10 @@ export const DEFAULTS: GlobalHarnessConfig = {
       fallbackModel: 'deepseek/deepseek-v4-pro',
       timeoutMs: 180_000,
       maxRetries: 3,
+      providerKind: 'openai-compatible',
       authType: 'api-key',
       keyName: 'OPENROUTER_API_KEY',
+      reasoningControl: 'openrouter-reasoning',
     },
   },
   providerPolicy: {

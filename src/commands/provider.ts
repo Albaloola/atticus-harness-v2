@@ -1,12 +1,15 @@
 import chalk from 'chalk';
 import { loadGlobalConfig, saveGlobalConfig } from '../config/loader.js';
 import { saveSecret, getSecret, getOAuthToken } from '../config/secrets.js';
+import { resolveProviderAuth } from '../config/auth.js';
 import type { GlobalHarnessConfig, ProviderProfile, ModelRole } from '../config/schema.js';
 import {
   DEFAULT_ACTIVE_PROVIDER,
   DEFAULT_PROVIDER_PROFILES,
   MODEL_ROLES,
   cloneDefaultProviderProfiles,
+  isLegacyCodexOAuthProfileName,
+  legacyCodexOAuthMigrationMessage,
   isModelRole,
   policyForProfile,
 } from '../config/presets.js';
@@ -16,7 +19,7 @@ type JsonOptions = { json?: boolean };
 export interface ProviderPanelState {
   active: ProviderProfile;
   auth: {
-    state: 'OK' | 'MISSING' | 'NONE';
+    state: 'OK' | 'MISSING' | 'NONE' | 'UNSUPPORTED' | 'DELEGATED';
     detail: string;
   };
   profiles: ProviderProfile[];
@@ -38,6 +41,9 @@ export async function handleProviderList(options: JsonOptions = {}): Promise<voi
     name: profile.name,
     active: profile.name === state.active.name,
     preset: profile.isCustom ? 'custom' : profile.preset,
+    providerKind: profile.providerKind ?? 'openai-compatible',
+    toolSupport: toolSupportForProfile(profile),
+    reasoningControl: reasoningControlForProfile(profile),
     authType: profile.authType,
     auth: (await resolveAuthStatus(profile)).state,
     baseUrl: profile.baseUrl,
@@ -49,11 +55,14 @@ export async function handleProviderList(options: JsonOptions = {}): Promise<voi
   console.log(chalk.bold.cyan('Provider profiles'));
   for (const row of rows) {
     const marker = row.active ? chalk.green('*') : ' ';
-    console.log(`${marker} ${row.name} (${row.preset}) ${chalk.gray(row.authType)} ${chalk.gray(row.baseUrl)} auth=${row.auth}`);
+    console.log(`${marker} ${row.name} (${row.preset}) ${chalk.gray(row.providerKind)} ${chalk.gray(row.toolSupport)} ${chalk.gray(`reasoning=${row.reasoningControl}`)} ${chalk.gray(row.authType)} ${chalk.gray(row.baseUrl)} auth=${row.auth}`);
   }
 }
 
 export async function handleProviderShow(name?: string, options: JsonOptions = {}): Promise<void> {
+  if (isLegacyCodexOAuthProfileName(name)) {
+    throw new Error(legacyCodexOAuthMigrationMessage(name));
+  }
   const { config } = await loadGlobalConfig();
   const profile = name ? config.profiles[name] : config.profiles[config.activeProvider];
   if (!profile) {
@@ -69,6 +78,9 @@ export async function handleProviderShow(name?: string, options: JsonOptions = {
 }
 
 export async function handleProviderSelect(name: string): Promise<void> {
+  if (isLegacyCodexOAuthProfileName(name)) {
+    throw new Error(legacyCodexOAuthMigrationMessage(name));
+  }
   const { config } = await loadGlobalConfig();
   const profile = config.profiles[name];
   if (!profile) {
@@ -80,13 +92,26 @@ export async function handleProviderSelect(name: string): Promise<void> {
 }
 
 export async function handleProviderAuth(nameOrKey?: string, maybeKey?: string): Promise<void> {
+  if (isLegacyCodexOAuthProfileName(nameOrKey)) {
+    throw new Error(legacyCodexOAuthMigrationMessage(nameOrKey));
+  }
   const { config } = await loadGlobalConfig();
   const explicitProfile = nameOrKey && config.profiles[nameOrKey] ? config.profiles[nameOrKey] : undefined;
   const profile = explicitProfile ?? config.profiles[config.activeProvider];
   const key = explicitProfile ? maybeKey : nameOrKey;
   const secretKey = authSecretKey(profile);
+  const resolved = await resolveProviderAuth(profile);
+  if (resolved.status === 'unsupported') {
+    console.log(`Auth for ${profile.name}: UNSUPPORTED — ${resolved.message}`);
+    return;
+  }
 
   if (!secretKey) {
+    if (profile.authType === 'delegated') {
+      console.log(`Provider ${profile.name} uses delegated Codex CLI auth. ${resolved.message}`);
+      console.log('Authenticate with: codex login');
+      return;
+    }
     console.log(`Provider ${profile.name} does not require stored auth.`);
     return;
   }
@@ -124,6 +149,7 @@ export async function handleProviderModelSet(role: string, model: string): Promi
   }
   const { config } = await loadGlobalConfig();
   const profile = config.profiles[config.activeProvider];
+  assertModelCompatibleWithProfile(profile, model);
   profile.models[role] = model;
   profile.isCustom = isProfileCustom(profile);
   applyActiveProfile(config, profile);
@@ -147,6 +173,8 @@ export async function handleProviderModelReset(): Promise<void> {
 export function printProviderPanel(state: ProviderPanelState): void {
   console.log(chalk.bold.cyan('Provider'));
   console.log(`  Active: ${state.active.name} (${state.active.isCustom ? 'custom' : 'preset'})`);
+  console.log(`  Kind:   ${state.active.providerKind ?? 'openai-compatible'} / ${toolSupportForProfile(state.active)}`);
+  console.log(`  Reason: ${reasoningControlForProfile(state.active)}`);
   console.log(`  Auth:   ${state.auth.state} — ${state.auth.detail}`);
   console.log(`  API:    ${state.active.baseUrl}`);
   printModels(state.active);
@@ -156,9 +184,27 @@ function printProviderProfile(profile: ProviderProfile, auth: ProviderPanelState
   console.log(chalk.bold.cyan(`Provider: ${profile.name}${active ? ' (active)' : ''}`));
   console.log(`  Label:  ${profile.label}`);
   console.log(`  Preset: ${profile.isCustom ? 'custom' : profile.preset}`);
+  console.log(`  Kind:   ${profile.providerKind ?? 'openai-compatible'} / ${toolSupportForProfile(profile)}`);
+  console.log(`  Reason: ${reasoningControlForProfile(profile)}`);
   console.log(`  Auth:   ${auth.state} — ${auth.detail}`);
   console.log(`  API:    ${profile.baseUrl}`);
   printModels(profile);
+}
+
+function toolSupportForProfile(profile: ProviderProfile): string {
+  switch (profile.providerKind ?? 'openai-compatible') {
+    case 'codex-sdk':
+      return 'tool-free; use --no-tools';
+    case 'local':
+      return 'tool-capable when the local server supports tool calls';
+    case 'anthropic':
+    case 'openai-compatible':
+      return 'tool-capable';
+  }
+}
+
+function reasoningControlForProfile(profile: ProviderProfile): string {
+  return profile.reasoningControl ?? 'none';
 }
 
 function printModels(profile: ProviderProfile): void {
@@ -172,13 +218,24 @@ async function resolveAuthStatus(profile: ProviderProfile): Promise<ProviderPane
   if (profile.authType === 'none') {
     return { state: 'NONE', detail: 'no auth required' };
   }
+  const resolved = await resolveProviderAuth(profile);
+  if (resolved.status === 'unsupported') {
+    return { state: 'UNSUPPORTED', detail: resolved.message };
+  }
+  if (profile.authType === 'delegated') {
+    return {
+      state: resolved.status === 'ok' ? 'DELEGATED' : 'MISSING',
+      detail: resolved.status === 'ok'
+        ? `Codex CLI delegated auth ready: ${resolved.message}`
+        : `${resolved.message} Run: codex login`,
+    };
+  }
   if (profile.authType === 'oauth') {
     const token = profile.oauthProvider ? await getOAuthToken(profile.oauthProvider) : undefined;
     if (token) {
       return { state: 'OK', detail: `${profile.oauthProvider ?? 'oauth'} token found` };
     }
-    const env = profile.oauthProvider === 'codex' ? 'CODEX_TOKEN' : 'ANTHROPIC_AUTH_TOKEN';
-    return { state: 'MISSING', detail: `set ${env} or run harness provider auth ${profile.name} <token>` };
+    return { state: 'MISSING', detail: `set ANTHROPIC_AUTH_TOKEN or run harness provider auth ${profile.name} <token>` };
   }
 
   const keyName = profile.keyName ?? authSecretKey(profile);
@@ -194,9 +251,51 @@ async function resolveAuthStatus(profile: ProviderProfile): Promise<ProviderPane
 function authSecretKey(profile: ProviderProfile): string | undefined {
   if (profile.authType === 'api-key') return profile.keyName;
   if (profile.authType === 'oauth') {
-    return profile.oauthProvider === 'codex' ? 'CODEX_TOKEN' : 'ANTHROPIC_AUTH_TOKEN';
+    return profile.oauthProvider === 'claude-code' ? 'ANTHROPIC_AUTH_TOKEN' : undefined;
   }
   return undefined;
+}
+
+function assertModelCompatibleWithProfile(profile: ProviderProfile, model: string): void {
+  const trimmed = model.trim();
+  if (!trimmed) {
+    throw new Error('Model id cannot be empty.');
+  }
+
+  const normalized = trimmed.toLowerCase();
+  const baseUrl = profile.baseUrl.toLowerCase();
+  const kind = profile.providerKind ?? 'openai-compatible';
+
+  if (kind === 'local') return;
+
+  if (kind === 'codex-sdk') {
+    if (normalized.startsWith('gpt-') || normalized.includes('codex')) return;
+    throw incompatibleModel(profile, model, 'Codex SDK profiles expect Codex-compatible OpenAI model ids such as gpt-*.');
+  }
+
+  if (kind === 'anthropic') {
+    if (normalized.startsWith('claude-')) return;
+    throw incompatibleModel(profile, model, 'Anthropic profiles expect claude-* model ids.');
+  }
+
+  if (profile.name === 'deepseek-direct' || baseUrl.includes('api.deepseek.com')) {
+    if (normalized.startsWith('deepseek-')) return;
+    throw incompatibleModel(profile, model, 'Direct DeepSeek profiles expect deepseek-* model ids.');
+  }
+
+  if (profile.name === 'openrouter-deepseek') {
+    if (normalized.startsWith('deepseek/')) return;
+    throw incompatibleModel(profile, model, 'Use openrouter-custom for non-DeepSeek OpenRouter model ids.');
+  }
+
+  if (profile.name.startsWith('openai') || baseUrl.includes('api.openai.com')) {
+    if (normalized.startsWith('gpt-') || /^o\d/.test(normalized) || normalized.startsWith('chatgpt-')) return;
+    throw incompatibleModel(profile, model, 'OpenAI API-key profiles expect OpenAI model ids such as gpt-* or o*.');
+  }
+}
+
+function incompatibleModel(profile: ProviderProfile, model: string, detail: string): Error {
+  return new Error(`Model "${model}" is not compatible with provider profile "${profile.name}". ${detail}`);
 }
 
 function applyActiveProfile(config: GlobalHarnessConfig, profile: ProviderProfile): void {
@@ -208,11 +307,14 @@ function applyActiveProfile(config: GlobalHarnessConfig, profile: ProviderProfil
     baseUrl: profile.baseUrl,
     defaultModel: profile.models.fast,
     fallbackModel: profile.fallbackModel,
+    providerKind: profile.providerKind,
     authType: profile.authType,
     keyName: profile.keyName,
     oauthProvider: profile.oauthProvider,
+    delegatedAuthProvider: profile.delegatedAuthProvider,
     apiPath: profile.apiPath,
     anthropicFormat: profile.anthropicFormat,
+    reasoningControl: profile.reasoningControl,
   };
 }
 

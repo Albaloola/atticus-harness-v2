@@ -12,7 +12,7 @@ export type {
 export type { MessageRole, LLMMessage, ToolCall } from './message.js';
 export type { Tool, ToolUseContext, ToolResult, ToolDefinition } from './tool.js';
 export type { SkillDefinition, SkillFrontmatter } from './skill.js';
-export type { LLMConfig, LLMRequest, LLMResponse, LLMUsage, LLMToolUse } from './llm.js';
+export type { LLMConfig, LLMRequest, LLMResponse, LLMUsage, LLMToolUse, ReasoningEffort } from './llm.js';
 export type { AgentConfig, AgentTurn, ToolCallResult, AgentResult } from './agent.js';
 export type { SearchQuery, SearchResult, FtsMatch } from './search.js';
 export type { CitationSupportStatus, CitationCheck, CitationResult } from './citation.js';

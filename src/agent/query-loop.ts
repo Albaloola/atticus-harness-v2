@@ -1,9 +1,10 @@
 import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
-import { OpenRouterClient } from '../llm/client.js';
+import { OpenRouterClient, type LLMClient } from '../llm/client.js';
 import { DEFAULT_MODEL } from '../llm/config.js';
 import type { AgentTurn, ToolCallResult } from '../types/agent.js';
 import type { LLMMessage } from '../types/message.js';
+import type { ReasoningEffort } from '../types/llm.js';
 import type { ToolUseContext } from '../types/tool.js';
 import type { ToolRegistry } from '../tools/index.js';
 import { appendEvent } from '../state/events.js';
@@ -16,10 +17,13 @@ export interface QueryLoopConfig {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: ReasoningEffort;
   maxTurns?: number;
   systemPrompt: string;
   tools: ToolRegistry;
+  toolMode?: 'auto' | 'disabled';
   matterName?: string;
+  providerName?: string;
   runId?: string;
   taskId?: string;
   role?: string;
@@ -39,13 +43,13 @@ export interface QueryLoopResult {
 }
 
 export class QueryLoop {
-  private client: OpenRouterClient;
+  private client: LLMClient;
   private toolRegistry: ToolRegistry;
   private config: QueryLoopConfig;
   private history: LLMMessage[];
   private turns: AgentTurn[];
 
-  constructor(config: QueryLoopConfig, client?: OpenRouterClient) {
+  constructor(config: QueryLoopConfig, client?: LLMClient) {
     this.config = config;
     this.client = client ?? new OpenRouterClient();
     this.toolRegistry = config.tools;
@@ -63,7 +67,23 @@ export class QueryLoop {
         console.log(`\n[Turn ${turnCount}/${maxTurns}]`);
       }
 
-      const tools = this.toolRegistry.getAllDefinitions();
+      const tools = this.config.toolMode === 'disabled'
+        ? []
+        : this.toolRegistry.getAllDefinitions();
+      if (tools.length > 0 && this.client.capabilities?.tools === false) {
+        const providerName = this.config.providerName ?? 'selected provider';
+        const message = `Provider ${providerName} does not support Harness-owned tool calls in this profile; run with --no-tools or select a tool-capable provider profile.`;
+        if (!this.config.quietMode) {
+          console.error(`  [LLM Error] ${message}`);
+        }
+        return {
+          turns: this.turns,
+          history: this.history,
+          finalContent: '',
+          status: 'error',
+          error: message,
+        };
+      }
       this.compactHistoryIfNeeded();
 
       let response;
@@ -75,7 +95,8 @@ export class QueryLoop {
             model: this.config.model || DEFAULT_MODEL,
             temperature: this.config.temperature ?? 0.1,
             maxTokens: this.config.maxTokens ?? 8192,
-            disableThinking: true,
+            reasoningEffort: this.config.reasoningEffort,
+            disableThinking: this.config.reasoningEffort ? this.config.reasoningEffort === 'none' : true,
           },
         });
       } catch (err: unknown) {
@@ -95,6 +116,7 @@ export class QueryLoop {
       this.history.push({
         role: 'assistant',
         content: response.content || '',
+        reasoningContent: response.reasoningContent,
         toolCalls: response.toolCalls,
       });
 

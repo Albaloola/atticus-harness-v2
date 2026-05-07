@@ -1,5 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { OpenAICompatibleClient, AnthropicClient } from '../../src/llm/index.ts';
+const codexSdkMock = vi.hoisted(() => ({
+  startThread: vi.fn(),
+  Codex: vi.fn(),
+}));
+
+vi.mock('@openai/codex-sdk', () => ({
+  Codex: codexSdkMock.Codex,
+}));
+
+import { OpenAICompatibleClient, AnthropicClient, CodexSdkClient } from '../../src/llm/index.ts';
 import { buildModelDelegationPrompt, selectModelForTask } from '../../src/llm/prompt-builder.ts';
 
 describe('OpenAICompatibleClient', () => {
@@ -59,6 +68,23 @@ describe('OpenAICompatibleClient', () => {
     expect(response.toolCalls?.[0]).toEqual({ id: 'call_1', name: 'lookup', args: { id: '123' } });
   });
 
+  it('sends OpenRouter app headers for OpenRouter profile aliases', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      providerName: 'openrouter-deepseek',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'hello' }],
+      config: { model: 'deepseek/deepseek-v4-flash' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.headers['HTTP-Referer']).toBe('https://github.com/atticus/harness-v2');
+    expect(init.headers['X-Title']).toBe('Harness v2');
+  });
+
   it('allows no auth for local providers and checks /models health', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200 });
     const client = new OpenAICompatibleClient({
@@ -71,6 +97,177 @@ describe('OpenAICompatibleClient', () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe('http://localhost:11434/v1/models');
     expect(init.headers.Authorization).toBeUndefined();
+  });
+
+  it('passes configured reasoning effort to OpenAI-compatible providers', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.test/v1',
+      providerName: 'openai',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'think carefully' }],
+      config: { model: 'gpt-test', reasoningEffort: 'xhigh' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.reasoning_effort).toBe('xhigh');
+    expect(body.reasoning).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+  });
+
+  it('maps reasoning effort none to disabled reasoning payloads', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.test/v1',
+      providerName: 'openai',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'answer directly' }],
+      config: { model: 'gpt-test', reasoningEffort: 'none' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.reasoning_effort).toBe('none');
+    expect(body.reasoning).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+  });
+
+  it('upgrades DeepSeek OpenRouter reasoning requests to maximum effort', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      providerName: 'openrouter-custom',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'think lightly' }],
+      config: { model: 'deepseek/deepseek-v4-pro', reasoningEffort: 'minimal' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.reasoning).toEqual({ effort: 'xhigh' });
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+  });
+
+  it('forces maximum reasoning for DeepSeek models through OpenRouter', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      providerName: 'openrouter-custom',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'answer with maximum reasoning' }],
+      config: { model: 'deepseek/deepseek-v4-flash' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.reasoning).toEqual({ effort: 'xhigh' });
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+  });
+
+  it('does not force reasoning for non-DeepSeek OpenRouter models', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      providerName: 'openrouter-custom',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'answer normally' }],
+      config: { model: 'anthropic/claude-sonnet-4' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.reasoning).toBeUndefined();
+    expect(body.reasoning_effort).toBeUndefined();
+    expect(body.thinking).toBeUndefined();
+  });
+
+  it('uses DeepSeek V4 thinking parameters without forcing OpenAI tool_choice', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.deepseek.com',
+      providerName: 'deepseek-direct',
+    });
+
+    await client.chatWithTools({
+      messages: [
+        { role: 'assistant', content: 'I need a lookup.', reasoningContent: 'reasoned about the lookup' },
+        { role: 'user', content: 'continue' },
+      ],
+      tools: [{ name: 'lookup', description: 'Lookup', inputSchema: { type: 'object' } }],
+      config: { model: 'deepseek-v4-pro', reasoningEffort: 'xhigh' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.thinking).toEqual({ type: 'enabled' });
+    expect(body.reasoning_effort).toBe('max');
+    expect(body.tool_choice).toBeUndefined();
+    expect(body.messages[0].reasoning_content).toBe('reasoned about the lookup');
+  });
+
+  it('keeps direct DeepSeek V4 thinking at maximum even when disable is requested', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.deepseek.com',
+      providerName: 'deepseek-direct',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'answer directly' }],
+      config: { model: 'deepseek-v4-flash', reasoningEffort: 'none', disableThinking: true },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.thinking).toEqual({ type: 'enabled' });
+    expect(body.reasoning_effort).toBe('max');
+  });
+
+  it('maps OpenAI-compatible cached and reasoning usage details', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 7,
+          total_tokens: 17,
+          prompt_tokens_details: { cached_tokens: 4 },
+          completion_tokens_details: { reasoning_tokens: 3 },
+        },
+      }),
+    });
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.openai.test/v1',
+      providerName: 'openai',
+    });
+
+    const response = await client.chat({
+      messages: [{ role: 'user', content: 'hello' }],
+      config: { model: 'gpt-test' },
+    });
+
+    expect(response.usage).toMatchObject({
+      promptTokens: 10,
+      completionTokens: 7,
+      totalTokens: 17,
+      cacheHitTokens: 4,
+      reasoningOutputTokens: 3,
+    });
   });
 });
 
@@ -119,13 +316,206 @@ describe('AnthropicClient', () => {
     expect(response.toolCalls?.[0]).toEqual({ id: 'toolu_1', name: 'search', args: { q: 'x' } });
     expect(response.usage?.totalTokens).toBe(10);
   });
+
+  it('maps reasoning effort to Anthropic thinking budgets for non-tool calls', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        content: [{ type: 'text', text: 'done' }],
+        usage: { input_tokens: 4, output_tokens: 6 },
+        model: 'claude-test',
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AnthropicClient({ apiKey: 'anthropic-key' });
+    await client.chat({
+      messages: [{ role: 'user', content: 'analyze deeply' }],
+      config: { model: 'claude-test', maxTokens: 10000, reasoningEffort: 'medium' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.thinking).toEqual({ type: 'enabled', budget_tokens: 8192 });
+    expect(body.max_tokens).toBe(10000);
+  });
+
+  it('uses Anthropic adaptive thinking for models that require it', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        content: [{ type: 'text', text: 'done' }],
+        usage: { input_tokens: 4, output_tokens: 6 },
+        model: 'claude-opus-4-7',
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AnthropicClient({ apiKey: 'anthropic-key' });
+    await client.chat({
+      messages: [{ role: 'user', content: 'analyze deeply' }],
+      config: { model: 'claude-opus-4-7', maxTokens: 10000, reasoningEffort: 'xhigh' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.thinking).toEqual({ type: 'adaptive' });
+    expect(body.output_config).toEqual({ effort: 'xhigh' });
+    expect(body.max_tokens).toBe(10000);
+  });
+});
+
+describe('CodexSdkClient', () => {
+  beforeEach(() => {
+    codexSdkMock.Codex.mockReset();
+    codexSdkMock.startThread.mockReset();
+    codexSdkMock.Codex.mockImplementation(() => ({
+      startThread: codexSdkMock.startThread,
+    }));
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('runs streamed SDK calls with restrictive options and maps final response usage', async () => {
+    const runStreamed = mockCodexRun([
+      { type: 'thread.started', thread_id: 'thread-1' },
+      { type: 'turn.started' },
+      { type: 'item.completed', item: { id: 'msg-1', type: 'agent_message', text: '{"ok":true}' } },
+      {
+        type: 'turn.completed',
+        usage: {
+          input_tokens: 10,
+          cached_input_tokens: 4,
+          output_tokens: 6,
+          reasoning_output_tokens: 2,
+        },
+      },
+    ]);
+    const client = new CodexSdkClient({ workingDirectory: '/tmp/harness-test' });
+
+    const response = await client.chat({
+      messages: [
+        { role: 'system', content: 'Be exact.' },
+        { role: 'user', content: 'Return JSON.' },
+      ],
+      config: {
+        model: 'gpt-5.5',
+        reasoningEffort: 'high',
+        jsonSchema: {
+          name: 'test_response',
+          schema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
+          strict: true,
+        },
+      },
+    });
+
+    expect(response.content).toBe('{"ok":true}');
+    expect(response.usage).toEqual({
+      promptTokens: 10,
+      completionTokens: 6,
+      totalTokens: 16,
+      cacheHitTokens: 4,
+      reasoningOutputTokens: 2,
+    });
+    expect(codexSdkMock.startThread).toHaveBeenCalledWith({
+      model: 'gpt-5.5',
+      sandboxMode: 'read-only',
+      workingDirectory: '/tmp/harness-test',
+      modelReasoningEffort: 'high',
+      networkAccessEnabled: false,
+      webSearchMode: 'disabled',
+      webSearchEnabled: false,
+      approvalPolicy: 'never',
+      additionalDirectories: [],
+    });
+    expect(codexSdkMock.Codex).toHaveBeenCalledWith({
+      codexPathOverride: undefined,
+      env: expect.objectContaining({
+        HOME: expect.any(String),
+        PATH: expect.any(String),
+      }),
+    });
+    expect(runStreamed.mock.calls[0][1].outputSchema).toEqual({
+      type: 'object',
+      properties: { ok: { type: 'boolean' } },
+      required: ['ok'],
+    });
+  });
+
+  it('rejects Harness-owned tools before invoking the SDK', async () => {
+    const client = new CodexSdkClient();
+
+    await expect(client.chatWithTools({
+      messages: [{ role: 'user', content: 'use a tool' }],
+      tools: [{ name: 'search', description: 'Search', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    })).rejects.toThrow(/does not support Harness-owned tool calls in this profile.*tool-capable provider profile/);
+
+    expect(codexSdkMock.Codex).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['command_execution', { command: 'pwd', aggregated_output: '', status: 'in_progress' }],
+    ['file_change', { changes: [{ path: 'x', kind: 'update' }], status: 'completed' }],
+    ['mcp_tool_call', { server: 'srv', tool: 'lookup', arguments: {}, status: 'in_progress' }],
+    ['web_search', { query: 'latest rule' }],
+  ])('fails closed on native Codex %s events', async (type, payload) => {
+    mockCodexRun([{ type: 'item.started', item: { id: 'native-1', type, ...payload } }]);
+    const client = new CodexSdkClient();
+
+    await expect(client.chat({
+      messages: [{ role: 'user', content: 'hello' }],
+      config: { model: 'gpt-5.5' },
+    })).rejects.toThrow(`attempted native action "${type}"`);
+  });
+
+  it('does not pass Harness provider secrets into the Codex child environment', async () => {
+    const original = {
+      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      CODEX_TOKEN: process.env.CODEX_TOKEN,
+    };
+    process.env.OPENROUTER_API_KEY = 'openrouter-secret';
+    process.env.OPENAI_API_KEY = 'openai-secret';
+    process.env.DEEPSEEK_API_KEY = 'deepseek-secret';
+    process.env.ANTHROPIC_API_KEY = 'anthropic-secret';
+    process.env.CODEX_TOKEN = 'codex-secret';
+    mockCodexRun([
+      { type: 'item.completed', item: { id: 'msg-1', type: 'agent_message', text: 'ok' } },
+    ]);
+    const client = new CodexSdkClient();
+
+    try {
+      await client.chat({
+        messages: [{ role: 'user', content: 'hello' }],
+        config: { model: 'gpt-5.5' },
+      });
+
+      const options = codexSdkMock.Codex.mock.calls[0][0];
+      expect(options.env.OPENROUTER_API_KEY).toBeUndefined();
+      expect(options.env.OPENAI_API_KEY).toBeUndefined();
+      expect(options.env.DEEPSEEK_API_KEY).toBeUndefined();
+      expect(options.env.ANTHROPIC_API_KEY).toBeUndefined();
+      expect(options.env.CODEX_TOKEN).toBeUndefined();
+      expect(options.env.HOME).toBe(process.env.HOME);
+    } finally {
+      for (const [key, value] of Object.entries(original)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
 });
 
 describe('model delegation prompt builder', () => {
   const profile = {
-    label: 'openai-codex-oauth',
-    preset: 'openai-codex-oauth',
-    baseUrl: 'https://api.openai.com/v1',
+    label: 'codex-sdk',
+    preset: 'codex-sdk',
+    baseUrl: 'codex://local',
     models: {
       fast: 'gpt-fast',
       reasoning: 'gpt-reasoning',
@@ -138,7 +528,7 @@ describe('model delegation prompt builder', () => {
 
   it('builds a cost-free model delegation prompt', () => {
     const prompt = buildModelDelegationPrompt(profile);
-    expect(prompt).toContain('openai-codex-oauth');
+    expect(prompt).toContain('codex-sdk');
     expect(prompt).toContain('- reasoning');
     expect(prompt).not.toMatch(/\$|cost|price|pricing|currency/i);
   });
@@ -150,3 +540,17 @@ describe('model delegation prompt builder', () => {
     expect(selectModelForTask('unknown', profile)).toBe('gpt-fast');
   });
 });
+
+function mockCodexRun(events: Array<Record<string, unknown>>): ReturnType<typeof vi.fn> {
+  const runStreamed = vi.fn(async () => ({
+    events: eventStream(events),
+  }));
+  codexSdkMock.startThread.mockReturnValue({ runStreamed });
+  return runStreamed;
+}
+
+async function* eventStream(events: Array<Record<string, unknown>>): AsyncGenerator<Record<string, unknown>> {
+  for (const event of events) {
+    yield event;
+  }
+}

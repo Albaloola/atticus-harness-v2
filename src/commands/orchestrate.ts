@@ -4,16 +4,19 @@ export default async function orchestrateHandler(
   matterName: string,
   options: { objective?: string; background?: boolean; json?: boolean; maxDepth?: string; concurrency?: string }
 ): Promise<void> {
-  console.log(chalk.cyan(`Orchestrating ${matterName}...`));
-  if (options.objective) console.log(chalk.gray(`  Objective: ${options.objective}`));
-  console.log(chalk.gray(`  Max depth: ${options.maxDepth || '3'}`));
-  console.log(chalk.gray(`  Concurrency: ${options.concurrency || '4'}`));
-
   try {
+    const maxDepth = parsePositiveIntegerOption('max depth', options.maxDepth, 3);
+    const concurrency = parsePositiveIntegerOption('concurrency', options.concurrency, 4);
+
+    console.log(chalk.cyan(`Orchestrating ${matterName}...`));
+    if (options.objective) console.log(chalk.gray(`  Objective: ${options.objective}`));
+    console.log(chalk.gray(`  Max depth: ${maxDepth}`));
+    console.log(chalk.gray(`  Concurrency: ${concurrency}`));
+
     if (options.background) {
       const { spawnBackgroundHarness } = await import('../daemon/background.js');
       const { appendEvent } = await import('../state/events.js');
-      const args = ['orchestrate', matterName, '--max-depth', options.maxDepth || '3', '--concurrency', options.concurrency || '4'];
+      const args = ['orchestrate', matterName, '--max-depth', String(maxDepth), '--concurrency', String(concurrency)];
       if (options.objective) args.push('--objective', options.objective);
       const background = spawnBackgroundHarness(args);
       await appendEvent({
@@ -40,8 +43,8 @@ export default async function orchestrateHandler(
     const orchestrator = new MasterOrchestrator({
       matterName,
       objective: options.objective,
-      maxDepth: parseInt(options.maxDepth || '3', 10),
-      maxConcurrency: parseInt(options.concurrency || '4', 10),
+      maxDepth,
+      maxConcurrency: concurrency,
     });
     const result = await orchestrator.run();
 
@@ -54,4 +57,13 @@ export default async function orchestrateHandler(
     console.error(chalk.red('Orchestration failed:'), (err as Error).message);
     process.exit(1);
   }
+}
+
+function parsePositiveIntegerOption(name: string, value: string | undefined, fallback: number): number {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  return parsed;
 }

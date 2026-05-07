@@ -2,6 +2,8 @@ import { join } from 'path';
 import type { AgentConfig, AgentResult } from '../types/agent.js';
 import { buildSystemPrompt } from './context.js';
 import { QueryLoop } from './query-loop.js';
+import { resolveConfig } from '../config/loader.js';
+import { createLLMClient } from '../llm/client.js';
 
 export class AgentLoop {
   private config: AgentConfig;
@@ -12,7 +14,14 @@ export class AgentLoop {
 
   async run(matterName: string, initialPrompt?: string): Promise<AgentResult> {
     const { ToolRegistry } = await import('../tools/index.js');
-    const toolRegistry = new ToolRegistry();
+    const toolRegistry = new ToolRegistry({
+      registerDefaults: this.config.toolMode !== 'disabled',
+    });
+    const resolvedConfig = await resolveConfig({
+      matterName,
+      providerName: this.config.providerName,
+    });
+    const client = createLLMClient(resolvedConfig);
 
     let matterIndex;
     try {
@@ -34,16 +43,19 @@ export class AgentLoop {
     }
 
     const queryLoop = new QueryLoop({
-      model: this.config.model,
+      model: resolvedConfig.model || this.config.model,
       temperature: this.config.temperature,
+      maxTokens: this.config.maxTokens ?? 8192,
+      reasoningEffort: this.config.reasoningEffort,
       maxTurns: this.config.maxTurns || 25,
-      maxTokens: 8192,
       systemPrompt,
       tools: toolRegistry,
+      toolMode: this.config.toolMode ?? 'auto',
       matterName,
+      providerName: resolvedConfig.providerName,
       quietMode: this.config.quietMode,
       verbose: this.config.verbose,
-    });
+    }, client);
 
     const result = await queryLoop.run(userMessage);
 

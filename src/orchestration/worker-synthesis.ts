@@ -1,5 +1,6 @@
-import { OpenRouterClient } from '../llm/client.js';
+import { createLLMClient, type LLMClient } from '../llm/client.js';
 import { PRO_MODEL } from '../llm/config.js';
+import { resolveConfig } from '../config/loader.js';
 import { parseStructuredResult } from '../agent/result-schema.js';
 import type { LLMResponse } from '../types/llm.js';
 import type { LLMMessage } from '../types/message.js';
@@ -7,7 +8,7 @@ import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
 import type { QueryLoopResult } from '../agent/query-loop.js';
 
 export interface WorkerSynthesisClient {
-  chat(request: Parameters<OpenRouterClient['chat']>[0]): Promise<LLMResponse>;
+  chat(request: Parameters<LLMClient['chat']>[0]): Promise<LLMResponse>;
 }
 
 export async function synthesizeWorkerOutput(params: {
@@ -18,7 +19,8 @@ export async function synthesizeWorkerOutput(params: {
 }): Promise<AgentStructuredResult> {
   const transcript = buildTranscriptExcerpt(params.loopResult.history);
   const deterministic = makeDeterministicResult(params.spawn, params.loopResult, transcript);
-  const client = params.client ?? new OpenRouterClient();
+  const resolvedConfig = params.client ? undefined : await resolveConfig({ matterName: params.spawn.matterName });
+  const client = params.client ?? createLLMClient(resolvedConfig!);
 
   try {
     const response = await client.chat({
@@ -44,7 +46,7 @@ export async function synthesizeWorkerOutput(params: {
         },
       ],
       config: {
-        model: params.model || PRO_MODEL,
+        model: params.model || resolvedConfig?.model || PRO_MODEL,
         temperature: 0,
         maxTokens: 4096,
         disableThinking: true,

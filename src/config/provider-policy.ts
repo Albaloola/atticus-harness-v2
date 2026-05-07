@@ -57,7 +57,12 @@ export function evaluateProviderPolicy(params: {
   if (policy.requireExplicitModel !== false && !model) {
     return { allowed: false, providerName, model, reason: 'model is not explicit' };
   }
-  if (params.requestedFallback || (!policy.allowFallback && providerConfig.fallbackModel && model === providerConfig.fallbackModel)) {
+  const roleModels = new Set(Object.values(policy.models).filter(Boolean));
+  const selectedModelIsPrimary = roleModels.has(model);
+  if (
+    params.requestedFallback ||
+    (!policy.allowFallback && providerConfig.fallbackModel && model === providerConfig.fallbackModel && !selectedModelIsPrimary)
+  ) {
     return { allowed: false, providerName, model, reason: 'fallback model is not explicitly allowed' };
   }
   if ((policy.deniedModels ?? []).includes(model)) {

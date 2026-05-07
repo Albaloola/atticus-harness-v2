@@ -18,9 +18,11 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     name: 'openrouter-deepseek',
     label: 'OpenRouter DeepSeek',
     preset: 'openrouter-deepseek',
+    providerKind: 'openai-compatible',
     authType: 'api-key',
     keyName: 'OPENROUTER_API_KEY',
     baseUrl: 'https://openrouter.ai/api/v1',
+    reasoningControl: 'openrouter-reasoning',
     models: {
       fast: 'deepseek/deepseek-v4-flash',
       reasoning: 'deepseek/deepseek-v4-pro',
@@ -32,31 +34,35 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     fallbackModel: 'deepseek/deepseek-v4-pro',
     isCustom: false,
   },
-  'openai-codex-oauth': {
-    name: 'openai-codex-oauth',
-    label: 'OpenAI Codex OAuth',
-    preset: 'openai-codex-oauth',
-    authType: 'oauth',
-    oauthProvider: 'codex',
-    baseUrl: 'https://api.openai.com/v1',
+  'codex-sdk': {
+    name: 'codex-sdk',
+    label: 'Codex SDK (local delegated auth)',
+    preset: 'codex-sdk',
+    providerKind: 'codex-sdk',
+    authType: 'delegated',
+    delegatedAuthProvider: 'codex-cli',
+    baseUrl: 'codex://local',
+    reasoningControl: 'codex-sdk',
     models: {
-      fast: 'gpt-5.5-medium',
-      reasoning: 'gpt-5.5-xhigh',
-      drafting: 'gpt-5.4-medium',
-      reviewer: 'gpt-5.5-medium',
-      citation: 'gpt-5.4-mini',
-      cheap: 'gpt-5.4-mini',
+      fast: 'gpt-5.5',
+      reasoning: 'gpt-5.5',
+      drafting: 'gpt-5.5',
+      reviewer: 'gpt-5.5',
+      citation: 'gpt-5.5',
+      cheap: 'gpt-5.5',
     },
-    fallbackModel: 'gpt-5.4-medium',
+    fallbackModel: 'gpt-5.5',
     isCustom: false,
   },
   'openai-api-key': {
     name: 'openai-api-key',
     label: 'OpenAI API key',
     preset: 'openai-api-key',
+    providerKind: 'openai-compatible',
     authType: 'api-key',
     keyName: 'OPENAI_API_KEY',
     baseUrl: 'https://api.openai.com/v1',
+    reasoningControl: 'openai-reasoning',
     models: {
       fast: 'gpt-5.5-medium',
       reasoning: 'gpt-5.5-xhigh',
@@ -72,10 +78,12 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     name: 'anthropic-oauth',
     label: 'Anthropic OAuth',
     preset: 'anthropic-oauth',
+    providerKind: 'anthropic',
     authType: 'oauth',
     oauthProvider: 'claude-code',
     baseUrl: 'https://api.anthropic.com/v1',
     anthropicFormat: true,
+    reasoningControl: 'anthropic-thinking',
     models: {
       fast: 'claude-sonnet-4',
       reasoning: 'claude-opus-4',
@@ -91,10 +99,12 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     name: 'anthropic-api-key',
     label: 'Anthropic API key',
     preset: 'anthropic-api-key',
+    providerKind: 'anthropic',
     authType: 'api-key',
     keyName: 'ANTHROPIC_API_KEY',
     baseUrl: 'https://api.anthropic.com/v1',
     anthropicFormat: true,
+    reasoningControl: 'anthropic-thinking',
     models: {
       fast: 'claude-sonnet-4',
       reasoning: 'claude-opus-4',
@@ -110,26 +120,30 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     name: 'deepseek-direct',
     label: 'DeepSeek direct',
     preset: 'deepseek-direct',
+    providerKind: 'openai-compatible',
     authType: 'api-key',
     keyName: 'DEEPSEEK_API_KEY',
-    baseUrl: 'https://api.deepseek.com/v1',
+    baseUrl: 'https://api.deepseek.com',
+    reasoningControl: 'deepseek-thinking',
     models: {
-      fast: 'deepseek-chat',
-      reasoning: 'deepseek-reasoner',
-      drafting: 'deepseek-chat',
-      reviewer: 'deepseek-reasoner',
-      citation: 'deepseek-chat',
-      cheap: 'deepseek-chat',
+      fast: 'deepseek-v4-flash',
+      reasoning: 'deepseek-v4-pro',
+      drafting: 'deepseek-v4-pro',
+      reviewer: 'deepseek-v4-pro',
+      citation: 'deepseek-v4-flash',
+      cheap: 'deepseek-v4-flash',
     },
-    fallbackModel: 'deepseek-chat',
+    fallbackModel: 'deepseek-v4-flash',
     isCustom: false,
   },
   'ollama-local': {
     name: 'ollama-local',
     label: 'Ollama local',
     preset: 'ollama-local',
+    providerKind: 'local',
     authType: 'none',
     baseUrl: 'http://localhost:11434/v1',
+    reasoningControl: 'model-routing',
     models: {
       fast: 'llama3.2',
       reasoning: 'llama3.1:70b',
@@ -145,9 +159,11 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     name: 'openrouter-custom',
     label: 'OpenRouter custom',
     preset: 'openrouter-custom',
+    providerKind: 'openai-compatible',
     authType: 'api-key',
     keyName: 'OPENROUTER_API_KEY',
     baseUrl: 'https://openrouter.ai/api/v1',
+    reasoningControl: 'openrouter-reasoning',
     models: {
       fast: 'deepseek/deepseek-v4-flash',
       reasoning: 'deepseek/deepseek-v4-pro',
@@ -162,6 +178,19 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
 };
 
 export const PROVIDER_PRESETS = DEFAULT_PROVIDER_PROFILES;
+export const LEGACY_CODEX_OAUTH_PROFILE = 'openai-codex-oauth';
+
+export function isLegacyCodexOAuthProfileName(name: string | undefined): boolean {
+  return name === LEGACY_CODEX_OAUTH_PROFILE;
+}
+
+export function legacyCodexOAuthMigrationMessage(name = LEGACY_CODEX_OAUTH_PROFILE): string {
+  return [
+    `Provider "${name}" has been removed.`,
+    'Codex CLI OAuth is not an OpenAI REST credential.',
+    'Use the codex-sdk provider and authenticate with: codex login',
+  ].join(' ');
+}
 
 export function cloneDefaultProviderProfiles(): Record<string, ProviderProfile> {
   return structuredClone(DEFAULT_PROVIDER_PROFILES);
@@ -175,9 +204,11 @@ export function isPresetProfile(name: string): boolean {
 
 export function normalizeProviderProfiles(config: GlobalHarnessConfig): GlobalHarnessConfig {
   const hadProfiles = Boolean(config.profiles) && Object.keys(config.profiles ?? {}).length > 0;
+  const diskProfiles = { ...(config.profiles ?? {}) };
+  delete diskProfiles[LEGACY_CODEX_OAUTH_PROFILE];
   const profiles: Record<string, ProviderProfile> = {
     ...cloneDefaultProviderProfiles(),
-    ...(config.profiles ?? {}),
+    ...diskProfiles,
   };
 
   if (!hadProfiles) {
@@ -201,6 +232,7 @@ export function normalizeProviderProfiles(config: GlobalHarnessConfig): GlobalHa
     : DEFAULT_ACTIVE_PROVIDER;
   const activeProfile = profiles[activeProvider];
   const providers: GlobalHarnessConfig['providers'] = { ...(config.providers ?? {}) };
+  delete providers[LEGACY_CODEX_OAUTH_PROFILE];
   for (const profile of Object.values(profiles)) {
     providers[profile.name] = {
       ...providers[profile.name],
@@ -227,11 +259,14 @@ export function profileToProviderConfig(profile: ProviderProfile, apiKey?: strin
     fallbackModel: profile.fallbackModel,
     timeoutMs: 180_000,
     maxRetries: 3,
+    providerKind: profile.providerKind,
     authType: profile.authType,
     keyName: profile.keyName,
     oauthProvider: profile.oauthProvider,
+    delegatedAuthProvider: profile.delegatedAuthProvider,
     apiPath: profile.apiPath,
     anthropicFormat: profile.anthropicFormat,
+    reasoningControl: profile.reasoningControl,
   };
 }
 

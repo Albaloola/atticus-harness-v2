@@ -1,9 +1,11 @@
 import { loadSecrets, getOAuthToken } from './secrets.js';
 import { createLLMClient } from '../llm/client.js';
+import { checkCodexLoginStatus } from './codex-readiness.js';
 import { AuthError, LLMError } from '../llm/errors.js';
 import type { ProviderProfile, ResolvedHarnessConfig } from './schema.js';
+import { legacyCodexOAuthMigrationMessage, isLegacyCodexOAuthProfileName } from './presets.js';
 
-export type AuthStatus = 'ok' | 'missing' | 'unreachable' | 'rejected' | 'server_error';
+export type AuthStatus = 'ok' | 'missing' | 'unreachable' | 'rejected' | 'server_error' | 'unsupported';
 
 export interface ResolvedProviderAuth {
   status: AuthStatus;
@@ -28,6 +30,9 @@ function envKeyForProvider(providerName: string): string {
 }
 
 function authCommand(providerName: string): string {
+  if (providerName === 'codex-sdk') {
+    return 'codex login';
+  }
   return `harness control-panel provider auth or export ${envKeyForProvider(providerName)}=<key>`;
 }
 
@@ -35,9 +40,37 @@ function isResolvedConfig(value: ProviderProfile | ResolvedHarnessConfig): value
   return 'provider' in value && 'profile' in value && 'providerName' in value;
 }
 
+function isCodexOAuthProfile(profile: ProviderProfile): boolean {
+  return profile.authType === 'oauth' && profile.oauthProvider === 'codex';
+}
+
+function codexOAuthUnsupportedMessage(providerName: string): string {
+  return [
+    `Provider "${providerName}" uses removed Codex OAuth token auth.`,
+    'Use the codex-sdk provider with delegated Codex CLI auth: codex login.',
+    'For non-Codex runs, select a provider profile with its own auth method.',
+  ].join(' ');
+}
+
 export async function resolveProviderAuth(profile: ProviderProfile): Promise<ResolvedProviderAuth> {
+  if (isLegacyCodexOAuthProfileName(profile.name)) {
+    return {
+      status: 'unsupported',
+      source: 'codex',
+      message: legacyCodexOAuthMigrationMessage(profile.name),
+    };
+  }
+
   if (profile.authType === 'none') {
     return { status: 'ok', source: 'none', message: 'No auth required' };
+  }
+
+  if (isCodexOAuthProfile(profile)) {
+    return {
+      status: 'unsupported',
+      source: 'codex-cli',
+      message: codexOAuthUnsupportedMessage(profile.name),
+    };
   }
 
   if (profile.authType === 'api-key') {
@@ -57,18 +90,27 @@ export async function resolveProviderAuth(profile: ProviderProfile): Promise<Res
     };
   }
 
+  if (profile.authType === 'delegated') {
+    if (profile.delegatedAuthProvider !== 'codex-cli') {
+      return {
+        status: 'missing',
+        message: `No delegated auth provider configured for provider "${profile.name}".`,
+      };
+    }
+    const readiness = await checkCodexLoginStatus();
+    return {
+      status: readiness.status === 'ok' ? 'ok' : readiness.status,
+      source: 'codex-cli',
+      message: readiness.message,
+    };
+  }
+
   if (!profile.oauthProvider) {
     return { status: 'missing', message: `No OAuth provider configured for provider "${profile.name}".` };
   }
   const token = await getOAuthToken(profile.oauthProvider);
   if (token) {
     return { status: 'ok', token, source: profile.oauthProvider, message: `OAuth token found from ${profile.oauthProvider}` };
-  }
-  if (profile.oauthProvider === 'codex') {
-    return {
-      status: 'missing',
-      message: `No OAuth token found for provider "${profile.name}". Authenticate with Codex CLI first, or set CODEX_TOKEN env var.`,
-    };
   }
   return {
     status: 'missing',
@@ -121,9 +163,15 @@ async function healthCheckProfile(profile: ProviderProfile, token?: string, time
 
 export async function assertProviderReady(input: ProviderProfile | ResolvedHarnessConfig): Promise<ResolvedProviderAuth | void> {
   if (!isResolvedConfig(input)) {
+    if (isLegacyCodexOAuthProfileName(input.name)) {
+      throw new ProviderPreflightError(legacyCodexOAuthMigrationMessage(input.name), input.name);
+    }
     const auth = await resolveProviderAuth(input);
     if (auth.status !== 'ok') {
       throw new ProviderPreflightError(auth.message, input.name);
+    }
+    if (input.authType === 'delegated') {
+      return auth;
     }
     const health = await healthCheckProfile(input, auth.token);
     if (health.status !== 'ok') {
@@ -133,7 +181,17 @@ export async function assertProviderReady(input: ProviderProfile | ResolvedHarne
   }
 
   const config = input;
-  const authOptional = config.providerName === 'local' || config.providerName.includes('ollama') || config.profile.authType === 'none';
+  if (isLegacyCodexOAuthProfileName(config.providerName)) {
+    throw new ProviderPreflightError(legacyCodexOAuthMigrationMessage(config.providerName), config.providerName);
+  }
+  if (isCodexOAuthProfile(config.profile)) {
+    throw new ProviderPreflightError(codexOAuthUnsupportedMessage(config.providerName), config.providerName);
+  }
+  const authOptional =
+    config.providerName === 'local' ||
+    config.providerName.includes('ollama') ||
+    config.profile.authType === 'none' ||
+    config.profile.authType === 'delegated';
   if (!authOptional && !config.provider.apiKey) {
     throw new ProviderPreflightError(
       `No API key configured for provider "${config.providerName}". Set one with: ${authCommand(config.providerName)}`,

@@ -1,5 +1,6 @@
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
-import { OpenRouterClient } from '../llm/client.js';
+import { createLLMClient } from '../llm/client.js';
+import { resolveConfig } from '../config/loader.js';
 import { loadHumanizerPrompt } from '../skills/humanizer.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
 
@@ -65,14 +66,15 @@ Instructions:
 - Include a date and matter reference${humanizerPrompt}${selectedSkillPrompt}`;
 
     try {
-      const client = new OpenRouterClient();
+      const resolvedConfig = await resolveConfig({ matterName: args.matterName });
+      const client = createLLMClient(resolvedConfig);
       const response = await client.chat({
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Draft ${args.docType || 'a legal document'} based on the above brief and evidence.` },
         ],
         config: {
-          model: 'deepseek/deepseek-v4-flash',
+          model: resolvedConfig.providerPolicy.models.drafting ?? resolvedConfig.model,
           temperature: 0.2,
           maxTokens: 8192,
         },

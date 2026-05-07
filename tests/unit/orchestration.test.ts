@@ -21,16 +21,67 @@ vi.mock('../../src/llm/client.js', () => ({
       }),
       toolCalls: undefined,
     }),
+    chat: vi.fn().mockResolvedValue({ content: '{"status":"completed","summary":"Fake synthesis completed.","findings":[],"risks":[],"proposedTasks":[],"artifactIds":[],"nextActions":[]}' }),
+    healthCheck: vi.fn().mockResolvedValue(true),
+  })),
+  createLLMClient: vi.fn(() => ({
+    chatWithTools: vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        status: 'completed',
+        summary: 'Fake worker completed.',
+        findings: [],
+        risks: [],
+        proposedTasks: [],
+        artifactIds: [],
+        nextActions: [],
+      }),
+      toolCalls: undefined,
+    }),
+    chat: vi.fn().mockResolvedValue({ content: '{"status":"completed","summary":"Fake synthesis completed.","findings":[],"risks":[],"proposedTasks":[],"artifactIds":[],"nextActions":[]}' }),
+    healthCheck: vi.fn().mockResolvedValue(true),
   })),
 }));
 
+import { OpenRouterClient, createLLMClient } from '../../src/llm/client.js';
 import type { OrchestratorConfig } from '../../src/orchestration/master-orchestrator.js';
 import { MasterOrchestrator } from '../../src/orchestration/master-orchestrator.js';
+
+function mockWorkerStatus(status: 'completed' | 'blocked' | 'failed'): void {
+  const fakeClient = {
+    chatWithTools: vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        status,
+        summary: `Fake worker ${status}.`,
+        findings: [],
+        risks: [],
+        proposedTasks: [],
+        artifactIds: [],
+        nextActions: [],
+      }),
+      toolCalls: undefined,
+    }),
+    chat: vi.fn().mockResolvedValue({
+      content: JSON.stringify({
+        status,
+        summary: `Fake worker ${status}.`,
+        findings: [],
+        risks: [],
+        proposedTasks: [],
+        artifactIds: [],
+        nextActions: [],
+      }),
+    }),
+    healthCheck: vi.fn().mockResolvedValue(true),
+  };
+  vi.mocked(OpenRouterClient).mockImplementation(() => fakeClient as unknown as InstanceType<typeof OpenRouterClient>);
+  vi.mocked(createLLMClient).mockReturnValue(fakeClient as ReturnType<typeof createLLMClient>);
+}
 
 describe('MasterOrchestrator', () => {
   const matterName = 'test-orch-m';
 
   beforeEach(async () => {
+    mockWorkerStatus('completed');
     try { await initMatter(matterName); } catch {}
   });
 
@@ -141,6 +192,24 @@ describe('MasterOrchestrator', () => {
     expect(result.status).toBe('needs_followup');
     expect(result.summary).toContain('aborted');
     expect(result.phaseResults).toHaveLength(0);
+    expect((await loadMatter(matterName)).status).toBe('analyzing');
+    expect(orchestrator.getActiveRunCount()).toBe(0);
+  }, 30000);
+
+  it('surfaces blocked phase work as needs-followup instead of completed', async () => {
+    mockWorkerStatus('blocked');
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Blocked worker test',
+      maxDepth: 2,
+      maxConcurrency: 2,
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe('needs_followup');
+    expect(result.phaseResults.every((phase) => phase.status === 'blocked')).toBe(true);
+    expect(listTasks(matterName, { status: 'blocked' }).length).toBeGreaterThan(0);
     expect((await loadMatter(matterName)).status).toBe('analyzing');
     expect(orchestrator.getActiveRunCount()).toBe(0);
   }, 30000);

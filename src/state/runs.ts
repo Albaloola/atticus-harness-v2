@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import { getStateDb } from './store.js';
 import type { AgentRun, AgentRunStatus } from '../types/state.js';
 
+const DEFAULT_STALE_RUN_MS = 5 * 60 * 1000;
+
 export interface CreateRunParams {
   matterName: string;
   model: string;
@@ -16,6 +18,7 @@ export interface CreateRunParams {
 export function createRun(params: CreateRunParams): AgentRun {
   const db = getStateDb(params.matterName);
   const id = params.id || randomUUID();
+  const started = new Date().toISOString();
 
   const run: AgentRun = {
     id,
@@ -27,18 +30,20 @@ export function createRun(params: CreateRunParams): AgentRun {
     model: params.model,
     skill: params.skill,
     prompt: params.prompt,
-    started: new Date().toISOString(),
+    started,
+    heartbeatAt: started,
+    pid: process.pid,
     turns: 0,
     costUsd: 0,
   };
 
   db.prepare(
-    `INSERT INTO agent_runs (id, matter_name, parent_run_id, agent_type, role, status, model, skill, prompt, started, turns, cost_usd)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO agent_runs (id, matter_name, parent_run_id, agent_type, role, status, model, skill, prompt, started, heartbeat_at, pid, turns, cost_usd)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     run.id, run.matterName, run.parentRunId ?? null, run.agentType, run.role,
     run.status, run.model, run.skill ?? null, run.prompt ?? null,
-    run.started, run.turns, run.costUsd
+    run.started, run.heartbeatAt, run.pid ?? null, run.turns, run.costUsd
   );
 
   return run;
@@ -55,6 +60,7 @@ export function updateRun(
 
   const now = new Date().toISOString();
   const ended = updates.status && updates.status !== 'running' ? now : existing.ended;
+  const heartbeatAt = now;
 
   const updated: AgentRun = {
     ...existing,
@@ -62,23 +68,36 @@ export function updateRun(
     ...(updates.turns !== undefined ? { turns: updates.turns } : {}),
     ...(updates.summary !== undefined ? { summary: updates.summary } : {}),
     ...(updates.error !== undefined ? { error: updates.error } : {}),
+    heartbeatAt,
     ended,
   };
 
   db.prepare(
-    `UPDATE agent_runs SET status = ?, turns = ?, summary = ?, error = ?, ended = ?
+    `UPDATE agent_runs SET status = ?, turns = ?, summary = ?, error = ?, heartbeat_at = ?, ended = ?
      WHERE id = ? AND matter_name = ?`
   ).run(
     updated.status,
     updated.turns,
     updated.summary ?? null,
     updated.error ?? null,
+    updated.heartbeatAt ?? null,
     updated.ended ?? null,
     runId,
     matterName,
   );
 
   return updated;
+}
+
+export function heartbeatRun(matterName: string, runId: string, now: Date = new Date()): AgentRun | null {
+  const db = getStateDb(matterName);
+  const existing = getRun(matterName, runId);
+  if (!existing || existing.status !== 'running') return existing;
+  const heartbeatAt = now.toISOString();
+  db.prepare(
+    `UPDATE agent_runs SET heartbeat_at = ? WHERE id = ? AND matter_name = ?`
+  ).run(heartbeatAt, runId, matterName);
+  return { ...existing, heartbeatAt };
 }
 
 export function getRun(matterName: string, runId: string): AgentRun | null {
@@ -114,6 +133,65 @@ export function listRuns(
   return rows.map(rowToRun);
 }
 
+export interface CleanupStaleRunsOptions {
+  now?: Date;
+  staleAfterMs?: number;
+}
+
+export interface StaleRunRecovery {
+  runId: string;
+  role: string;
+  reason: string;
+}
+
+export function cleanupStaleRuns(
+  matterName: string,
+  options: CleanupStaleRunsOptions = {},
+): StaleRunRecovery[] {
+  const now = options.now ?? new Date();
+  const staleAfterMs = options.staleAfterMs ?? DEFAULT_STALE_RUN_MS;
+  const recovered: StaleRunRecovery[] = [];
+  for (const run of listRuns(matterName, { status: 'running' })) {
+    const reason = staleReason(run, now, staleAfterMs);
+    if (!reason) continue;
+    updateRun(matterName, run.id, {
+      status: 'error',
+      summary: `Run recovered as stale: ${reason}`,
+      error: reason,
+    });
+    recovered.push({ runId: run.id, role: run.role, reason });
+  }
+  return recovered;
+}
+
+export function isRunLive(run: AgentRun, now: Date = new Date(), staleAfterMs = DEFAULT_STALE_RUN_MS): boolean {
+  return run.status === 'running' && !staleReason(run, now, staleAfterMs);
+}
+
+function staleReason(run: AgentRun, now: Date, staleAfterMs: number): string | null {
+  if (run.status !== 'running') return null;
+  if (run.pid && !isProcessAlive(run.pid)) {
+    return `owner process ${run.pid} is not alive`;
+  }
+  const heartbeatAt = run.heartbeatAt ?? run.started;
+  const heartbeatMs = new Date(heartbeatAt).getTime();
+  if (Number.isFinite(heartbeatMs) && now.getTime() - heartbeatMs > staleAfterMs) {
+    return `heartbeat stale since ${heartbeatAt}`;
+  }
+  return null;
+}
+
+function isProcessAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'EPERM';
+  }
+}
+
 interface RunRow {
   id: string;
   matter_name: string;
@@ -125,6 +203,8 @@ interface RunRow {
   skill: string | null;
   prompt: string | null;
   started: string;
+  heartbeat_at: string | null;
+  pid: number | null;
   ended: string | null;
   turns: number;
   cost_usd: number;
@@ -144,6 +224,8 @@ function rowToRun(row: RunRow): AgentRun {
     skill: row.skill ?? undefined,
     prompt: row.prompt ?? undefined,
     started: row.started,
+    heartbeatAt: row.heartbeat_at ?? row.started,
+    pid: row.pid ?? undefined,
     ended: row.ended ?? undefined,
     turns: row.turns,
     costUsd: row.cost_usd ?? 0,

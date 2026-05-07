@@ -5,11 +5,14 @@ export {
 } from './client.js';
 export type {
   LLMClient,
+  LLMClientCapabilities,
   OpenAICompatibleClientOptions,
   OpenRouterClientOptions,
 } from './client.js';
 export { AnthropicClient } from './anthropic.js';
 export type { AnthropicClientOptions } from './anthropic.js';
+export { CodexSdkClient } from './codex-sdk.js';
+export type { CodexSdkClientOptions } from './codex-sdk.js';
 export { buildModelDelegationPrompt, selectModelForTask, MODEL_ROLE_DESCRIPTIONS } from './prompt-builder.js';
 export type { ModelDelegationProfile, ModelDelegationRole } from './prompt-builder.js';
 export {

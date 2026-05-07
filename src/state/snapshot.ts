@@ -3,7 +3,8 @@ import { listEvidence } from '../storage/evidence.js';
 import { listCandidates } from '../storage/candidate.js';
 import { listEvents, getEventCount } from './events.js';
 import { listTasks } from './tasks.js';
-import { listRuns } from './runs.js';
+import { isRunLive, listRuns } from './runs.js';
+import { recoverStaleRuntimeState } from './runtime-recovery.js';
 import type { MatterRuntimeSnapshot, TaskCounts, RuntimeCosts } from '../types/state.js';
 import type { MatterStatus } from '../types/matter.js';
 
@@ -11,6 +12,7 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
   const index = await loadMatter(matterName);
   const evidence = await listEvidence(matterName).catch(() => []);
   const candidates = await listCandidates(matterName).catch(() => []);
+  await recoverStaleRuntimeState(matterName);
 
   const tasks = listTasks(matterName);
   const runs = listRuns(matterName);
@@ -36,13 +38,14 @@ export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeS
 
   const activeAgents = runs
     .filter((r) => r.status === 'running')
+    .filter((r) => isRunLive(r))
     .filter((r) => !completedRunIds.has(r.id))
     .map((r) => ({
       runId: r.id,
       role: r.role,
       title: r.prompt || r.skill || `Agent run ${r.id.substring(0, 8)}`,
       status: r.status,
-      lastEventAt: r.started,
+      lastEventAt: r.heartbeatAt ?? r.started,
     }));
 
   const findings = allEvents

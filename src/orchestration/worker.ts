@@ -5,7 +5,9 @@ import { appendEvent } from '../state/events.js';
 import { buildWorkerPrompt } from './prompts.js';
 import { ToolRegistry } from '../tools/index.js';
 import { resolveConfig } from '../config/loader.js';
+import { createLLMClient } from '../llm/client.js';
 import { selectModelForTask } from '../config/model-routing.js';
+import { loadMatter } from '../storage/matter.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
 import { synthesizeWorkerOutput, type WorkerSynthesisClient } from './worker-synthesis.js';
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
@@ -234,6 +236,7 @@ export class WorkerAgent {
 
   private async executeQueryLoop(userMessage: string): Promise<QueryLoopResult> {
     const resolvedConfig = await resolveConfig({ matterName: this.spawn.matterName });
+    const matterIndex = await loadMatter(this.spawn.matterName).catch(() => undefined);
     const toolRegistry = new ToolRegistry({
       allowedTools: this.spawn.allowedTools,
       enforcePolicy: true,
@@ -251,9 +254,10 @@ export class WorkerAgent {
 
     const config: QueryLoopConfig = {
       model: this.config.model,
-      temperature: this.config.temperature ?? 0.1,
+      temperature: this.config.temperature ?? resolvedConfig.temperature ?? 0.1,
+      maxTokens: matterIndex?.config.maxTokens ?? resolvedConfig.maxTokens ?? 8192,
+      reasoningEffort: matterIndex?.config.reasoningEffort ?? resolvedConfig.reasoningEffort,
       maxTurns,
-      maxTokens: 8192,
       systemPrompt: buildWorkerPrompt({
         matterName: this.spawn.matterName,
         model: this.config.model,
@@ -265,6 +269,7 @@ export class WorkerAgent {
       }),
       tools: toolRegistry,
       matterName: this.spawn.matterName,
+      providerName: resolvedConfig.providerName,
       runId: this.run.id,
       taskId: this.spawn.taskId,
       role: this.spawn.role,
@@ -277,7 +282,7 @@ export class WorkerAgent {
       return this.config.queryLoopFactory(config).run(userMessage);
     }
 
-    const loop = new QueryLoop(config);
+    const loop = new QueryLoop(config, createLLMClient(resolvedConfig));
     return loop.run(userMessage);
   }
 

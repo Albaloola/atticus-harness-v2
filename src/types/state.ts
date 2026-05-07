@@ -104,6 +104,8 @@ export interface AgentRun {
   skill?: string;
   prompt?: string;
   started: string;
+  heartbeatAt?: string;
+  pid?: number;
   ended?: string;
   turns: number;
   costUsd: number;

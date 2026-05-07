@@ -4,6 +4,7 @@ import { createRun, updateRun } from '../state/runs.js';
 import { appendEvent } from '../state/events.js';
 import { DEFAULTS } from '../config/schema.js';
 import { selectModelForTask } from '../config/model-routing.js';
+import { DEFAULT_MAX_CONCURRENCY, normalizePositiveInteger, remainingDepth } from './limits.js';
 import type { MiniOrchestratorInput, AgentStructuredResult } from './types.js';
 
 export class MiniOrchestrator {
@@ -46,7 +47,8 @@ export class MiniOrchestrator {
 
       const workers = this.decompose(objective, phaseName);
       const results: AgentStructuredResult[] = [];
-      const limit = Math.min(maxConcurrency || 4, workers.length);
+      const limit = Math.min(normalizePositiveInteger(maxConcurrency, DEFAULT_MAX_CONCURRENCY), Math.max(workers.length, 1));
+      const childMaxDepth = remainingDepth(maxDepth, 1);
 
       for (let i = 0; i < workers.length; i += limit) {
         if (runtime?.isAborted()) break;
@@ -78,7 +80,7 @@ export class MiniOrchestrator {
                 objective: w.title,
                 allowedTools: ['read_file', 'search_files', 'exec_sqlite', 'evidence_search', 'draft', 'verify_citations'],
                 maxTurns: 15,
-                maxDepth: (maxDepth || 1) - 1,
+                maxDepth: childMaxDepth,
                 depth: 2,
                 phaseId: phaseName,
               },
@@ -92,13 +94,22 @@ export class MiniOrchestrator {
               runtime,
             });
 
-            updateTask(matterName, task.id, { status: 'in_progress' } as Parameters<typeof updateTask>[2]);
+            updateTask(matterName, task.id, {
+              status: 'in_progress',
+              runId: worker.getRunId,
+            } as Parameters<typeof updateTask>[2]);
             const result = await worker.execute();
 
             if (result.status === 'failed') {
-              updateTask(matterName, task.id, { status: 'failed' } as Parameters<typeof updateTask>[2]);
+              updateTask(matterName, task.id, {
+                status: 'failed',
+                data: { failureReason: result.summary },
+              } as Parameters<typeof updateTask>[2]);
             } else if (result.status === 'blocked' || result.status === 'needs_followup') {
-              updateTask(matterName, task.id, { status: 'blocked' } as Parameters<typeof updateTask>[2]);
+              updateTask(matterName, task.id, {
+                status: 'blocked',
+                data: { blockReason: result.summary },
+              } as Parameters<typeof updateTask>[2]);
             } else {
               updateTask(matterName, task.id, { status: 'completed' } as Parameters<typeof updateTask>[2]);
             }
@@ -109,7 +120,7 @@ export class MiniOrchestrator {
         results.push(...batchResults);
       }
 
-      const synthesized = this.synthesize(phaseName, objective, results);
+      const synthesized = this.synthesize(phaseName, objective, workers.length, results, Boolean(runtime?.isAborted()));
       updateRun(matterName, miniRun.id, {
         status: synthesized.status === 'failed' ? 'error' : synthesized.status === 'blocked' ? 'blocked' : 'completed',
         summary: synthesized.summary,
@@ -230,7 +241,9 @@ export class MiniOrchestrator {
   private synthesize(
     _phase: string,
     objective: string,
-    results: AgentStructuredResult[]
+    workerCount: number,
+    results: AgentStructuredResult[],
+    aborted: boolean,
   ): AgentStructuredResult {
     const allFindings = results.flatMap((r) => r.findings);
     const allRisks = results.flatMap((r) => r.risks);
@@ -239,17 +252,18 @@ export class MiniOrchestrator {
     const allActions = results.flatMap((r) => r.nextActions || []);
 
     const failed = results.filter((r) => r.status === 'failed');
-    const blocked = results.filter((r) => r.status === 'blocked');
-    const allOk = failed.length === 0 && blocked.length === 0;
+    const blocked = results.filter((r) => r.status === 'blocked' || r.status === 'needs_followup');
+    const incomplete = aborted || results.length < workerCount;
+    const allOk = failed.length === 0 && blocked.length === 0 && !incomplete;
 
     return {
       status: allOk ? 'completed' : (failed.length > 0 ? 'failed' : 'blocked'),
-      summary: `Phase synthesis: ${results.length} workers, ${allFindings.length} findings, ${allRisks.length} risks`,
+      summary: `Phase synthesis: ${results.length}/${workerCount} workers, ${allFindings.length} findings, ${allRisks.length} risks${incomplete ? '; phase stopped before all workers completed' : ''}`,
       findings: allFindings.slice(0, 20),
       risks: allRisks.slice(0, 20),
       proposedTasks: allTasks.slice(0, 10),
       artifactIds: allArtifacts.slice(0, 20),
-      nextActions: allActions.slice(0, 10),
+      nextActions: (incomplete ? ['Resume or rerun the phase'] : allActions).slice(0, 10),
     };
   }
 }

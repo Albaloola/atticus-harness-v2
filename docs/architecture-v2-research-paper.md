@@ -8,7 +8,7 @@
 
 ## Abstract
 
-Atticus Harness V2 is a terminal-native TypeScript legal agent CLI. It optimises for operator ergonomics and agent execution: matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, OpenRouter tool-calling loops, hierarchical master/mini/worker orchestration, source snapshotting, citation verification, quality gates, review quorum, daemon scheduling, and bundled legal skills.
+Atticus Harness V2 is a terminal-native TypeScript legal agent CLI. It optimises for operator ergonomics and agent execution: matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, provider-routed tool-calling loops, provider-native reasoning controls, hierarchical master/mini/worker orchestration, source snapshotting, citation verification, quality gates, review quorum, daemon scheduling, and bundled legal skills.
 
 The current V2 architecture now also ports key governance invariants from the earlier control-plane design: reducer packets, task leases with fencing tokens, fail-closed provider policy semantics, explicit state migration registries, and read-only operator control-panel/monitor commands. The centre of gravity remains the CLI-driven agent runtime and matter workspace, but safety-critical transitions are increasingly represented in durable state rather than implicit TypeScript control flow alone.
 
@@ -66,7 +66,7 @@ flowchart TB
     Matter[matters/<name>/\n_index, _config, evidence, extractions, candidates, artifacts, _state]
     State[(State SQLite + events.jsonl\nevents/tasks/runs/sources/citations/jobs/kv\nleases/reducer packets/migrations)]
     Evidence[(Evidence SQLite FTS5\nevidence + chunks + evidence_fts)]
-    Agent[QueryLoop\nOpenRouter tool-calling]
+    Agent[QueryLoop\nprovider-routed tool-calling]
     Tools[ToolRegistry\nread/write/search/sqlite/evidence/draft/verify/review/gate/web]
     Orch[Master -> Mini -> Worker\n10 legal phases]
     Accept[Acceptance\ngate score + quorum + auto-accept]
@@ -113,11 +113,11 @@ flowchart TB
 | `src/state/reducer-packets.ts`, `src/reducer/canonical-writer.ts` | Explicit reducer decisions between candidate artifacts and accepted canonical artifacts. |
 | `src/storage/sqlite/*` | Evidence index with `evidence`, `extraction_chunks`, and FTS5 `evidence_fts` triggers. |
 | `src/extraction/*` | Format detection, hashing, PDF/DOCX/DOC/image/text extraction and normalization. |
-| `src/agent/*` | System prompt assembly, structured result parsing, transcript recording, QueryLoop over OpenRouter tool calls. |
+| `src/agent/*` | System prompt assembly, structured result parsing, transcript recording, QueryLoop over provider-routed tool calls. |
 | `src/tools/*`, `src/research/*` | Policy-aware agent tools plus web search/fetch/source normalization/ranking/snapshot storage. |
 | `src/orchestration/*`, `src/legal/*` | Master/mini/worker orchestration over a 10-phase legal workflow and legal artifact taxonomy. |
 | `src/acceptance/*`, `src/citation/verify.ts` | Quality gate scoring, review quorum, auto-acceptance rules, citation verification. |
-| `src/config/*`, `src/llm/*` | Global/matter config, secrets, autonomy policy, fail-closed provider policy, OpenRouter client, token counting. |
+| `src/config/*`, `src/llm/*` | Global/matter config, secrets, autonomy policy, fail-closed provider policy, provider clients, provider-native reasoning translation, token counting. |
 | `src/scheduler/*`, `src/daemon/*` | Cron parsing, scheduled job store/loop, daemon PID/status, background supervisor and control queue. |
 | `src/commands/control-panel.ts`, `src/state/snapshot.ts` | Read-only control-panel/monitor snapshot and agent handoff packet. |
 | `src/tui/*` | Early Ink components for progress display; the mature operator surface is still CLI-first. |
@@ -162,7 +162,7 @@ The `QueryLoop` controls the core agent cycle:
 
 1. construct a system/user message history;
 2. resolve provider/model configuration through fail-closed provider policy;
-3. call `OpenRouterClient.chatWithTools` with registered tool definitions;
+3. call the resolved `LLMClient.chatWithTools` with registered tool definitions;
 4. execute requested tools through `ToolRegistry`;
 5. append tool results into the message history;
 6. emit `agent.turn.completed` and `tool.called` events;
@@ -173,7 +173,7 @@ sequenceDiagram
     participant C as Command handler
     participant P as Provider policy
     participant Q as QueryLoop
-    participant L as OpenRouterClient
+    participant L as LLMClient
     participant T as ToolRegistry
     participant S as State/events
     participant M as Matter files
@@ -284,7 +284,7 @@ flowchart TD
 
 1. **Clean operator UX.** The `harness` CLI is coherent and grouped around real operator tasks.
 2. **Simple matter layout.** Per-matter directories are easy to inspect, back up, and reason about.
-3. **Modern agent loop.** The TypeScript OpenRouter tool-calling loop is direct, testable, and extensible.
+3. **Modern agent loop.** The TypeScript provider-routed tool-calling loop is direct, testable, and extensible.
 4. **Integrated legal workflow.** The 10-phase workflow gives the orchestrator a domain-specific backbone.
 5. **Large skill corpus.** The bundled skills turn the harness into a practical legal drafting/review environment.
 6. **Daemon and scheduler support.** V2 can run asynchronously while still exposing status/events.
@@ -307,7 +307,7 @@ As of this analysis, V2 is a functional TypeScript CLI codebase with:
 - matter initialization, status, events, inbox, watch, monitor, and case-management commands;
 - read-only `control-panel` / `panel` operator snapshots and agent handoff packets;
 - evidence ingestion, extraction, SQLite FTS5 indexing, and evidence search;
-- OpenRouter-backed agent query loop with policy-aware tools;
+- Provider-backed agent query loop with policy-aware tools;
 - fail-closed provider policy defaults for explicit provider/model routing;
 - source search/fetch/snapshot storage for research;
 - hierarchical master/mini/worker orchestration across 10 phases;

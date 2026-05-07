@@ -1,7 +1,9 @@
 import { MiniOrchestrator } from './mini-orchestrator.js';
-import { createTask, updateTask } from '../state/tasks.js';
+import { createTask, listTasks, updateTask } from '../state/tasks.js';
 import { createRun, updateRun } from '../state/runs.js';
+import { recoverStaleRuntimeState } from '../state/runtime-recovery.js';
 import { OrchestrationRuntime } from './runtime.js';
+import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH, normalizePositiveInteger, remainingDepth } from './limits.js';
 import { resolveConfig } from '../config/loader.js';
 import { selectModelForTask } from '../config/model-routing.js';
 import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
@@ -25,7 +27,10 @@ export class MasterOrchestrator {
 
   async run(): Promise<OrchestratorResult> {
     const { matterName, objective, maxDepth, maxConcurrency } = this.config;
+    const phaseMaxDepth = remainingDepth(maxDepth, DEFAULT_MAX_DEPTH);
+    const phaseMaxConcurrency = normalizePositiveInteger(maxConcurrency, DEFAULT_MAX_CONCURRENCY);
     const phases = getDefaultPhases();
+    await recoverStaleRuntimeState(matterName);
     const resolvedConfig = await resolveConfig({ matterName });
     const masterModel = this.config.model ?? selectModelForTask({
       providerPolicy: resolvedConfig.providerPolicy,
@@ -42,6 +47,7 @@ export class MasterOrchestrator {
     });
 
     this.runtime.trackRun(masterRun.id);
+    const removeShutdownCleanup = this.installShutdownCleanup(masterRun.id);
 
     try {
       await this.runtime.emitRunStarted(masterRun.id, objective);
@@ -49,6 +55,7 @@ export class MasterOrchestrator {
 
       const phaseResults: Array<{ phase: PhaseDefinition; result: AgentStructuredResult }> = [];
       const failedPhases: string[] = [];
+      const blockedPhases: string[] = [];
       let stoppedReason: 'aborted' | 'budget_exceeded' | undefined;
 
       for (const phase of phases) {
@@ -63,6 +70,7 @@ export class MasterOrchestrator {
 
         const task = createTask({
           matterName,
+          runId: masterRun.id,
           kind: 'mini_orchestrator',
           type: phase.id,
           title: `Phase: ${phase.name}`,
@@ -78,8 +86,8 @@ export class MasterOrchestrator {
           matterName,
           phase,
           objective: `${phase.name}: ${phase.description}. Matter context: ${objective || matterName}`,
-          maxDepth: (maxDepth || 3) - 1,
-          maxConcurrency: maxConcurrency || 4,
+          maxDepth: phaseMaxDepth,
+          maxConcurrency: phaseMaxConcurrency,
           parentRunId: masterRun.id,
           providerPolicy: resolvedConfig.providerPolicy,
           phaseTaskId: task.id,
@@ -91,7 +99,16 @@ export class MasterOrchestrator {
 
         if (result.status === 'failed') {
           failedPhases.push(phase.id);
-          updateTask(matterName, task.id, { status: 'failed' } as Parameters<typeof updateTask>[2]);
+          updateTask(matterName, task.id, {
+            status: 'failed',
+            data: { failureReason: result.summary },
+          } as Parameters<typeof updateTask>[2]);
+        } else if (result.status === 'blocked' || result.status === 'needs_followup') {
+          blockedPhases.push(phase.id);
+          updateTask(matterName, task.id, {
+            status: 'blocked',
+            data: { blockReason: result.summary },
+          } as Parameters<typeof updateTask>[2]);
         } else {
           updateTask(matterName, task.id, { status: 'completed' } as Parameters<typeof updateTask>[2]);
         }
@@ -100,11 +117,11 @@ export class MasterOrchestrator {
       await this.runtime.emitRunCompleted(
         masterRun.id,
         stoppedReason
-          ? `Stopped because ${stoppedReason}; completed ${phaseResults.length - failedPhases.length}/${phaseResults.length} phases`
-          : `Completed ${phaseResults.length - failedPhases.length}/${phaseResults.length} phases`
+          ? `Stopped because ${stoppedReason}; completed ${phaseResults.length - failedPhases.length - blockedPhases.length}/${phaseResults.length} phases`
+          : `Completed ${phaseResults.length - failedPhases.length - blockedPhases.length}/${phaseResults.length} phases`
       );
 
-      const result = this.synthesize(matterName, objective, phaseResults, failedPhases, stoppedReason);
+      const result = this.synthesize(matterName, objective, phaseResults, failedPhases, blockedPhases, stoppedReason);
       updateRun(matterName, masterRun.id, {
         status: result.status === 'failed' ? 'error' : result.status === 'needs_followup' ? 'blocked' : 'completed',
         summary: result.summary,
@@ -129,9 +146,16 @@ export class MasterOrchestrator {
         summary: result.summary,
         error: msg,
       });
+      for (const task of listTasks(matterName, { status: 'in_progress' })) {
+        updateTask(matterName, task.id, {
+          status: 'failed',
+          data: { failureReason: result.summary },
+        });
+      }
       await setMatterStatus(matterName, 'analyzing');
       return result;
     } finally {
+      removeShutdownCleanup();
       this.runtime.untrackRun(masterRun.id);
     }
   }
@@ -144,11 +168,37 @@ export class MasterOrchestrator {
     this.runtime.abort();
   }
 
+  private installShutdownCleanup(masterRunId: string): () => void {
+    const { matterName } = this.config;
+    const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGUSR1'];
+    const handler = (signal: NodeJS.Signals): void => {
+      const message = `Orchestration interrupted by ${signal}`;
+      this.runtime.abort();
+      updateRun(matterName, masterRunId, {
+        status: 'error',
+        summary: message,
+        error: message,
+      });
+      for (const task of listTasks(matterName, { status: 'in_progress' })) {
+        updateTask(matterName, task.id, {
+          status: 'failed',
+          data: { shutdownReason: message },
+        });
+      }
+      process.exit(signal === 'SIGINT' ? 130 : 143);
+    };
+    for (const signal of signals) process.once(signal, handler);
+    return () => {
+      for (const signal of signals) process.removeListener(signal, handler);
+    };
+  }
+
   private synthesize(
     matterName: string,
     objective: string | undefined,
     phaseResults: Array<{ phase: PhaseDefinition; result: AgentStructuredResult }>,
     failedPhases: string[],
+    blockedPhases: string[],
     stoppedReason?: 'aborted' | 'budget_exceeded',
   ): OrchestratorResult {
     const allFindings = phaseResults.flatMap((p) =>
@@ -159,18 +209,25 @@ export class MasterOrchestrator {
     );
     const allArtifacts = phaseResults.flatMap((p) => p.result.artifactIds || []);
 
-    const status = stoppedReason
-      ? 'needs_followup'
-      : failedPhases.length === 0
-      ? 'completed'
-      : failedPhases.length < phaseResults.length / 2
-        ? 'needs_followup'
-        : 'failed';
+    let status: OrchestratorResult['status'];
+    if (stoppedReason || blockedPhases.length > 0) {
+      status = 'needs_followup';
+    } else if (failedPhases.length === 0) {
+      status = 'completed';
+    } else if (failedPhases.length < phaseResults.length / 2) {
+      status = 'needs_followup';
+    } else {
+      status = 'failed';
+    }
 
     const allPhaseResults = phaseResults.map(({ phase, result }) => ({
       phaseId: phase.id,
       phaseName: phase.name,
-      status: result.status === 'failed' ? 'failed' as const : result.status === 'blocked' ? 'blocked' as const : 'completed' as const,
+      status: result.status === 'failed'
+        ? 'failed' as const
+        : result.status === 'blocked' || result.status === 'needs_followup'
+          ? 'blocked' as const
+          : 'completed' as const,
       summary: result.summary,
       findings: result.findings.map((f) => ({
         claim: f.claim,
@@ -188,7 +245,7 @@ export class MasterOrchestrator {
 
     return {
       matterName,
-      summary: `Orchestration ${status}: ${phaseResults.length - failedPhases.length}/${phaseResults.length} phases completed. ${allFindings.length} findings, ${allRisks.length} risks.${stoppedReason ? ` Stopped because ${stoppedReason}.` : ''}`,
+      summary: `Orchestration ${status}: ${phaseResults.length - failedPhases.length - blockedPhases.length}/${phaseResults.length} phases completed, ${blockedPhases.length} blocked. ${allFindings.length} findings, ${allRisks.length} risks.${stoppedReason ? ` Stopped because ${stoppedReason}.` : ''}`,
       status,
       artifacts: allArtifacts,
       findings: allFindings,

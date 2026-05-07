@@ -19,6 +19,7 @@ export interface ToolRegistryOptions {
   allowedTools?: string[];
   enforcePolicy?: boolean;
   includeResearchTools?: boolean;
+  registerDefaults?: boolean;
 }
 
 export class ToolRegistry {
@@ -33,7 +34,9 @@ export class ToolRegistry {
     this.includeResearchTools =
       options.includeResearchTools ??
       Boolean(options.allowedTools?.some((tool) => tool === 'web_search' || tool === 'web_fetch'));
-    this.registerDefaults();
+    if (options.registerDefaults ?? true) {
+      this.registerDefaults();
+    }
   }
 
   private registerDefaults(): void {

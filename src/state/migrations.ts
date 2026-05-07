@@ -184,6 +184,19 @@ export const STATE_MIGRATIONS: StateMigration[] = [
       `);
     },
   },
+  {
+    version: 5,
+    description: 'agent run heartbeat and process liveness columns',
+    up(db) {
+      addColumnIfMissing(db, 'agent_runs', 'heartbeat_at', 'heartbeat_at TEXT');
+      addColumnIfMissing(db, 'agent_runs', 'pid', 'pid INTEGER');
+      db.exec(`
+        UPDATE agent_runs
+        SET heartbeat_at = COALESCE(heartbeat_at, started)
+        WHERE heartbeat_at IS NULL;
+      `);
+    },
+  },
 ];
 
 export function applyStateMigrations(db: Database.Database): void {

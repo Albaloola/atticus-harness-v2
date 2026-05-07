@@ -50,9 +50,9 @@ describe('Schema migration', () => {
       version: number;
     };
     expect(row).toBeTruthy();
-    expect(row.version).toBe(4);
+    expect(row.version).toBe(5);
     const migrations = db.prepare('SELECT version_from, version_to FROM schema_migrations ORDER BY version_to').all() as Array<{ version_from: number; version_to: number }>;
-    expect(migrations.map((m) => `${m.version_from}->${m.version_to}`)).toEqual(['0->1', '1->2', '2->3', '3->4']);
+    expect(migrations.map((m) => `${m.version_from}->${m.version_to}`)).toEqual(['0->1', '1->2', '2->3', '3->4', '4->5']);
   });
 
   it('can be called twice safely (idempotent)', () => {
@@ -620,6 +620,21 @@ describe('Snapshot', () => {
     const snapshot = await deriveSnapshot(matterName);
     expect(snapshot.activeAgents.length).toBe(1);
     expect(snapshot.activeAgents[0].status).toBe('running');
+  });
+
+  it('recovers stale dead runs and orphaned in-progress tasks before reporting snapshot', async () => {
+    const run = listRuns(matterName, { status: 'running' })[0];
+    const task = createTask({ matterName, type: 'stale', title: 'Orphaned task', runId: run.id });
+    updateTask(matterName, task.id, { status: 'in_progress' });
+    const db = getStateDb(matterName);
+    db.prepare('UPDATE agent_runs SET pid = ?, heartbeat_at = ? WHERE id = ? AND matter_name = ?')
+      .run(99999999, '2000-01-01T00:00:00.000Z', run.id, matterName);
+
+    const snapshot = await deriveSnapshot(matterName);
+
+    expect(snapshot.activeAgents).toHaveLength(0);
+    expect(getRun(matterName, run.id)?.status).toBe('error');
+    expect(getTask(matterName, task.id)?.status).toBe('failed');
   });
 
   it('snapshot for unknown matter throws', async () => {

@@ -15,10 +15,18 @@ import {
   type ToolPolicy,
   type ProviderConfig,
   type ResolvedHarnessConfig,
+  type MatterConfigOverride,
 } from './schema.js';
 import { validateProviderPolicy } from './policy.js';
 import { canonicalProviderPolicy, assertProviderPolicyAllowed } from './provider-policy.js';
-import { DEFAULT_ACTIVE_PROVIDER, normalizeProviderProfiles, policyForProfile, profileToProviderConfig } from './presets.js';
+import {
+  DEFAULT_ACTIVE_PROVIDER,
+  isLegacyCodexOAuthProfileName,
+  legacyCodexOAuthMigrationMessage,
+  normalizeProviderProfiles,
+  policyForProfile,
+  profileToProviderConfig,
+} from './presets.js';
 import { assertProviderReady } from './auth.js';
 
 function deepMerge<T extends Record<string, unknown>>(
@@ -81,11 +89,11 @@ export async function saveGlobalConfig(config: GlobalHarnessConfig): Promise<voi
 
 export async function loadMatterConfigOverride(
   matterName: string
-): Promise<Partial<GlobalHarnessConfig> | null> {
+): Promise<(Partial<GlobalHarnessConfig> & MatterConfigOverride) | null> {
   const configPath = getMatterConfigPath(matterName);
   try {
     const raw = await readFile(configPath, 'utf-8');
-    return JSON.parse(raw) as Partial<GlobalHarnessConfig>;
+    return JSON.parse(raw) as Partial<GlobalHarnessConfig> & MatterConfigOverride;
   } catch {
     return null;
   }
@@ -125,6 +133,9 @@ async function buildProviderConfig(
     const secretApiKey = secrets[keyName];
     apiKey = base.preferSecrets ? (secretApiKey ?? envApiKey) : (secretApiKey ?? envApiKey);
   } else if (profile.authType === 'oauth' && profile.oauthProvider) {
+    if (profile.oauthProvider === 'codex') {
+      throw new Error(legacyCodexOAuthMigrationMessage(profile.name));
+    }
     apiKey = await getOAuthToken(profile.oauthProvider);
   }
 
@@ -134,10 +145,13 @@ async function buildProviderConfig(
     ...base,
     apiKey,
     authType: profileConfig.authType,
+    providerKind: profileConfig.providerKind,
     keyName: profileConfig.keyName,
     oauthProvider: profileConfig.oauthProvider,
+    delegatedAuthProvider: profileConfig.delegatedAuthProvider,
     apiPath: profileConfig.apiPath,
     anthropicFormat: profileConfig.anthropicFormat,
+    reasoningControl: profileConfig.reasoningControl,
     timeoutMs: base.timeoutMs ?? profileConfig.timeoutMs,
     maxRetries: base.maxRetries ?? profileConfig.maxRetries,
   };
@@ -157,7 +171,13 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
 
   let autonomy: AutonomyPolicy = { ...globalConfig.autonomy };
   let toolPolicy: ToolPolicy = { ...globalConfig.toolPolicy };
+  let temperature: number | undefined;
+  let maxTokens: number | undefined;
+  let reasoningEffort: MatterConfigOverride['reasoningEffort'];
   const selectedProviderName = providerName ?? globalConfig.activeProvider;
+  if (isLegacyCodexOAuthProfileName(selectedProviderName)) {
+    throw new Error(legacyCodexOAuthMigrationMessage(selectedProviderName));
+  }
   if (providerName && !globalConfig.profiles[providerName]) {
     throw new Error(`Provider "${providerName}" is not configured`);
   }
@@ -175,7 +195,18 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
   if (matterName) {
     const matterOverride = await loadMatterConfigOverride(matterName);
     if (matterOverride) {
-      if (matterOverride.defaultModel) model = matterOverride.defaultModel;
+      const matterModel = matterOverride.model ?? matterOverride.defaultModel;
+      if (matterModel && shouldApplyMatterModelOverride({
+        explicitProvider: Boolean(providerName),
+        selectedProviderName,
+        profile,
+        model: matterModel,
+      })) {
+        model = matterModel;
+      }
+      if (matterOverride.temperature !== undefined) temperature = matterOverride.temperature;
+      if (matterOverride.maxTokens !== undefined) maxTokens = matterOverride.maxTokens;
+      if (matterOverride.reasoningEffort !== undefined) reasoningEffort = matterOverride.reasoningEffort;
       if (matterOverride.autonomy) autonomy = { ...autonomy, ...matterOverride.autonomy };
     }
     const matterPolicy = await loadMatterPolicyOverride(matterName);
@@ -221,6 +252,9 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
     activeProfile: profile,
     providerPolicy,
     model,
+    temperature,
+    maxTokens,
+    reasoningEffort,
     autonomy,
     toolPolicy,
     fromDisk,
@@ -235,6 +269,19 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
   return result;
 }
 
+function shouldApplyMatterModelOverride(input: {
+  explicitProvider: boolean;
+  selectedProviderName: string;
+  profile: { models: Record<string, string>; fallbackModel?: string };
+  model: string;
+}): boolean {
+  if (Object.values(input.profile.models).includes(input.model) || input.profile.fallbackModel === input.model) {
+    return true;
+  }
+  if (input.explicitProvider) return false;
+  return input.selectedProviderName === DEFAULT_ACTIVE_PROVIDER;
+}
+
 function redactConfig(config: ResolvedHarnessConfig): Record<string, unknown> {
   const provider = { ...config.provider };
   if (provider.apiKey) provider.apiKey = '__REDACTED__';
@@ -244,6 +291,9 @@ function redactConfig(config: ResolvedHarnessConfig): Record<string, unknown> {
     profile: config.profile,
     providerPolicy: config.providerPolicy,
     model: config.model,
+    temperature: config.temperature,
+    maxTokens: config.maxTokens,
+    reasoningEffort: config.reasoningEffort,
     autonomy: config.autonomy,
     toolPolicy: config.toolPolicy,
     fromDisk: config.fromDisk,

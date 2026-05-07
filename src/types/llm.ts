@@ -1,10 +1,13 @@
 import type { LLMMessage, ToolCall } from './message.js';
 import type { ToolDefinition } from './tool.js';
 
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+
 export interface LLMConfig {
   model: string;
   maxTokens?: number;
   temperature?: number;
+  reasoningEffort?: ReasoningEffort;
   jsonMode?: boolean;
   jsonSchema?: {
     name: string;
@@ -24,6 +27,8 @@ export interface LLMRequest {
 
 export interface LLMResponse {
   content: string;
+  /** Provider-specific reasoning transcript, retained for protocols that require replay. */
+  reasoningContent?: string;
   toolCalls?: ToolCall[];
   usage?: LLMUsage;
   provider?: string;
@@ -36,6 +41,7 @@ export interface LLMUsage {
   totalTokens: number;
   cacheHitTokens?: number;
   cacheMissTokens?: number;
+  reasoningOutputTokens?: number;
 }
 
 export interface LLMToolUse {

@@ -1,3 +1,5 @@
+import type { ReasoningEffort } from './llm.js';
+
 export type MatterStatus = 'pending' | 'ingesting' | 'analyzing' | 'drafting' | 'verifying' | 'complete' | 'archived';
 
 export interface MatterIndex {
@@ -15,6 +17,7 @@ export interface MatterConfig {
   model?: string;
   temperature?: number;
   maxTokens?: number;
+  reasoningEffort?: ReasoningEffort;
   skills?: string[];
   providerPolicy?: ProviderPolicy;
 }

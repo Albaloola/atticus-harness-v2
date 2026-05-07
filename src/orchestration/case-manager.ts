@@ -1,4 +1,4 @@
-import { OpenRouterClient } from '../llm/client.js';
+import { createLLMClient, type LLMClient } from '../llm/client.js';
 import { DEFAULT_MODEL } from '../llm/config.js';
 import { appendInboxMessage } from '../state/inbox.js';
 import { appendEvent } from '../state/events.js';
@@ -56,7 +56,7 @@ export interface CaseManagerResult {
 }
 
 export interface CaseManagerOptions {
-  client?: Pick<OpenRouterClient, 'chat'>;
+  client?: Pick<LLMClient, 'chat'>;
   model?: string;
 }
 
@@ -71,11 +71,11 @@ interface CaseManagerResponse {
 }
 
 export class CaseManager {
-  private client: Pick<OpenRouterClient, 'chat'>;
+  private client?: Pick<LLMClient, 'chat'>;
   private model?: string;
 
   constructor(options: CaseManagerOptions = {}) {
-    this.client = options.client ?? new OpenRouterClient();
+    this.client = options.client;
     this.model = options.model;
   }
 
@@ -164,7 +164,7 @@ export class CaseManager {
           skillContext.promptSection,
         ].filter(Boolean).join('\n\n') || undefined,
       });
-      const response = await this.generate(request, requestedType, memory, systemPrompt, humanizer?.skillName);
+      const response = await this.generate(request, requestedType, memory, systemPrompt, humanizer?.skillName, config);
       const parsed = parseCaseManagerResponse(response.content);
       const title = parsed.title || defaultTitle(requestedType, request.instruction);
       const content = parsed.content || response.content;
@@ -287,9 +287,13 @@ export class CaseManager {
     memory: CaseMemoryPack,
     systemPrompt: string,
     activeSkillName?: string,
+    config?: Awaited<ReturnType<typeof resolveConfig>>,
   ): Promise<LLMResponse> {
     const activeSkillMarker = activeSkillName ? `Active Skill: ${activeSkillName}` : /Active Skill: [^\n]+/.exec(systemPrompt)?.[0];
-    return this.client.chat({
+    const resolvedConfig = config ?? await resolveConfig({ matterName: request.matterName });
+    const reasoningEffort = memory.matter.config.reasoningEffort ?? resolvedConfig.reasoningEffort;
+    const client = this.client ?? createLLMClient(resolvedConfig);
+    return client.chat({
       messages: [
         { role: 'system', content: systemPrompt },
         {
@@ -305,11 +309,12 @@ export class CaseManager {
         },
       ],
       config: {
-        model: this.model ?? DEFAULT_MODEL,
+        model: this.model ?? resolvedConfig.model ?? DEFAULT_MODEL,
         temperature: 0.15,
-        maxTokens: 8192,
+        maxTokens: memory.matter.config.maxTokens ?? resolvedConfig.maxTokens ?? 8192,
+        reasoningEffort,
         jsonMode: true,
-        disableThinking: true,
+        disableThinking: reasoningEffort ? reasoningEffort === 'none' : true,
       },
     });
   }
@@ -329,7 +334,9 @@ export class CaseManager {
 
     if (policy.requireHostileReviewForAcceptance) {
       try {
-        const review = await this.client.chat({
+        const config = await resolveConfig({ matterName: candidate.matterName });
+        const client = this.client ?? createLLMClient(config);
+        const review = await client.chat({
           messages: [
             {
               role: 'system',

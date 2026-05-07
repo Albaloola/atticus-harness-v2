@@ -1,13 +1,17 @@
 import type { LLMMessage } from './message.js';
-import type { LLMResponse } from './llm.js';
+import type { LLMResponse, ReasoningEffort } from './llm.js';
 import type { ToolResult } from './tool.js';
 
 export interface AgentConfig {
   maxTurns: number;
   model: string;
   temperature: number;
+  maxTokens?: number;
+  reasoningEffort?: ReasoningEffort;
   systemPrompt?: string;
   skillName?: string;
+  providerName?: string;
+  toolMode?: 'auto' | 'disabled';
   quietMode: boolean;
   verbose: boolean;
 }

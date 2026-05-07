@@ -6,16 +6,23 @@ import {
   type ProviderConfig,
 } from './config.js';
 import { AnthropicClient } from './anthropic.js';
+import { CodexSdkClient } from './codex-sdk.js';
 import { AuthError, LLMError, classifyError } from './errors.js';
 import { assertProviderPolicyAllowed } from '../config/provider-policy.js';
-import type { ResolvedHarnessConfig } from '../config/schema.js';
-import type { LLMRequest, LLMResponse, LLMUsage } from '../types/llm.js';
+import type { ReasoningControl, ResolvedHarnessConfig } from '../config/schema.js';
+import type { LLMRequest, LLMResponse, LLMUsage, ReasoningEffort } from '../types/llm.js';
 import type { LLMMessage, ToolCall } from '../types/message.js';
 
 export interface LLMClient {
+  capabilities?: LLMClientCapabilities;
   chat(request: LLMRequest): Promise<LLMResponse>;
   chatWithTools(request: LLMRequest): Promise<LLMResponse>;
   healthCheck(): Promise<boolean>;
+}
+
+export interface LLMClientCapabilities {
+  tools: boolean;
+  jsonSchema?: boolean;
 }
 
 export interface OpenAICompatibleResponse {
@@ -25,6 +32,8 @@ export interface OpenAICompatibleResponse {
     message: {
       role: string;
       content: string | null;
+      reasoning?: string | null;
+      reasoning_content?: string | null;
       tool_calls?: Array<{
         id: string;
         type: 'function';
@@ -38,13 +47,16 @@ export interface OpenAICompatibleResponse {
     total_tokens: number;
     prompt_cache_hit_tokens?: number;
     prompt_cache_miss_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+    completion_tokens_details?: { reasoning_tokens?: number };
+    output_tokens_details?: { reasoning_tokens?: number };
   };
   provider?: string;
   model?: string;
   error?: { message: string; code: number };
 }
 
-/** @deprecated Use OpenAICompatibleResponse. */
+/** Backward-compatible alias for existing imports. */
 export type OpenRouterResponse = OpenAICompatibleResponse;
 
 export interface OpenAICompatibleClientOptions {
@@ -60,9 +72,10 @@ export interface OpenAICompatibleClientOptions {
   /** Explicitly allow unauthenticated requests, e.g. local Ollama. */
   allowNoAuth?: boolean;
   headers?: Record<string, string>;
+  reasoningControl?: ReasoningControl;
 }
 
-/** @deprecated Use OpenAICompatibleClientOptions. */
+/** Backward-compatible alias for existing imports. */
 export type OpenRouterClientOptions = OpenAICompatibleClientOptions;
 
 function joinUrl(baseUrl: string, path: string): string {
@@ -83,7 +96,53 @@ function isLocalProvider(providerName: string, baseUrl: string): boolean {
   );
 }
 
+function buildOpenRouterReasoningPayload(effort: ReasoningEffort): Record<string, unknown> {
+  return effort === 'none'
+    ? { effort: 'none', exclude: true }
+    : { effort };
+}
+
+function isDeepSeekModel(model: string): boolean {
+  return model.toLowerCase().includes('deepseek');
+}
+
+function effectiveReasoningEffort(model: string, effort: ReasoningEffort | undefined): ReasoningEffort | undefined {
+  return isDeepSeekModel(model) ? 'xhigh' : effort;
+}
+
+function mapDeepSeekReasoningEffort(effort: ReasoningEffort): 'high' | 'max' | undefined {
+  switch (effort) {
+    case 'none':
+      return undefined;
+    case 'xhigh':
+      return 'max';
+    case 'minimal':
+    case 'low':
+    case 'medium':
+    case 'high':
+      return 'high';
+  }
+}
+
+function inferReasoningControl(providerName: string, baseUrl: string): ReasoningControl {
+  const normalizedBase = baseUrl.toLowerCase();
+  if (providerName === 'openrouter' || providerName.startsWith('openrouter-') || normalizedBase.includes('openrouter.ai')) {
+    return 'openrouter-reasoning';
+  }
+  if (providerName === 'openai' || providerName.startsWith('openai-') || normalizedBase.includes('api.openai.com')) {
+    return 'openai-reasoning';
+  }
+  if (providerName === 'deepseek' || providerName.startsWith('deepseek-') || normalizedBase.includes('api.deepseek.com')) {
+    return 'deepseek-thinking';
+  }
+  if (isLocalProvider(providerName, baseUrl)) {
+    return 'model-routing';
+  }
+  return 'none';
+}
+
 export class OpenAICompatibleClient implements LLMClient {
+  readonly capabilities: LLMClientCapabilities = { tools: true, jsonSchema: true };
   private apiKey: string;
   private authToken: string;
   private baseUrl: string;
@@ -93,6 +152,7 @@ export class OpenAICompatibleClient implements LLMClient {
   private providerName: string;
   private allowNoAuth: boolean;
   private headers: Record<string, string>;
+  private reasoningControl: ReasoningControl;
   private readonly explicitOptions: OpenAICompatibleClientOptions;
   private readonly storeConfig: Promise<ProviderConfig>;
 
@@ -113,6 +173,7 @@ export class OpenAICompatibleClient implements LLMClient {
       this.authToken = '';
     }
     this.headers = options?.headers ?? {};
+    this.reasoningControl = options?.reasoningControl ?? inferReasoningControl(this.providerName, this.baseUrl);
   }
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -207,6 +268,12 @@ export class OpenAICompatibleClient implements LLMClient {
     if (!this.explicitOptions.providerName && config.providerName) {
       this.providerName = config.providerName;
     }
+    if (!this.explicitOptions.reasoningControl) {
+      const usingExplicitRoute = Boolean(this.explicitOptions.providerName || this.explicitOptions.baseUrl);
+      this.reasoningControl = usingExplicitRoute
+        ? inferReasoningControl(this.providerName, this.baseUrl)
+        : (config.reasoningControl ?? inferReasoningControl(this.providerName, this.baseUrl));
+    }
     if (this.explicitOptions.allowNoAuth === undefined) {
       this.allowNoAuth = isLocalProvider(this.providerName, this.baseUrl);
     }
@@ -225,11 +292,17 @@ export class OpenAICompatibleClient implements LLMClient {
     if (bearer) {
       headers.Authorization = `Bearer ${bearer}`;
     }
-    if (this.providerName === 'openrouter') {
+    if (this.isOpenRouterProvider()) {
       headers['HTTP-Referer'] = 'https://github.com/atticus/harness-v2';
       headers['X-Title'] = 'Harness v2';
     }
     return headers;
+  }
+
+  private isOpenRouterProvider(): boolean {
+    return this.providerName === 'openrouter' ||
+      this.providerName.startsWith('openrouter-') ||
+      /https:\/\/openrouter\.ai\/api\/v1\/?$/i.test(this.baseUrl);
   }
 
   private async withTimeout<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
@@ -272,7 +345,9 @@ export class OpenAICompatibleClient implements LLMClient {
           parameters: t.inputSchema,
         },
       }));
-      payload.tool_choice = 'auto';
+      if (this.reasoningControl !== 'deepseek-thinking') {
+        payload.tool_choice = 'auto';
+      }
     }
 
     if (request.config.jsonSchema) {
@@ -288,9 +363,22 @@ export class OpenAICompatibleClient implements LLMClient {
       payload.response_format = { type: 'json_object' };
     }
 
-    if (request.config.disableThinking) {
-      payload.thinking = { type: 'disabled' };
-      payload.reasoning = { effort: 'none', exclude: true };
+    const reasoningEffort = effectiveReasoningEffort(request.config.model, request.config.reasoningEffort);
+    const disableThinking = isDeepSeekModel(request.config.model) ? false : request.config.disableThinking;
+    if (this.reasoningControl === 'deepseek-thinking' && (disableThinking || reasoningEffort)) {
+      if (!reasoningEffort || reasoningEffort === 'none' || disableThinking) {
+        payload.thinking = { type: 'disabled' };
+      } else {
+        payload.thinking = { type: 'enabled' };
+        const effort = mapDeepSeekReasoningEffort(reasoningEffort);
+        if (effort) payload.reasoning_effort = effort;
+      }
+    } else if (reasoningEffort) {
+      if (this.reasoningControl === 'openai-reasoning') {
+        payload.reasoning_effort = reasoningEffort;
+      } else if (this.reasoningControl === 'openrouter-reasoning') {
+        payload.reasoning = buildOpenRouterReasoningPayload(reasoningEffort);
+      }
     }
 
     return payload;
@@ -317,6 +405,10 @@ export class OpenAICompatibleClient implements LLMClient {
       formatted.tool_call_id = msg.toolCallId;
     }
 
+    if (this.reasoningControl === 'deepseek-thinking' && msg.reasoningContent) {
+      formatted.reasoning_content = msg.reasoningContent;
+    }
+
     return formatted;
   }
 
@@ -331,6 +423,7 @@ export class OpenAICompatibleClient implements LLMClient {
     }
 
     const message = choice.message;
+    const reasoningContent = message.reasoning_content ?? message.reasoning ?? undefined;
     const toolCalls: ToolCall[] | undefined = message.tool_calls?.map((tc) => ({
       id: tc.id,
       name: tc.function.name,
@@ -342,13 +435,16 @@ export class OpenAICompatibleClient implements LLMClient {
           promptTokens: data.usage.prompt_tokens,
           completionTokens: data.usage.completion_tokens,
           totalTokens: data.usage.total_tokens,
-          cacheHitTokens: data.usage.prompt_cache_hit_tokens,
+          cacheHitTokens: data.usage.prompt_cache_hit_tokens ?? data.usage.prompt_tokens_details?.cached_tokens,
           cacheMissTokens: data.usage.prompt_cache_miss_tokens,
+          reasoningOutputTokens: data.usage.completion_tokens_details?.reasoning_tokens ??
+            data.usage.output_tokens_details?.reasoning_tokens,
         }
       : undefined;
 
     return {
       content: message.content || '',
+      reasoningContent,
       toolCalls,
       usage,
       provider: data.provider ?? this.providerName,
@@ -369,11 +465,21 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
   const provider = isResolvedConfig ? config.provider : config;
   const providerMetadata = provider as ProviderConfig;
   const providerName = isResolvedConfig ? config.providerName : (providerMetadata.providerName ?? 'openrouter');
+  const providerKind = providerMetadata.providerKind;
   const baseUrl = provider.baseUrl ?? OPENROUTER_BASE_URL;
   const timeoutMs = provider.timeoutMs ?? 180_000;
   const apiKey = provider.apiKey;
+  const reasoningControl = providerMetadata.reasoningControl;
 
-  if (providerName === 'anthropic' || providerName.startsWith('anthropic')) {
+  if (providerKind === 'codex-sdk' || providerName === 'codex-sdk') {
+    return new CodexSdkClient({
+      providerName,
+      timeoutMs,
+      workingDirectory: process.cwd(),
+    });
+  }
+
+  if (providerKind === 'anthropic' || providerName === 'anthropic' || providerName.startsWith('anthropic')) {
     return new AnthropicClient({
       apiKey,
       baseUrl,
@@ -387,6 +493,7 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
     baseUrl,
     timeoutMs,
     providerName,
+    reasoningControl,
     allowNoAuth: isLocalProvider(providerName, baseUrl),
   });
 }

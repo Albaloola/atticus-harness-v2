@@ -1,5 +1,6 @@
 import { AuthError, LLMError, classifyError } from './errors.js';
-import type { LLMRequest, LLMResponse, LLMUsage } from '../types/llm.js';
+import type { LLMClientCapabilities } from './client.js';
+import type { LLMRequest, LLMResponse, LLMUsage, ReasoningEffort } from '../types/llm.js';
 import type { LLMMessage, ToolCall } from '../types/message.js';
 
 export interface AnthropicClientOptions {
@@ -29,6 +30,10 @@ interface AnthropicResponse {
   error?: { message: string; type?: string };
 }
 
+type AnthropicThinkingConfig =
+  | { type: 'enabled'; budget_tokens: number }
+  | { type: 'adaptive'; display?: 'summarized' | 'omitted' };
+
 function joinUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
 }
@@ -37,7 +42,75 @@ function joinUrl(baseUrl: string, path: string): string {
 async function readResponseText(response: Response): Promise<string> {
   return typeof response.text === 'function' ? response.text() : '';
 }
+
+function targetThinkingBudget(effort: ReasoningEffort): number | undefined {
+  switch (effort) {
+    case 'minimal':
+      return 1024;
+    case 'low':
+      return 2048;
+    case 'medium':
+      return 8192;
+    case 'high':
+      return 16384;
+    case 'xhigh':
+      return 32768;
+    case 'none':
+      return undefined;
+  }
+}
+
+function supportsAdaptiveThinking(model: string): boolean {
+  const normalized = model.toLowerCase();
+  return normalized.includes('claude-mythos') ||
+    /claude-(opus|sonnet)-4[-.]6/.test(normalized) ||
+    /claude-opus-4[-.](?:[7-9]|\d{2,})/.test(normalized);
+}
+
+function adaptiveEffortForModel(model: string, effort: ReasoningEffort): 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined {
+  switch (effort) {
+    case 'none':
+      return undefined;
+    case 'minimal':
+    case 'low':
+      return 'low';
+    case 'medium':
+      return 'medium';
+    case 'high':
+      return 'high';
+    case 'xhigh':
+      return /claude-opus-4[-.](?:[7-9]|\d{2,})/.test(model.toLowerCase()) ? 'xhigh' : 'max';
+  }
+}
+
+function thinkingConfigForRequest(
+  model: string,
+  effort: ReasoningEffort,
+  maxTokens: number,
+): { thinking: AnthropicThinkingConfig; outputConfig?: Record<string, unknown> } | undefined {
+  if (effort === 'none') return undefined;
+  if (supportsAdaptiveThinking(model)) {
+    const adaptiveEffort = adaptiveEffortForModel(model, effort);
+    return {
+      thinking: { type: 'adaptive' },
+      outputConfig: adaptiveEffort ? { effort: adaptiveEffort } : undefined,
+    };
+  }
+
+  const budget = thinkingBudgetForMaxTokens(effort, maxTokens);
+  return budget ? { thinking: { type: 'enabled', budget_tokens: budget } } : undefined;
+}
+
+function thinkingBudgetForMaxTokens(effort: ReasoningEffort, maxTokens: number): number | undefined {
+  const target = targetThinkingBudget(effort);
+  if (!target) return undefined;
+  const usableMax = Math.max(maxTokens, 2048);
+  return Math.max(1024, Math.min(target, usableMax - 1));
+}
+
 export class AnthropicClient {
+  readonly capabilities: LLMClientCapabilities = { tools: true, jsonSchema: false };
+
   private readonly apiKey: string;
   private readonly authToken: string;
   private readonly baseUrl: string;
@@ -145,9 +218,16 @@ export class AnthropicClient {
       .filter((m) => m.role !== 'system')
       .map((message) => this.formatMessage(message));
 
+    const maxTokens = request.config.maxTokens ?? 4096;
+    const hasTools = Boolean(request.tools?.length);
+    const thinkingConfig = request.config.reasoningEffort && !request.config.disableThinking && !hasTools
+      ? thinkingConfigForRequest(request.config.model, request.config.reasoningEffort, maxTokens)
+      : undefined;
     const payload: Record<string, unknown> = {
       model: request.config.model,
-      max_tokens: request.config.maxTokens ?? 4096,
+      max_tokens: thinkingConfig?.thinking.type === 'enabled'
+        ? Math.max(maxTokens, thinkingConfig.thinking.budget_tokens + 1)
+        : maxTokens,
       temperature: request.config.temperature ?? 0.1,
       messages,
     };
@@ -156,13 +236,20 @@ export class AnthropicClient {
       payload.system = systemMessages.map((m) => m.content).join('\n\n');
     }
 
-    if (request.tools && request.tools.length > 0) {
-      payload.tools = request.tools.map((tool) => ({
+    if (hasTools) {
+      payload.tools = request.tools!.map((tool) => ({
         name: tool.name,
         description: tool.description,
         input_schema: tool.inputSchema,
       }));
       payload.tool_choice = { type: 'auto' };
+    }
+
+    if (thinkingConfig) {
+      payload.thinking = thinkingConfig.thinking;
+      if (thinkingConfig.outputConfig) {
+        payload.output_config = thinkingConfig.outputConfig;
+      }
     }
 
     return payload;

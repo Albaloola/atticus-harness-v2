@@ -11,6 +11,10 @@ export interface ProviderConfig {
   timeoutMs?: number;
   maxRetries?: number;
   providerName?: string;
+  providerKind?: import('../config/schema.js').ProviderKind;
+  authType?: import('../config/schema.js').ProviderAuthType;
+  delegatedAuthProvider?: import('../config/schema.js').DelegatedAuthProvider;
+  reasoningControl?: import('../config/schema.js').ReasoningControl;
   providerPolicy?: import('../config/schema.js').ProviderPolicy;
   providers?: import('../config/schema.js').ProvidersConfig;
 }
@@ -40,6 +44,7 @@ export async function loadConfigFromStore(): Promise<ProviderConfig> {
       timeoutMs: resolved.provider.timeoutMs ?? 180_000,
       maxRetries: resolved.provider.maxRetries ?? 3,
       providerName: resolved.providerName,
+      reasoningControl: resolved.provider.reasoningControl ?? resolved.profile.reasoningControl,
       providerPolicy: resolved.providerPolicy,
       providers: { [resolved.providerName]: resolved.provider },
     };

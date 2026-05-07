@@ -1,9 +1,18 @@
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
-import { OpenRouterClient } from '../llm/client.js';
-import type { LLMConfig } from '../types/llm.js';
+import { createLLMClient } from '../llm/client.js';
+import { resolveConfig } from '../config/loader.js';
+import type { LLMConfig, ReasoningEffort } from '../types/llm.js';
 import type { LLMMessage } from '../types/message.js';
 
-export class LlmCallTool implements Tool<{ messages: LLMMessage[]; model?: string; temperature?: number; jsonMode?: boolean }, string> {
+interface LlmCallArgs {
+  messages: LLMMessage[];
+  model?: string;
+  temperature?: number;
+  reasoningEffort?: ReasoningEffort;
+  jsonMode?: boolean;
+}
+
+export class LlmCallTool implements Tool<LlmCallArgs, string> {
   readonly name = 'llm_call';
   readonly description = 'Make a direct call to the LLM. Returns the model response. Use for analysis, drafting, and reasoning tasks.';
   readonly inputSchema = {
@@ -20,19 +29,22 @@ export class LlmCallTool implements Tool<{ messages: LLMMessage[]; model?: strin
           },
         },
       },
-      model: { type: 'string', description: 'Model override (default: deepseek/deepseek-v4-flash)' },
+      model: { type: 'string', description: 'Model override (default: resolved provider fast model)' },
       temperature: { type: 'number', description: 'Sampling temperature (default: 0.1)' },
+      reasoningEffort: { type: 'string', enum: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'], description: 'Optional reasoning effort for models that support it' },
       jsonMode: { type: 'boolean', description: 'Request JSON response format' },
     },
     required: ['messages'],
   };
 
-  async call(args: { messages: LLMMessage[]; model?: string; temperature?: number; jsonMode?: boolean }, _context: ToolUseContext): Promise<ToolResult<string>> {
+  async call(args: LlmCallArgs, context: ToolUseContext): Promise<ToolResult<string>> {
     try {
-      const client = new OpenRouterClient();
+      const resolvedConfig = await resolveConfig({ matterName: context.matterName });
+      const client = createLLMClient(resolvedConfig);
       const config: LLMConfig = {
-        model: args.model || 'deepseek/deepseek-v4-flash',
+        model: args.model || resolvedConfig.model || 'deepseek/deepseek-v4-flash',
         temperature: args.temperature ?? 0.1,
+        reasoningEffort: args.reasoningEffort,
         jsonMode: args.jsonMode ?? false,
         maxTokens: 4096,
       };

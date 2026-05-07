@@ -3,10 +3,11 @@ import { loadMatter, saveMatterIndex } from '../storage/matter.js';
 import { listEvidence } from '../storage/evidence.js';
 import { AgentLoop } from '../agent/index.js';
 import { appendEvent } from '../state/events.js';
+import { resolveConfig } from '../config/loader.js';
 
 export default async function runHandler(
   matterName: string,
-  options: { prompt?: string; skill?: string; quiet?: boolean; background?: boolean }
+  options: { prompt?: string; skill?: string; quiet?: boolean; background?: boolean; provider?: string; noTools?: boolean }
 ): Promise<void> {
   let matterIndex;
   try {
@@ -23,12 +24,15 @@ export default async function runHandler(
 
   const evidence = await listEvidence(matterName).catch(() => []);
   const quietMode = options.quiet ?? false;
+  const resolvedConfig = await resolveConfig({ matterName, providerName: options.provider });
 
   if (options.background) {
     const { spawnBackgroundHarness } = await import('../daemon/background.js');
     const args = ['run', matterName, '--quiet'];
     if (options.prompt) args.push('--prompt', options.prompt);
     if (options.skill) args.push('--skill', options.skill);
+    if (options.provider) args.push('--provider', options.provider);
+    if (options.noTools) args.push('--no-tools');
     const background = spawnBackgroundHarness(args);
     await appendEvent({
       matterName,
@@ -63,15 +67,19 @@ export default async function runHandler(
   try {
     const loop = new AgentLoop({
       maxTurns: 25,
-      model: matterIndex.config.model || 'deepseek/deepseek-v4-flash',
-      temperature: matterIndex.config.temperature ?? 0.1,
+      model: resolvedConfig.model || matterIndex.config.model || 'deepseek/deepseek-v4-flash',
+      temperature: matterIndex.config.temperature ?? resolvedConfig.temperature ?? 0.1,
+      maxTokens: matterIndex.config.maxTokens ?? resolvedConfig.maxTokens ?? 8192,
+      reasoningEffort: matterIndex.config.reasoningEffort ?? resolvedConfig.reasoningEffort,
       skillName: options.skill,
+      providerName: options.provider,
+      toolMode: options.noTools ? 'disabled' : 'auto',
       quietMode,
       verbose: !quietMode,
     });
 
     try {
-      await appendEvent({ matterName, type: 'agent.run.started', data: { model: matterIndex.config.model || 'deepseek/deepseek-v4-flash' }, source: 'tool' });
+      await appendEvent({ matterName, type: 'agent.run.started', data: { model: resolvedConfig.model || matterIndex.config.model || 'deepseek/deepseek-v4-flash' }, source: 'tool' });
     } catch {}
 
     const result = await loop.run(matterName, options.prompt);

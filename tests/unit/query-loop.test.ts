@@ -10,11 +10,13 @@ import { initMatter, deleteMatter } from '../../src/storage/matter.ts';
 import { closeAllStateDbs } from '../../src/state/store.ts';
 
 class FakeLLMClient {
+  capabilities?: { tools: boolean; jsonSchema?: boolean };
   private responses: LLMResponse[];
   private index = 0;
 
-  constructor(responses: LLMResponse[]) {
+  constructor(responses: LLMResponse[], capabilities?: { tools: boolean; jsonSchema?: boolean }) {
     this.responses = responses;
+    this.capabilities = capabilities;
   }
 
   async chatWithTools(_request: LLMRequest): Promise<LLMResponse> {
@@ -26,6 +28,10 @@ class FakeLLMClient {
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
     return this.chatWithTools(request);
+  }
+
+  async healthCheck(): Promise<boolean> {
+    return true;
   }
 }
 
@@ -109,9 +115,50 @@ describe('QueryLoop', () => {
       expect(result.history[2].role).toBe('assistant');
       expect(result.history[2].content).toBe('Done');
     });
+
+    it('disables tool definitions when toolMode is disabled', async () => {
+      const toolRegistry = new ToolRegistry();
+      const fakeClient = new FakeLLMClient(
+        [makeResponse({ content: 'Tool-free answer' })],
+        { tools: false, jsonSchema: true },
+      );
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Be helpful.',
+          tools: toolRegistry,
+          toolMode: 'disabled',
+          quietMode: true,
+        },
+        fakeClient,
+      );
+
+      const result = await loop.run('User message');
+
+      expect(result.status).toBe('completed');
+      expect(result.finalContent).toBe('Tool-free answer');
+    });
   });
 
   describe('tool calls', () => {
+    it('fails before a model request when the client does not support tools', async () => {
+      const toolRegistry = new ToolRegistry();
+      const fakeClient = new FakeLLMClient([], { tools: false, jsonSchema: true });
+
+      const loop = new QueryLoop(
+        { systemPrompt: 'Use tools.', tools: toolRegistry, providerName: 'codex-sdk', quietMode: true },
+        fakeClient,
+      );
+
+      const result = await loop.run('Find data');
+
+      expect(result.status).toBe('error');
+      expect(result.error).toContain('does not support Harness-owned tool calls in this profile');
+      expect(result.error).toContain('tool-capable provider profile');
+      expect(result.error).not.toContain('OpenAI-compatible');
+      expect(result.turns).toHaveLength(0);
+    });
+
     it('executes tool calls and continues the loop', async () => {
       const toolRegistry = new ToolRegistry();
       toolRegistry.register(new FakeTool('search_tool', makeSuccessToolResult('found results')));

@@ -92,13 +92,6 @@ export async function getProviderKey(provider: string): Promise<string | undefin
 }
 
 
-export async function getCodexToken(): Promise<string | undefined> {
-  if (process.env.CODEX_TOKEN) {
-    return process.env.CODEX_TOKEN;
-  }
-  return getSecret('CODEX_TOKEN');
-}
-
 export async function getClaudeToken(): Promise<string | undefined> {
   if (process.env.ANTHROPIC_AUTH_TOKEN) {
     return process.env.ANTHROPIC_AUTH_TOKEN;
@@ -107,7 +100,7 @@ export async function getClaudeToken(): Promise<string | undefined> {
 }
 
 export async function getOAuthToken(provider: 'codex' | 'claude-code' | string): Promise<string | undefined> {
-  if (provider === 'codex') return getCodexToken();
+  if (provider === 'codex') return undefined;
   if (provider === 'claude-code') return getClaudeToken();
   const envKey = `${provider.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_TOKEN`;
   if (process.env[envKey]) return process.env[envKey];

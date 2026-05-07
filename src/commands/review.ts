@@ -2,7 +2,8 @@ import chalk from 'chalk';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { loadMatter, saveMatterIndex, getMatterPath } from '../storage/matter.js';
-import { OpenRouterClient } from '../llm/client.js';
+import { createLLMClient } from '../llm/client.js';
+import { resolveConfig } from '../config/loader.js';
 import { listEvidence } from '../storage/evidence.js';
 import { appendEvent } from '../state/events.js';
 
@@ -59,14 +60,15 @@ Critique the document on:
 For each finding, rate severity: CRITICAL, HIGH, MEDIUM, LOW, or INFO.`;
 
   try {
-    const client = new OpenRouterClient();
+    const resolvedConfig = await resolveConfig({ matterName });
+    const client = createLLMClient(resolvedConfig);
     const review = await client.chat({
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `Please review this legal document:\n\n---\n${content.substring(0, 15000)}${content.length > 15000 ? '\n\n...[document truncated at 15000 chars]' : ''}` },
       ],
       config: {
-        model: 'deepseek/deepseek-v4-pro',
+        model: resolvedConfig.providerPolicy.models.reviewer ?? resolvedConfig.model,
         temperature: 0.3,
         jsonMode: false,
         maxTokens: 4096,

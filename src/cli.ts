@@ -1,30 +1,20 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { getActionMatterName, getActionProviderName, requiresLlmPrecheck } from './config/llm-preflight.js';
 
 const program = new Command();
-
-const LLM_PRECHECK_COMMANDS = new Set([
-  'run',
-  'orchestrate',
-  'draft',
-  'verify',
-  'gate',
-  'review',
-  'search',
-  'fetch',
-  'manage',
-]);
 
 program
   .name('harness')
   .description('Standalone legal operations agent CLI')
   .version('0.1.0')
   .hook('preAction', async (_thisCommand, actionCommand) => {
-    if (!LLM_PRECHECK_COMMANDS.has(actionCommand.name())) return;
-    const matterName = typeof actionCommand.args[0] === 'string' ? actionCommand.args[0] : undefined;
+    if (!requiresLlmPrecheck(actionCommand)) return;
+    const matterName = getActionMatterName(actionCommand);
+    const providerName = getActionProviderName(actionCommand);
     const { resolveConfig } = await import('./config/loader.js');
-    await resolveConfig({ matterName, strict: true });
+    await resolveConfig({ matterName, providerName, strict: true });
   });
 
 // Matter lifecycle
@@ -87,6 +77,8 @@ program.command('run <matter-name>')
   .description('Run agentic loop until done or blocked')
   .option('-p, --prompt <text>', 'Initial prompt for the agent')
   .option('-s, --skill <name>', 'Load a skill for this run')
+  .option('--provider <name>', 'Provider profile to use for this run')
+  .option('--no-tools', 'Disable Harness tools for this run')
   .option('-q, --quiet', 'Suppress verbose output')
   .option('--background', 'Run in background mode')
   .action(async (matterName, options) => {

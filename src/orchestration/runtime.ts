@@ -1,4 +1,6 @@
 import { appendEvent } from '../state/events.js';
+import { heartbeatRun } from '../state/runs.js';
+import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH, normalizePositiveInteger } from './limits.js';
 
 export class OrchestrationRuntime {
   private matterName: string;
@@ -7,6 +9,7 @@ export class OrchestrationRuntime {
   private maxBudgetUsd?: number;
   private running = new Set<string>();
   private runningWorkers = new Set<string>();
+  private heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private aborted = false;
   private depth = 0;
   private totalCost = 0;
@@ -18,8 +21,8 @@ export class OrchestrationRuntime {
     maxBudgetUsd?: number;
   }) {
     this.matterName = config.matterName;
-    this.maxDepth = config.maxDepth ?? 3;
-    this.maxConcurrency = config.maxConcurrency ?? 4;
+    this.maxDepth = normalizePositiveInteger(config.maxDepth, DEFAULT_MAX_DEPTH);
+    this.maxConcurrency = normalizePositiveInteger(config.maxConcurrency, DEFAULT_MAX_CONCURRENCY);
     this.maxBudgetUsd = config.maxBudgetUsd;
   }
 
@@ -34,11 +37,20 @@ export class OrchestrationRuntime {
     this.running.add(runId);
     if (options?.worker) this.runningWorkers.add(runId);
     this.depth = Math.max(this.depth, this.runningWorkers.size);
+    heartbeatRun(this.matterName, runId);
+    const timer = setInterval(() => {
+      heartbeatRun(this.matterName, runId);
+    }, 60_000);
+    timer.unref?.();
+    this.heartbeatTimers.set(runId, timer);
   }
 
   untrackRun(runId: string): void {
     this.running.delete(runId);
     this.runningWorkers.delete(runId);
+    const timer = this.heartbeatTimers.get(runId);
+    if (timer) clearInterval(timer);
+    this.heartbeatTimers.delete(runId);
   }
 
   addCost(usd: number): void {

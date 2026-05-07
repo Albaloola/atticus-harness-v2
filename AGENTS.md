@@ -17,7 +17,7 @@
 ## Architecture
 - CLI: commander (not yargs)
 - Storage: flat file JSON + better-sqlite3 for FTS
-- LLM: OpenRouter API, JSON mode, no streaming
+- LLM: provider-routed clients for OpenAI-compatible/OpenRouter/DeepSeek direct, Anthropic, Codex SDK, and local profiles; use structured output, tool calling, and provider-native reasoning controls according to the selected provider profile
 - Tools: Tool<I,O> interface with call() + inputSchema
 - Agent: single loop, reads state from disk each turn
 - Tests: vitest with real fixtures

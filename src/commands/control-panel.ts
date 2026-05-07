@@ -5,6 +5,7 @@ import { listEvents } from '../state/events.js';
 import { listReducerPackets } from '../reducer/canonical-writer.js';
 import { getDaemonStatus } from '../daemon/daemon.js';
 import type { ReducerPacket } from '../reducer/canonical-writer.js';
+import { buildProviderPanelState, printProviderPanel, type ProviderPanelState } from './provider.js';
 
 interface ControlPanelPacket {
   matterName: string;
@@ -14,6 +15,7 @@ interface ControlPanelPacket {
   reducerPackets: ReturnType<typeof listReducerPackets>;
   daemon: ReturnType<typeof getDaemonStatus>;
   nextAction: string;
+  provider: ProviderPanelState;
   readOnly: true;
 }
 
@@ -25,6 +27,7 @@ async function buildPacket(matterName: string): Promise<ControlPanelPacket> {
   const daemon = getDaemonStatus();
   const nextAction = snapshot.nextActions[0]
     ?? (snapshot.blockedReasons && snapshot.blockedReasons.length > 0 ? 'Inspect blocked tasks and provide operator input' : 'No immediate action');
+  const provider = await buildProviderPanelState();
 
   return {
     matterName,
@@ -34,6 +37,7 @@ async function buildPacket(matterName: string): Promise<ControlPanelPacket> {
     reducerPackets,
     daemon,
     nextAction,
+    provider,
     readOnly: true,
   };
 }
@@ -59,10 +63,20 @@ export async function buildControlPanelSnapshot(
 }
 
 export async function handleControlPanelStatus(
-  matterName: string,
+  matterName?: string,
   options: { json?: boolean } = {},
 ): Promise<void> {
   try {
+    if (!matterName) {
+      const provider = await buildProviderPanelState();
+      if (options.json) {
+        console.log(JSON.stringify(provider, null, 2));
+        return;
+      }
+      printProviderPanel(provider);
+      return;
+    }
+
     const panel = await buildPacket(matterName);
     if (options.json) {
       console.log(JSON.stringify(panel, null, 2));
@@ -72,6 +86,8 @@ export async function handleControlPanelStatus(
     const { snapshot } = panel;
     console.log('');
     console.log(chalk.bold.cyan(`Control panel: ${matterName}`));
+    console.log(chalk.gray('━'.repeat(56)));
+    printProviderPanel(panel.provider);
     console.log(chalk.gray('━'.repeat(56)));
     console.log(`Status: ${chalk.yellow(snapshot.status)}  Phase: ${chalk.cyan(snapshot.phase)}  Read-only: ${chalk.green('yes')}`);
     console.log(`Daemon: ${panel.daemon.running ? chalk.green('running') : chalk.red('stopped')}  Active runs: ${panel.daemon.activeRuns}`);
@@ -102,10 +118,20 @@ export async function handleControlPanelStatus(
 }
 
 export async function handleControlPanelAgentPacket(
-  matterName: string,
+  matterName?: string,
   options: { json?: boolean } = {},
 ): Promise<void> {
   try {
+    if (!matterName) {
+      const provider = await buildProviderPanelState();
+      if (options.json) {
+        console.log(JSON.stringify(provider, null, 2));
+        return;
+      }
+      printProviderPanel(provider);
+      return;
+    }
+
     const panel = await buildPacket(matterName);
     const packet = {
       matterName: panel.matterName,
@@ -122,6 +148,7 @@ export async function handleControlPanelAgentPacket(
       reducerPackets: panel.reducerPackets,
       nextActions: panel.snapshot.nextActions,
       recommendedNextAction: panel.nextAction,
+      provider: panel.provider,
     };
     if (options.json !== false) {
       console.log(JSON.stringify(packet, null, 2));

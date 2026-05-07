@@ -1,0 +1,238 @@
+import { AuthError, LLMError, classifyError } from './errors.js';
+import type { LLMRequest, LLMResponse, LLMUsage } from '../types/llm.js';
+import type { LLMMessage, ToolCall } from '../types/message.js';
+
+export interface AnthropicClientOptions {
+  apiKey?: string;
+  authToken?: string;
+  baseUrl?: string;
+  timeoutMs?: number;
+  providerName?: string;
+  anthropicVersion?: string;
+}
+
+interface AnthropicContentBlock {
+  type: string;
+  text?: string;
+  id?: string;
+  name?: string;
+  input?: Record<string, unknown>;
+}
+
+interface AnthropicResponse {
+  content?: AnthropicContentBlock[];
+  usage?: {
+    input_tokens?: number;
+    output_tokens?: number;
+  };
+  model?: string;
+  error?: { message: string; type?: string };
+}
+
+function joinUrl(baseUrl: string, path: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+
+async function readResponseText(response: Response): Promise<string> {
+  return typeof response.text === 'function' ? response.text() : '';
+}
+export class AnthropicClient {
+  private readonly apiKey: string;
+  private readonly authToken: string;
+  private readonly baseUrl: string;
+  private readonly timeoutMs: number;
+  private readonly providerName: string;
+  private readonly anthropicVersion: string;
+
+  constructor(options: AnthropicClientOptions = {}) {
+    this.apiKey = options.apiKey ?? '';
+    this.authToken = options.authToken ?? '';
+    this.baseUrl = options.baseUrl ?? 'https://api.anthropic.com/v1';
+    this.timeoutMs = options.timeoutMs ?? 180_000;
+    this.providerName = options.providerName ?? 'anthropic';
+    this.anthropicVersion = options.anthropicVersion ?? '2023-06-01';
+  }
+
+  async chat(request: LLMRequest): Promise<LLMResponse> {
+    return this.chatWithTools(request);
+  }
+
+  async chatWithTools(request: LLMRequest): Promise<LLMResponse> {
+    this.assertAuth();
+    const payload = this.buildPayload(request);
+    return this.withTimeout(async (signal) => {
+      const response = await fetch(joinUrl(this.baseUrl, '/messages'), {
+        method: 'POST',
+        headers: this.buildHeaders(),
+        body: JSON.stringify(payload),
+        signal,
+      });
+
+      if (!response.ok) {
+        const body = await readResponseText(response);
+        throw classifyError(response.status, body);
+      }
+
+      const data = (await response.json()) as AnthropicResponse;
+      if (data.error) {
+        throw new LLMError(data.error.message, 0, this.providerName);
+      }
+      return this.parseResponse(data);
+    });
+  }
+
+  async healthCheck(): Promise<boolean> {
+    this.assertAuth();
+    return this.withTimeout(async (signal) => {
+      const response = await fetch(joinUrl(this.baseUrl, '/models'), {
+        method: 'GET',
+        headers: this.buildHeaders(false),
+        signal,
+      });
+      if (response.status === 401 || response.status === 403 || response.status >= 500) {
+        const body = await readResponseText(response);
+        throw classifyError(response.status, body);
+      }
+      return response.ok;
+    });
+  }
+
+  private assertAuth(): void {
+    if (!this.apiKey && !this.authToken) {
+      throw new AuthError();
+    }
+  }
+
+  private buildHeaders(includeJson = true): Record<string, string> {
+    const headers: Record<string, string> = {
+      'anthropic-version': this.anthropicVersion,
+    };
+    if (includeJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    if (this.apiKey) {
+      headers['x-api-key'] = this.apiKey;
+    } else if (this.authToken) {
+      headers.Authorization = `Bearer ${this.authToken}`;
+    }
+    return headers;
+  }
+
+  private async withTimeout<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      return await operation(controller.signal);
+    } catch (err) {
+      if (err instanceof LLMError) throw err;
+      const error = err as Error;
+      if (error.name === 'AbortError' || /abort|aborted/i.test(error.message)) {
+        throw new LLMError(`Request timed out after ${this.timeoutMs}ms`, 408, this.providerName);
+      }
+      if (err instanceof TypeError && error.message.includes('fetch')) {
+        throw new LLMError(`Network error: ${error.message}`, 0, this.providerName);
+      }
+      throw new LLMError(`Unexpected error: ${error.message}`, 0, this.providerName);
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  private buildPayload(request: LLMRequest): Record<string, unknown> {
+    const systemMessages = request.messages.filter((m) => m.role === 'system');
+    const messages = request.messages
+      .filter((m) => m.role !== 'system')
+      .map((message) => this.formatMessage(message));
+
+    const payload: Record<string, unknown> = {
+      model: request.config.model,
+      max_tokens: request.config.maxTokens ?? 4096,
+      temperature: request.config.temperature ?? 0.1,
+      messages,
+    };
+
+    if (systemMessages.length > 0) {
+      payload.system = systemMessages.map((m) => m.content).join('\n\n');
+    }
+
+    if (request.tools && request.tools.length > 0) {
+      payload.tools = request.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        input_schema: tool.inputSchema,
+      }));
+      payload.tool_choice = { type: 'auto' };
+    }
+
+    return payload;
+  }
+
+  private formatMessage(message: LLMMessage): Record<string, unknown> {
+    if (message.role === 'tool') {
+      return {
+        role: 'user',
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: message.toolCallId,
+            content: message.content,
+          },
+        ],
+      };
+    }
+
+    if (message.toolCalls && message.toolCalls.length > 0) {
+      return {
+        role: 'assistant',
+        content: [
+          ...(message.content ? [{ type: 'text', text: message.content }] : []),
+          ...message.toolCalls.map((toolCall) => ({
+            type: 'tool_use',
+            id: toolCall.id,
+            name: toolCall.name,
+            input: toolCall.args,
+          })),
+        ],
+      };
+    }
+
+    return {
+      role: message.role === 'assistant' ? 'assistant' : 'user',
+      content: message.content,
+    };
+  }
+
+  private parseResponse(data: AnthropicResponse): LLMResponse {
+    const blocks = data.content ?? [];
+    const text = blocks
+      .filter((block) => block.type === 'text' && typeof block.text === 'string')
+      .map((block) => block.text)
+      .join('\n');
+    const toolCalls: ToolCall[] = blocks
+      .filter((block) => block.type === 'tool_use' && block.id && block.name)
+      .map((block) => ({
+        id: block.id as string,
+        name: block.name as string,
+        args: block.input ?? {},
+      }));
+
+    const inputTokens = data.usage?.input_tokens ?? 0;
+    const outputTokens = data.usage?.output_tokens ?? 0;
+    const usage: LLMUsage | undefined = data.usage
+      ? {
+          promptTokens: inputTokens,
+          completionTokens: outputTokens,
+          totalTokens: inputTokens + outputTokens,
+        }
+      : undefined;
+
+    return {
+      content: text,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage,
+      provider: this.providerName,
+      model: data.model,
+    };
+  }
+}

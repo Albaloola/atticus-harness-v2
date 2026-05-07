@@ -1,5 +1,17 @@
-export { OpenRouterClient } from './client.js';
-export type { OpenRouterClientOptions } from './client.js';
+export {
+  OpenAICompatibleClient,
+  OpenRouterClient,
+  createLLMClient,
+} from './client.js';
+export type {
+  LLMClient,
+  OpenAICompatibleClientOptions,
+  OpenRouterClientOptions,
+} from './client.js';
+export { AnthropicClient } from './anthropic.js';
+export type { AnthropicClientOptions } from './anthropic.js';
+export { buildModelDelegationPrompt, selectModelForTask, MODEL_ROLE_DESCRIPTIONS } from './prompt-builder.js';
+export type { ModelDelegationProfile, ModelDelegationRole } from './prompt-builder.js';
 export {
   loadConfig,
   loadConfigFromStore,

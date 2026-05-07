@@ -2,6 +2,8 @@ import { MiniOrchestrator } from './mini-orchestrator.js';
 import { createTask, updateTask } from '../state/tasks.js';
 import { createRun, updateRun } from '../state/runs.js';
 import { OrchestrationRuntime } from './runtime.js';
+import { resolveConfig } from '../config/loader.js';
+import { selectModelForTask } from '../config/model-routing.js';
 import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
 import { loadMatter, saveMatterIndex } from '../storage/matter.js';
 import type { OrchestratorConfig, OrchestratorResult, AgentStructuredResult } from './types.js';
@@ -24,10 +26,16 @@ export class MasterOrchestrator {
   async run(): Promise<OrchestratorResult> {
     const { matterName, objective, maxDepth, maxConcurrency } = this.config;
     const phases = getDefaultPhases();
+    const resolvedConfig = await resolveConfig({ matterName });
+    const masterModel = this.config.model ?? selectModelForTask({
+      providerPolicy: resolvedConfig.providerPolicy,
+      role: 'master_orchestrator',
+      objective,
+    });
 
     const masterRun = createRun({
       matterName,
-      model: 'deepseek/deepseek-v4-pro',
+      model: masterModel,
       agentType: 'master_orchestrator',
       role: 'master',
       prompt: objective,
@@ -73,6 +81,7 @@ export class MasterOrchestrator {
           maxDepth: (maxDepth || 3) - 1,
           maxConcurrency: maxConcurrency || 4,
           parentRunId: masterRun.id,
+          providerPolicy: resolvedConfig.providerPolicy,
           phaseTaskId: task.id,
           runtime: this.runtime,
         });

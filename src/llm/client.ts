@@ -5,16 +5,23 @@ import {
   CHAT_COMPLETIONS_PATH,
   type ProviderConfig,
 } from './config.js';
+import { AnthropicClient } from './anthropic.js';
 import { AuthError, LLMError, classifyError } from './errors.js';
 import { assertProviderPolicyAllowed } from '../config/provider-policy.js';
-import type { LLMConfig, LLMRequest, LLMResponse, LLMUsage } from '../types/llm.js';
+import type { ResolvedHarnessConfig } from '../config/schema.js';
+import type { LLMRequest, LLMResponse, LLMUsage } from '../types/llm.js';
 import type { LLMMessage, ToolCall } from '../types/message.js';
-import type { ToolDefinition } from '../types/tool.js';
 
-export interface OpenRouterResponse {
-  id: string;
+export interface LLMClient {
+  chat(request: LLMRequest): Promise<LLMResponse>;
+  chatWithTools(request: LLMRequest): Promise<LLMResponse>;
+  healthCheck(): Promise<boolean>;
+}
+
+export interface OpenAICompatibleResponse {
+  id?: string;
   choices: Array<{
-    finish_reason: string;
+    finish_reason?: string;
     message: {
       role: string;
       content: string | null;
@@ -37,26 +44,75 @@ export interface OpenRouterResponse {
   error?: { message: string; code: number };
 }
 
-export interface OpenRouterClientOptions {
+/** @deprecated Use OpenAICompatibleResponse. */
+export type OpenRouterResponse = OpenAICompatibleResponse;
+
+export interface OpenAICompatibleClientOptions {
   apiKey?: string;
+  /** OAuth bearer token; used when apiKey is absent. */
+  authToken?: string;
+  /** Human-readable provider id for diagnostics and policy checks. */
+  providerName?: string;
   baseUrl?: string;
+  chatPath?: string;
+  healthPath?: string;
   timeoutMs?: number;
+  /** Explicitly allow unauthenticated requests, e.g. local Ollama. */
+  allowNoAuth?: boolean;
+  headers?: Record<string, string>;
 }
 
-export class OpenRouterClient {
+/** @deprecated Use OpenAICompatibleClientOptions. */
+export type OpenRouterClientOptions = OpenAICompatibleClientOptions;
+
+function joinUrl(baseUrl: string, path: string): string {
+  const normalizedBase = baseUrl.replace(/\/+$/, '');
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${normalizedBase}${normalizedPath}`;
+}
+
+
+async function readResponseText(response: Response): Promise<string> {
+  return typeof response.text === 'function' ? response.text() : '';
+}
+function isLocalProvider(providerName: string, baseUrl: string): boolean {
+  return (
+    providerName === 'local' ||
+    providerName.includes('ollama') ||
+    /(^|\.)localhost(?::|\/|$)|127\.0\.0\.1/.test(baseUrl)
+  );
+}
+
+export class OpenAICompatibleClient implements LLMClient {
   private apiKey: string;
+  private authToken: string;
   private baseUrl: string;
+  private chatPath: string;
+  private healthPath?: string;
   private timeoutMs: number;
-  private readonly explicitOptions: OpenRouterClientOptions;
+  private providerName: string;
+  private allowNoAuth: boolean;
+  private headers: Record<string, string>;
+  private readonly explicitOptions: OpenAICompatibleClientOptions;
   private readonly storeConfig: Promise<ProviderConfig>;
 
-  constructor(options?: OpenRouterClientOptions) {
+  constructor(options?: OpenAICompatibleClientOptions) {
     const config = loadConfig();
     this.explicitOptions = options ?? {};
     this.storeConfig = loadConfigFromStore();
     this.apiKey = options?.apiKey || config.apiKey || '';
+    this.authToken = options?.authToken || '';
     this.baseUrl = options?.baseUrl || config.baseUrl || OPENROUTER_BASE_URL;
+    this.chatPath = options?.chatPath || CHAT_COMPLETIONS_PATH;
+    this.healthPath = options?.healthPath;
     this.timeoutMs = options?.timeoutMs || config.timeoutMs || 180_000;
+    this.providerName = options?.providerName || config.providerName || 'openrouter';
+    this.allowNoAuth = options?.allowNoAuth ?? isLocalProvider(this.providerName, this.baseUrl);
+    if (this.allowNoAuth && !options?.apiKey && !options?.authToken) {
+      this.apiKey = '';
+      this.authToken = '';
+    }
+    this.headers = options?.headers ?? {};
   }
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -66,81 +122,80 @@ export class OpenRouterClient {
   async chatWithTools(request: LLMRequest): Promise<LLMResponse> {
     await this.hydrateConfigFromStore();
 
-    if (!this.apiKey) {
+    if (!this.hasAuth()) {
       throw new AuthError();
     }
 
     const storeConfig = await this.storeConfig;
-    if (storeConfig.providerPolicy && storeConfig.providers) {
+    if (
+      storeConfig.providerPolicy &&
+      storeConfig.providers &&
+      (!this.explicitOptions.providerName || storeConfig.providerName === this.providerName)
+    ) {
       assertProviderPolicyAllowed({
         policy: storeConfig.providerPolicy,
         providers: storeConfig.providers,
-        providerName: storeConfig.providerName ?? 'openrouter',
+        providerName: storeConfig.providerName ?? this.providerName,
         model: request.config.model,
       });
     }
 
     const payload = this.buildPayload(request);
-    const url = `${this.baseUrl}${CHAT_COMPLETIONS_PATH}`;
+    const url = joinUrl(this.baseUrl, this.chatPath);
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
-
-    try {
+    return this.withTimeout(async (signal) => {
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://github.com/atticus/harness-v2',
-          'X-Title': 'Harness v2',
-        },
+        headers: this.buildHeaders(),
         body: JSON.stringify(payload),
-        signal: controller.signal,
+        signal,
       });
 
       if (!response.ok) {
-        const body = await response.text();
+        const body = await readResponseText(response);
         throw classifyError(response.status, body);
       }
 
-      const data = (await response.json()) as OpenRouterResponse;
+      const data = (await response.json()) as OpenAICompatibleResponse;
 
       if (data.error) {
-        throw classifyError(data.error.code || 500, data.error.message);
+        throw classifyError(data.error.code || 500, data.error.message, this.providerName);
       }
 
       return this.parseResponse(data);
-    } catch (err) {
-      if (err instanceof LLMError) throw err;
-      const error = err as Error;
-      if (
-        error.name === 'AbortError' ||
-        /abort|aborted/i.test(error.message)
-      ) {
-        throw new LLMError(`Request timed out after ${this.timeoutMs}ms`, 408);
-      }
-      if (
-        err instanceof TypeError &&
-        error.message.includes('fetch')
-      ) {
-        throw new LLMError(
-          `Network error: ${error.message}`,
-          0,
-        );
-      }
-      throw new LLMError(
-        `Unexpected error: ${error.message}`,
-        0,
-      );
-    } finally {
-      clearTimeout(timeoutId);
+    });
+  }
+
+  async healthCheck(): Promise<boolean> {
+    await this.hydrateConfigFromStore();
+    if (!this.hasAuth()) {
+      throw new AuthError();
     }
+
+    const path = this.healthPath ?? (isLocalProvider(this.providerName, this.baseUrl) ? '/models' : '/models');
+    const url = joinUrl(this.baseUrl, path);
+
+    return this.withTimeout(async (signal) => {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: this.buildHeaders(false),
+        signal,
+      });
+      if (response.status === 401 || response.status === 403) {
+        const body = await readResponseText(response);
+        throw classifyError(response.status, body);
+      }
+      if (response.status >= 500) {
+        const body = await readResponseText(response);
+        throw classifyError(response.status, body);
+      }
+      return response.ok;
+    });
   }
 
   private async hydrateConfigFromStore(): Promise<void> {
     const config = await this.storeConfig;
-    if (!this.explicitOptions.apiKey && config.apiKey) {
+    if (!this.explicitOptions.apiKey && !this.allowNoAuth && config.apiKey) {
       this.apiKey = config.apiKey;
     }
     if (!this.explicitOptions.baseUrl && config.baseUrl) {
@@ -148,6 +203,53 @@ export class OpenRouterClient {
     }
     if (!this.explicitOptions.timeoutMs && config.timeoutMs) {
       this.timeoutMs = config.timeoutMs;
+    }
+    if (!this.explicitOptions.providerName && config.providerName) {
+      this.providerName = config.providerName;
+    }
+    if (this.explicitOptions.allowNoAuth === undefined) {
+      this.allowNoAuth = isLocalProvider(this.providerName, this.baseUrl);
+    }
+  }
+
+  private hasAuth(): boolean {
+    return this.allowNoAuth || Boolean(this.apiKey || this.authToken);
+  }
+
+  private buildHeaders(includeJson = true): Record<string, string> {
+    const headers: Record<string, string> = { ...this.headers };
+    if (includeJson) {
+      headers['Content-Type'] = 'application/json';
+    }
+    const bearer = this.apiKey || this.authToken;
+    if (bearer) {
+      headers.Authorization = `Bearer ${bearer}`;
+    }
+    if (this.providerName === 'openrouter') {
+      headers['HTTP-Referer'] = 'https://github.com/atticus/harness-v2';
+      headers['X-Title'] = 'Harness v2';
+    }
+    return headers;
+  }
+
+  private async withTimeout<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      return await operation(controller.signal);
+    } catch (err) {
+      if (err instanceof LLMError) throw err;
+      const error = err as Error;
+      if (error.name === 'AbortError' || /abort|aborted/i.test(error.message)) {
+        throw new LLMError(`Request timed out after ${this.timeoutMs}ms`, 408, this.providerName);
+      }
+      if (err instanceof TypeError && error.message.includes('fetch')) {
+        throw new LLMError(`Network error: ${error.message}`, 0, this.providerName);
+      }
+      throw new LLMError(`Unexpected error: ${error.message}`, 0, this.providerName);
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -218,24 +320,22 @@ export class OpenRouterClient {
     return formatted;
   }
 
-  private parseResponse(data: OpenRouterResponse): LLMResponse {
+  private parseResponse(data: OpenAICompatibleResponse): LLMResponse {
     const choice = data.choices?.[0];
     if (!choice) {
       throw new LLMError(
-        'Empty response from OpenRouter (no choices)',
+        `Empty response from ${this.providerName} (no choices)`,
         0,
-        data.provider,
+        data.provider ?? this.providerName,
       );
     }
 
     const message = choice.message;
-    const toolCalls: ToolCall[] | undefined = message.tool_calls?.map(
-      (tc) => ({
-        id: tc.id,
-        name: tc.function.name,
-        args: JSON.parse(tc.function.arguments),
-      }),
-    );
+    const toolCalls: ToolCall[] | undefined = message.tool_calls?.map((tc) => ({
+      id: tc.id,
+      name: tc.function.name,
+      args: JSON.parse(tc.function.arguments) as Record<string, unknown>,
+    }));
 
     const usage: LLMUsage | undefined = data.usage
       ? {
@@ -251,8 +351,42 @@ export class OpenRouterClient {
       content: message.content || '',
       toolCalls,
       usage,
-      provider: data.provider,
+      provider: data.provider ?? this.providerName,
       model: data.model,
     };
   }
+}
+
+/** Backward-compatible name retained for existing imports. */
+export class OpenRouterClient extends OpenAICompatibleClient {
+  constructor(options?: OpenRouterClientOptions) {
+    super({ providerName: 'openrouter', ...options });
+  }
+}
+
+export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig): LLMClient {
+  const isResolvedConfig = 'provider' in config;
+  const provider = isResolvedConfig ? config.provider : config;
+  const providerMetadata = provider as ProviderConfig;
+  const providerName = isResolvedConfig ? config.providerName : (providerMetadata.providerName ?? 'openrouter');
+  const baseUrl = provider.baseUrl ?? OPENROUTER_BASE_URL;
+  const timeoutMs = provider.timeoutMs ?? 180_000;
+  const apiKey = provider.apiKey;
+
+  if (providerName === 'anthropic' || providerName.startsWith('anthropic')) {
+    return new AnthropicClient({
+      apiKey,
+      baseUrl,
+      timeoutMs,
+      providerName,
+    });
+  }
+
+  return new OpenAICompatibleClient({
+    apiKey,
+    baseUrl,
+    timeoutMs,
+    providerName,
+    allowNoAuth: isLocalProvider(providerName, baseUrl),
+  });
 }

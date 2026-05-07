@@ -10,43 +10,45 @@ export class LLMError extends Error {
 }
 
 export class RateLimitError extends LLMError {
-  constructor(retryAfter?: number) {
+  constructor(retryAfter?: number, provider = 'provider') {
     super(
-      `Rate limited by OpenRouter${retryAfter ? `, retry after ${retryAfter}s` : ''}`,
+      `Rate limited by ${provider}${retryAfter ? `, retry after ${retryAfter}s` : ''}`,
       429,
+      provider,
     );
     this.name = 'RateLimitError';
   }
 }
 
 export class TokenLimitError extends LLMError {
-  constructor(limit: number, actual: number) {
-    super(`Token limit exceeded: ${actual} > ${limit}`, 413);
+  constructor(limit: number, actual: number, provider?: string) {
+    super(`Token limit exceeded: ${actual} > ${limit}`, 413, provider);
     this.name = 'TokenLimitError';
   }
 }
 
 export class AuthError extends LLMError {
-  constructor() {
+  constructor(provider = 'openrouter') {
     super(
-      'OpenRouter API key not configured. Set OPENROUTER_API_KEY environment variable.',
+      `API key not configured for ${provider}. Configure provider auth before running LLM calls.`,
       401,
+      provider,
     );
     this.name = 'AuthError';
   }
 }
 
-export function classifyError(status: number, body: string): LLMError {
-  if (status === 401 || status === 403) return new AuthError();
-  if (status === 429) return new RateLimitError();
+export function classifyError(status: number, body: string, provider = 'provider'): LLMError {
+  if (status === 401 || status === 403) return new AuthError(provider);
+  if (status === 429) return new RateLimitError(undefined, provider);
   if (
     status === 413 ||
     body.includes('context length') ||
     body.includes('too many tokens')
   ) {
-    return new TokenLimitError(0, 0);
+    return new TokenLimitError(0, 0, provider);
   }
   if (status >= 500)
-    return new LLMError(`OpenRouter server error: ${body}`, status);
-  return new LLMError(`OpenRouter error (${status}): ${body}`, status);
+    return new LLMError(`${provider} server error: ${body}`, status, provider);
+  return new LLMError(`${provider} error (${status}): ${body}`, status, provider);
 }

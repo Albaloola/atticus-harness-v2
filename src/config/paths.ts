@@ -4,7 +4,7 @@ import { join } from 'path';
 const CONFIG_DIR = '.atticus-harness';
 
 export function getConfigDir(): string {
-  return join(homedir(), CONFIG_DIR);
+  return join(process.env.HOME ?? homedir(), CONFIG_DIR);
 }
 
 export function getConfigPath(): string {

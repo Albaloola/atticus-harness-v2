@@ -1,5 +1,6 @@
 import { platform, release } from 'os';
 import { DEFAULT_MODEL, PRO_MODEL } from '../llm/config.js';
+import { buildModelDelegationPrompt } from '../config/model-routing.js';
 import type { AutonomyPolicy, ProviderPolicy, ToolPolicy } from '../config/schema.js';
 import type { MatterIndex } from '../types/matter.js';
 
@@ -106,6 +107,13 @@ export function getHarnessDynamicSections(context: HarnessPromptContext = {}): P
   if (context.autonomy || context.toolPolicy || context.providerPolicy) {
     sections.push(getPolicySection(context));
   }
+  if (context.providerPolicy) {
+    sections.push({
+      key: 'model-delegation',
+      title: 'Model Delegation',
+      content: buildModelDelegationPrompt(context.providerPolicy),
+    });
+  }
   if (context.skillSection) {
     sections.push({
       key: 'selected-skills',
@@ -150,7 +158,7 @@ function getEnvironmentSection(context: HarnessPromptContext): PromptSection {
       `Active model: ${context.model || DEFAULT_MODEL}`,
       `Fast model: ${context.providerPolicy?.models.fast || DEFAULT_MODEL}`,
       `Reasoning/drafting model: ${context.providerPolicy?.models.reasoning || PRO_MODEL}`,
-      'Model note: this harness is currently configured around DeepSeek V4 Flash and DeepSeek V4 Pro via OpenRouter-compatible calls.',
+      'Model note: this harness uses explicit provider-policy routes and fails closed when a provider or model is not allowed.',
     ].join('\n'),
   };
 }

@@ -4,12 +4,27 @@ import chalk from 'chalk';
 
 const program = new Command();
 
+const LLM_PRECHECK_COMMANDS = new Set([
+  'run',
+  'orchestrate',
+  'draft',
+  'verify',
+  'gate',
+  'review',
+  'search',
+  'fetch',
+  'manage',
+]);
+
 program
   .name('harness')
   .description('Standalone legal operations agent CLI')
   .version('0.1.0')
-  .hook('preAction', async (thisCommand) => {
-    // For non-help commands, add any pre-flight checks here
+  .hook('preAction', async (_thisCommand, actionCommand) => {
+    if (!LLM_PRECHECK_COMMANDS.has(actionCommand.name())) return;
+    const matterName = typeof actionCommand.args[0] === 'string' ? actionCommand.args[0] : undefined;
+    const { resolveConfig } = await import('./config/loader.js');
+    await resolveConfig({ matterName, strict: true });
   });
 
 // Matter lifecycle
@@ -248,6 +263,58 @@ program
       })
   );
 
+
+// Provider profile management
+program
+  .command('provider')
+  .description('Manage provider profiles and auth')
+  .addCommand(
+    new Command('list')
+      .description('List available provider profiles')
+      .option('--json', 'JSON output')
+      .action(async (options) => {
+        const { handleProviderList } = await import('./commands/provider.js');
+        await handleProviderList(options);
+      })
+  )
+  .addCommand(
+    new Command('show')
+      .description('Show provider profile details')
+      .argument('[name]', 'Provider profile name')
+      .option('--json', 'JSON output')
+      .action(async (name, options) => {
+        const { handleProviderShow } = await import('./commands/provider.js');
+        await handleProviderShow(name, options);
+      })
+  )
+  .addCommand(
+    new Command('select')
+      .description('Switch active provider profile')
+      .argument('<name>', 'Provider profile name')
+      .action(async (name) => {
+        const { handleProviderSelect } = await import('./commands/provider.js');
+        await handleProviderSelect(name);
+      })
+  )
+  .addCommand(
+    new Command('auth')
+      .description('Show or set auth for a provider profile')
+      .argument('[name]', 'Provider profile name or auth token for the active provider')
+      .argument('[key]', 'Auth token/API key')
+      .action(async (name, key) => {
+        const { handleProviderAuth } = await import('./commands/provider.js');
+        await handleProviderAuth(name, key);
+      })
+  )
+  .addCommand(
+    new Command('reset')
+      .description('Restore default provider profiles while preserving secrets')
+      .action(async () => {
+        const { handleProviderReset } = await import('./commands/provider.js');
+        await handleProviderReset();
+      })
+  );
+
 // Policy management
 program
   .command('policy')
@@ -386,18 +453,92 @@ program
 
 
 // Control panel / monitor snapshot
+const controlPanelProviderCommand = new Command('provider')
+  .description('Show or change provider profile from the control panel')
+  .action(async () => {
+    const { handleProviderShow } = await import('./commands/provider.js');
+    await handleProviderShow();
+  })
+  .addCommand(
+    new Command('list')
+      .description('List available provider profiles')
+      .option('--json', 'JSON output')
+      .action(async (options) => {
+        const { handleProviderList } = await import('./commands/provider.js');
+        await handleProviderList(options);
+      })
+  )
+  .addCommand(
+    new Command('select')
+      .description('Switch active provider profile')
+      .argument('<name>', 'Provider profile name')
+      .action(async (name) => {
+        const { handleProviderSelect } = await import('./commands/provider.js');
+        await handleProviderSelect(name);
+      })
+  )
+  .addCommand(
+    new Command('auth')
+      .description('Show or set auth for the active provider')
+      .argument('[key]', 'Auth token/API key')
+      .action(async (key) => {
+        const { handleProviderAuth } = await import('./commands/provider.js');
+        await handleProviderAuth(key);
+      })
+  );
+
+const controlPanelModelCommand = new Command('model')
+  .description('Show or edit model delegation for the active provider')
+  .addCommand(
+    new Command('show')
+      .description('Show current model delegation')
+      .option('--json', 'JSON output')
+      .action(async (options) => {
+        const { handleProviderModelShow } = await import('./commands/provider.js');
+        await handleProviderModelShow(options);
+      })
+  )
+  .addCommand(
+    new Command('set')
+      .description('Set a model delegation role')
+      .argument('<role>', 'fast, reasoning, drafting, reviewer, citation, or cheap')
+      .argument('<model>', 'Model identifier')
+      .action(async (role, model) => {
+        const { handleProviderModelSet } = await import('./commands/provider.js');
+        await handleProviderModelSet(role, model);
+      })
+  )
+  .addCommand(
+    new Command('reset')
+      .description('Reset active provider model delegation to preset defaults')
+      .action(async () => {
+        const { handleProviderModelReset } = await import('./commands/provider.js');
+        await handleProviderModelReset();
+      })
+  );
+
 program
   .command('control-panel')
   .alias('panel')
   .description('Operator control-panel workflow')
   .addCommand(
     new Command('status')
-      .description('Show read-only matter control panel')
-      .argument('<matter-name>', 'Matter name')
+      .description('Show provider hub or read-only matter control panel')
+      .argument('[matter-name]', 'Matter name')
       .option('--json', 'JSON output')
       .action(async (matterName, options) => {
         const { handleControlPanelStatus } = await import('./commands/control-panel.js');
         await handleControlPanelStatus(matterName, options);
+      })
+  )
+  .addCommand(controlPanelProviderCommand)
+  .addCommand(controlPanelModelCommand)
+  .addCommand(
+    new Command('reset')
+      .description('Reset provider settings to factory defaults while preserving secrets')
+      .action(async () => {
+        const { handleProviderReset } = await import('./commands/provider.js');
+        await handleProviderReset();
       })
   )
   .addCommand(

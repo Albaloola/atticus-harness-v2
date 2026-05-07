@@ -1,6 +1,6 @@
 import type { AgentStructuredResult as BaseAgentStructuredResult } from '../agent/result-schema.js';
 import type { PhaseDefinition } from '../legal/workflow.js';
-import type { AutonomyPolicy } from '../config/schema.js';
+import type { AutonomyPolicy, ProviderPolicy } from '../config/schema.js';
 import type { OrchestrationRuntime } from './runtime.js';
 
 export interface OrchestratorConfig {
@@ -43,6 +43,7 @@ export interface MiniOrchestratorInput {
   parentRunId?: string;
   phaseTaskId?: string;
   runtime?: OrchestrationRuntime;
+  providerPolicy?: ProviderPolicy;
 }
 
 export interface AgentStructuredResult

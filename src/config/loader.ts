@@ -1,6 +1,7 @@
-import { readFile, writeFile, mkdir, access } from 'fs/promises';
+import { readFile, writeFile, mkdir, access, rename } from 'fs/promises';
 import { constants } from 'fs';
-import { loadSecrets } from './secrets.js';
+import { basename, dirname, join } from 'path';
+import { loadSecrets, getOAuthToken } from './secrets.js';
 import {
   getConfigPath,
   getConfigDir,
@@ -15,7 +16,10 @@ import {
   type ProviderConfig,
   type ResolvedHarnessConfig,
 } from './schema.js';
+import { validateProviderPolicy } from './policy.js';
 import { canonicalProviderPolicy, assertProviderPolicyAllowed } from './provider-policy.js';
+import { DEFAULT_ACTIVE_PROVIDER, normalizeProviderProfiles, policyForProfile, profileToProviderConfig } from './presets.js';
+import { assertProviderReady } from './auth.js';
 
 function deepMerge<T extends Record<string, unknown>>(
   base: T,
@@ -43,10 +47,7 @@ function deepMerge<T extends Record<string, unknown>>(
   return result;
 }
 
-export async function loadGlobalConfig(): Promise<{
-  config: GlobalHarnessConfig;
-  fromDisk: boolean;
-}> {
+export async function loadGlobalConfig(): Promise<{ config: GlobalHarnessConfig; fromDisk: boolean }> {
   const configPath = getConfigPath();
   try {
     const raw = await readFile(configPath, 'utf-8');
@@ -55,24 +56,27 @@ export async function loadGlobalConfig(): Promise<{
       DEFAULTS as unknown as Record<string, unknown>,
       diskConfig as unknown as Partial<Record<string, unknown>>
     ) as unknown as GlobalHarnessConfig;
-    return { config: merged, fromDisk: true };
+    if (diskConfig.profiles === undefined) {
+      delete (merged as Partial<GlobalHarnessConfig>).profiles;
+    }
+    return { config: normalizeProviderProfiles(merged), fromDisk: true };
   } catch {
-    return { config: { ...DEFAULTS }, fromDisk: false };
+    return { config: normalizeProviderProfiles(structuredClone(DEFAULTS)), fromDisk: false };
   }
 }
 
-export async function saveGlobalConfig(
-  config: GlobalHarnessConfig
-): Promise<void> {
+export async function saveGlobalConfig(config: GlobalHarnessConfig): Promise<void> {
   const dir = getConfigDir();
   try {
     await access(dir, constants.F_OK);
   } catch {
     await mkdir(dir, { recursive: true, mode: 0o700 });
   }
-  await writeFile(getConfigPath(), JSON.stringify(config, null, 2) + '\n', {
-    mode: 0o600,
-  });
+  const normalized = normalizeProviderProfiles(config);
+  const configPath = getConfigPath();
+  const tmpPath = join(dirname(configPath), `.${basename(configPath)}.${process.pid}.${Date.now()}.tmp`);
+  await writeFile(tmpPath, JSON.stringify(normalized, null, 2) + '\n', { mode: 0o600 });
+  await rename(tmpPath, configPath);
 }
 
 export async function loadMatterConfigOverride(
@@ -87,9 +91,7 @@ export async function loadMatterConfigOverride(
   }
 }
 
-async function loadMatterPolicyOverride(
-  matterName: string
-): Promise<ToolPolicy | null> {
+async function loadMatterPolicyOverride(matterName: string): Promise<ToolPolicy | null> {
   const policyPath = getMatterPolicyPath(matterName);
   try {
     const raw = await readFile(policyPath, 'utf-8');
@@ -101,46 +103,80 @@ async function loadMatterPolicyOverride(
 
 async function buildProviderConfig(
   providers: GlobalHarnessConfig['providers'],
-  providerName = 'openrouter'
+  profileName: string,
+  profile = normalizeProviderProfiles({ ...DEFAULTS, providers }).profiles[profileName]
 ): Promise<ProviderConfig> {
-  const base = providers[providerName] ?? providers.openrouter ?? {};
+  const base = { ...(providers[profileName] ?? providers.openrouter ?? {}) };
+  const legacyOpenRouter = profileName === DEFAULT_ACTIVE_PROVIDER ? providers.openrouter : undefined;
+  if (legacyOpenRouter && DEFAULTS.providers.openrouter) {
+    if (legacyOpenRouter.defaultModel !== DEFAULTS.providers.openrouter.defaultModel) {
+      base.defaultModel = legacyOpenRouter.defaultModel;
+    }
+    if (legacyOpenRouter.fallbackModel !== DEFAULTS.providers.openrouter.fallbackModel) {
+      base.fallbackModel = legacyOpenRouter.fallbackModel;
+    }
+  }
   const secrets = await loadSecrets();
-  const envApiKey =
-    process.env.OPENROUTER_API_KEY ?? process.env[`${providerName.toUpperCase()}_API_KEY`];
-  const secretApiKey =
-    secrets.OPENROUTER_API_KEY ?? secrets[`${providerName.toUpperCase()}_API_KEY`];
+  let apiKey: string | undefined;
 
+  if (profile.authType === 'api-key') {
+    const keyName = profile.keyName ?? `${profileName.toUpperCase().replace(/[^A-Z0-9]/g, '_')}_API_KEY`;
+    const envApiKey = process.env[keyName];
+    const secretApiKey = secrets[keyName];
+    apiKey = base.preferSecrets ? (secretApiKey ?? envApiKey) : (secretApiKey ?? envApiKey);
+  } else if (profile.authType === 'oauth' && profile.oauthProvider) {
+    apiKey = await getOAuthToken(profile.oauthProvider);
+  }
+
+  const profileConfig = profileToProviderConfig(profile, apiKey);
   return {
+    ...profileConfig,
     ...base,
-    apiKey: base.preferSecrets ? (secretApiKey ?? envApiKey) : (envApiKey ?? secretApiKey),
+    apiKey,
+    authType: profileConfig.authType,
+    keyName: profileConfig.keyName,
+    oauthProvider: profileConfig.oauthProvider,
+    apiPath: profileConfig.apiPath,
+    anthropicFormat: profileConfig.anthropicFormat,
+    timeoutMs: base.timeoutMs ?? profileConfig.timeoutMs,
+    maxRetries: base.maxRetries ?? profileConfig.maxRetries,
   };
 }
 
 export interface LoadConfigOptions {
   matterName?: string;
   providerName?: string;
+  strict?: boolean;
 }
 
-export async function resolveConfig(
-  options: LoadConfigOptions = {}
-): Promise<ResolvedHarnessConfig> {
-  const { config: globalConfig, fromDisk } = await loadGlobalConfig();
+export async function resolveConfig(options: LoadConfigOptions = {}): Promise<ResolvedHarnessConfig> {
+  const loaded = await loadGlobalConfig();
+  const globalConfig = normalizeProviderProfiles(loaded.config);
+  const { fromDisk } = loaded;
   const { matterName, providerName } = options;
 
-  // Merge with matter overrides
   let autonomy: AutonomyPolicy = { ...globalConfig.autonomy };
   let toolPolicy: ToolPolicy = { ...globalConfig.toolPolicy };
-  let model = globalConfig.defaultModel;
+  const selectedProviderName = providerName ?? globalConfig.activeProvider;
+  if (providerName && !globalConfig.profiles[providerName]) {
+    throw new Error(`Provider "${providerName}" is not configured`);
+  }
+  if (
+    !providerName &&
+    globalConfig.providerPolicy.defaultProvider !== DEFAULTS.providerPolicy.defaultProvider &&
+    globalConfig.providers[globalConfig.providerPolicy.defaultProvider]?.reserved
+  ) {
+    throw new Error(`Provider policy denied reserved provider "${globalConfig.providerPolicy.defaultProvider}"`);
+  }
+  const profile = globalConfig.profiles[selectedProviderName];
+  if (!profile) throw new Error(`Provider "${selectedProviderName}" is not configured`);
+  let model = profile.models.fast;
 
   if (matterName) {
     const matterOverride = await loadMatterConfigOverride(matterName);
     if (matterOverride) {
-      if (matterOverride.defaultModel) {
-        model = matterOverride.defaultModel;
-      }
-      if (matterOverride.autonomy) {
-        autonomy = { ...autonomy, ...matterOverride.autonomy };
-      }
+      if (matterOverride.defaultModel) model = matterOverride.defaultModel;
+      if (matterOverride.autonomy) autonomy = { ...autonomy, ...matterOverride.autonomy };
     }
     const matterPolicy = await loadMatterPolicyOverride(matterName);
     if (matterPolicy) {
@@ -151,29 +187,38 @@ export async function resolveConfig(
     }
   }
 
-  const selectedProviderName = providerName ?? globalConfig.providerPolicy.defaultProvider ?? 'openrouter';
-  const providerPolicy = canonicalProviderPolicy({
+  const provider = await buildProviderConfig(globalConfig.providers, selectedProviderName, profile);
+  const providersForPolicy = {
+    ...globalConfig.providers,
+    [selectedProviderName]: provider,
+    [profile.name]: provider,
+  };
+  const providerPolicy = canonicalProviderPolicy(policyForProfile(profile, {
     ...globalConfig.providerPolicy,
     allowedModels: Array.from(new Set([
       ...(globalConfig.providerPolicy.allowedModels ?? []),
       globalConfig.defaultModel,
       model,
     ].filter(Boolean))),
+  }));
+
+  validateProviderPolicy({
+    config: { ...globalConfig, providerPolicy, providers: providersForPolicy },
+    providerName: selectedProviderName,
+    provider,
+    model,
   });
-  const provider = await buildProviderConfig(
-    globalConfig.providers,
-    selectedProviderName
-  );
   assertProviderPolicyAllowed({
     policy: providerPolicy,
-    providers: globalConfig.providers,
+    providers: providersForPolicy,
     providerName: selectedProviderName,
     model,
   });
-
   const result: ResolvedHarnessConfig = {
     provider,
     providerName: selectedProviderName,
+    profile,
+    activeProfile: profile,
     providerPolicy,
     model,
     autonomy,
@@ -182,18 +227,21 @@ export async function resolveConfig(
     matterName,
   };
   result.redacted = () => redactConfig(result);
+
+  if (options.strict) {
+    await assertProviderReady(result);
+  }
+
   return result;
 }
 
 function redactConfig(config: ResolvedHarnessConfig): Record<string, unknown> {
   const provider = { ...config.provider };
-  if (provider.apiKey) {
-    provider.apiKey = '__REDACTED__';
-  }
-
+  if (provider.apiKey) provider.apiKey = '__REDACTED__';
   return {
     provider,
     providerName: config.providerName,
+    profile: config.profile,
     providerPolicy: config.providerPolicy,
     model: config.model,
     autonomy: config.autonomy,
@@ -214,21 +262,16 @@ export async function getConfigValue(path: string): Promise<unknown> {
   return current;
 }
 
-export async function setConfigValue(
-  path: string,
-  value: unknown
-): Promise<void> {
+export async function setConfigValue(path: string, value: unknown): Promise<void> {
   const { config } = await loadGlobalConfig();
   const keys = path.split('.');
   let target: Record<string, unknown> = config as unknown as Record<string, unknown>;
-
   for (let i = 0; i < keys.length - 1; i++) {
     if (typeof target[keys[i]] !== 'object' || target[keys[i]] === null) {
       target[keys[i]] = {} as Record<string, unknown>;
     }
     target = target[keys[i]] as Record<string, unknown>;
   }
-
   target[keys[keys.length - 1]] = value;
   await saveGlobalConfig(config);
 }

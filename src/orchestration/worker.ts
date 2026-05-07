@@ -5,6 +5,7 @@ import { appendEvent } from '../state/events.js';
 import { buildWorkerPrompt } from './prompts.js';
 import { ToolRegistry } from '../tools/index.js';
 import { resolveConfig } from '../config/loader.js';
+import { selectModelForTask } from '../config/model-routing.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
 import { synthesizeWorkerOutput, type WorkerSynthesisClient } from './worker-synthesis.js';
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
@@ -133,10 +134,17 @@ export class WorkerAgent {
         return parsed;
       }
 
+      const resolvedConfig = await resolveConfig({ matterName: this.spawn.matterName });
       const rawResult = await synthesizeWorkerOutput({
         spawn: this.spawn,
         loopResult,
-        model: 'deepseek/deepseek-v4-pro',
+        model: selectModelForTask({
+          providerPolicy: resolvedConfig.providerPolicy,
+          role: 'worker_synthesis',
+          phaseId: this.spawn.phaseId,
+          title: this.spawn.title,
+          objective: this.spawn.objective,
+        }),
         client: this.config.synthesisClient,
       });
 

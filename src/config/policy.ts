@@ -143,15 +143,15 @@ export function validateProviderPolicy(input: ProviderPolicyValidationInput): vo
   }
 
   const allowedModels = new Set(Object.values(policy.models));
-  if (!allowedModels.has(model)) {
-    throw new Error(`Provider policy denied model "${model}"; model must be explicitly routed`);
-  }
-
   if (provider.defaultModel && !allowedModels.has(provider.defaultModel)) {
     throw new Error(`Provider policy denied provider default model "${provider.defaultModel}"; model must be explicitly routed`);
   }
 
   if (provider.fallbackModel && !allowedModels.has(provider.fallbackModel)) {
     throw new Error(`Provider policy denied fallback model "${provider.fallbackModel}"; silent fallback is disabled`);
+  }
+
+  if (!allowedModels.has(model)) {
+    throw new Error(`Provider policy denied model "${model}"; model must be explicitly routed`);
   }
 }

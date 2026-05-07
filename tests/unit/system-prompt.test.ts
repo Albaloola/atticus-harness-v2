@@ -21,7 +21,8 @@ describe('system prompt assembly', () => {
     expect(prompt).toContain('You are Atticus Harness V2');
     expect(prompt).toContain('# Legal Operating Principles');
     expect(prompt).toContain(SYSTEM_PROMPT_DYNAMIC_BOUNDARY);
-    expect(prompt).toContain('Model note: this harness is currently configured around DeepSeek V4 Flash and DeepSeek V4 Pro');
+    expect(prompt).toContain('Model note: this harness uses explicit provider-policy routes and fails closed');
+    expect(prompt).toContain('# Model Delegation');
     expect(prompt).toContain('Matter: anfal');
     expect(prompt).toContain('Autonomy mode: operator_safe');
     expect(prompt).toContain('Active Skill: legal-humanizer');

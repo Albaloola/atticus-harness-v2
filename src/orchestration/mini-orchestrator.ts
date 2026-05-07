@@ -2,6 +2,8 @@ import { WorkerAgent } from './worker.js';
 import { createTask, updateTask } from '../state/tasks.js';
 import { createRun, updateRun } from '../state/runs.js';
 import { appendEvent } from '../state/events.js';
+import { DEFAULTS } from '../config/schema.js';
+import { selectModelForTask } from '../config/model-routing.js';
 import type { MiniOrchestratorInput, AgentStructuredResult } from './types.js';
 
 export class MiniOrchestrator {
@@ -14,9 +16,16 @@ export class MiniOrchestrator {
   async execute(): Promise<AgentStructuredResult> {
     const { matterName, phase, objective, maxDepth, maxConcurrency, parentRunId, phaseTaskId, runtime } = this.input;
     const phaseName = phase?.id || 'unknown';
+    const providerPolicy = this.input.providerPolicy ?? DEFAULTS.providerPolicy;
+    const miniModel = selectModelForTask({
+      providerPolicy,
+      role: 'mini_orchestrator',
+      phaseId: phaseName,
+      objective,
+    });
     const miniRun = createRun({
       matterName,
-      model: 'deepseek/deepseek-v4-pro',
+      model: miniModel,
       parentRunId,
       agentType: 'mini_orchestrator',
       role: 'mini_orchestrator',
@@ -73,7 +82,13 @@ export class MiniOrchestrator {
                 depth: 2,
                 phaseId: phaseName,
               },
-              model: 'deepseek/deepseek-v4-flash',
+              model: selectModelForTask({
+                providerPolicy,
+                role: 'worker',
+                phaseId: phaseName,
+                title: w.title,
+                objective: w.title,
+              }),
               runtime,
             });
 

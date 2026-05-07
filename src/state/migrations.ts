@@ -102,6 +102,88 @@ export const STATE_MIGRATIONS: StateMigration[] = [
       `);
     },
   },
+  {
+    version: 4,
+    description: 'durable lease ledger and reducer packet compatibility columns',
+    up(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS task_leases (
+          id TEXT PRIMARY KEY,
+          task_id TEXT NOT NULL,
+          matter_name TEXT NOT NULL,
+          owner TEXT NOT NULL,
+          role TEXT NOT NULL DEFAULT 'worker',
+          status TEXT NOT NULL DEFAULT 'active',
+          fencing_token INTEGER NOT NULL,
+          acquired_at TEXT NOT NULL,
+          renewed_at TEXT,
+          expires_at TEXT NOT NULL,
+          completed_at TEXT,
+          result_status TEXT,
+          reason TEXT,
+          metadata_json TEXT NOT NULL DEFAULT '{}'
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_task_leases_one_active
+          ON task_leases(task_id, matter_name)
+          WHERE status = 'active';
+        CREATE INDEX IF NOT EXISTS idx_task_leases_matter ON task_leases(matter_name);
+        CREATE INDEX IF NOT EXISTS idx_task_leases_status ON task_leases(status);
+
+        CREATE TABLE IF NOT EXISTS reducer_packets (
+          id TEXT PRIMARY KEY,
+          matter_name TEXT NOT NULL,
+          candidate_id TEXT NOT NULL,
+          artifact_id TEXT,
+          decision TEXT NOT NULL,
+          status TEXT NOT NULL DEFAULT 'decided',
+          reducer_name TEXT NOT NULL DEFAULT 'canonical-reducer',
+          rationale TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          decided_at TEXT NOT NULL DEFAULT '',
+          lease_id TEXT,
+          data_json TEXT NOT NULL DEFAULT '{}',
+          metadata_json TEXT NOT NULL DEFAULT '{}'
+        );
+      `);
+      addColumnIfMissing(db, 'reducer_packets', 'artifact_id', 'artifact_id TEXT');
+      addColumnIfMissing(db, 'reducer_packets', 'status', "status TEXT NOT NULL DEFAULT 'decided'");
+      addColumnIfMissing(db, 'reducer_packets', 'reducer_name', "reducer_name TEXT NOT NULL DEFAULT 'canonical-reducer'");
+      addColumnIfMissing(db, 'reducer_packets', 'rationale', "rationale TEXT NOT NULL DEFAULT ''");
+      addColumnIfMissing(db, 'reducer_packets', 'decided_at', "decided_at TEXT NOT NULL DEFAULT ''");
+      addColumnIfMissing(db, 'reducer_packets', 'lease_id', 'lease_id TEXT');
+      addColumnIfMissing(db, 'reducer_packets', 'data_json', "data_json TEXT NOT NULL DEFAULT '{}'");
+      addColumnIfMissing(db, 'reducer_packets', 'metadata_json', "metadata_json TEXT NOT NULL DEFAULT '{}'");
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_reducer_packets_matter ON reducer_packets(matter_name);
+        CREATE INDEX IF NOT EXISTS idx_reducer_packets_candidate ON reducer_packets(candidate_id);
+        CREATE INDEX IF NOT EXISTS idx_reducer_packets_decision ON reducer_packets(decision);
+        UPDATE reducer_packets
+        SET data_json = metadata_json
+        WHERE (data_json IS NULL OR data_json = '{}')
+          AND metadata_json IS NOT NULL
+          AND metadata_json <> '{}';
+        INSERT OR IGNORE INTO task_leases (
+          id, task_id, matter_name, owner, role, status, fencing_token,
+          acquired_at, renewed_at, expires_at, metadata_json
+        )
+        SELECT
+          lease_id,
+          id,
+          matter_name,
+          COALESCE(lease_owner, 'legacy'),
+          COALESCE(lease_role, 'worker'),
+          'active',
+          COALESCE(lease_fencing_token, 0),
+          COALESCE(lease_acquired_at, updated, created),
+          COALESCE(lease_heartbeat_at, lease_acquired_at, updated, created),
+          COALESCE(lease_expires_at, datetime('now')),
+          '{}'
+        FROM tasks
+        WHERE lease_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 export function applyStateMigrations(db: Database.Database): void {

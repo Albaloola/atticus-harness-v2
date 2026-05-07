@@ -50,9 +50,9 @@ describe('Schema migration', () => {
       version: number;
     };
     expect(row).toBeTruthy();
-    expect(row.version).toBe(3);
+    expect(row.version).toBe(4);
     const migrations = db.prepare('SELECT version_from, version_to FROM schema_migrations ORDER BY version_to').all() as Array<{ version_from: number; version_to: number }>;
-    expect(migrations.map((m) => `${m.version_from}->${m.version_to}`)).toEqual(['0->1', '1->2', '2->3']);
+    expect(migrations.map((m) => `${m.version_from}->${m.version_to}`)).toEqual(['0->1', '1->2', '2->3', '3->4']);
   });
 
   it('can be called twice safely (idempotent)', () => {
@@ -63,7 +63,8 @@ describe('Schema migration', () => {
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
       .all() as { name: string }[];
-    expect(tables.length).toBe(10);
+    expect(tables.map((table) => table.name)).toEqual(expect.arrayContaining(['task_leases', 'reducer_packets']));
+    expect(tables.length).toBe(11);
   });
 });
 

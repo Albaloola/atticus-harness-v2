@@ -115,12 +115,16 @@ export interface ReducerPacket {
   id: string;
   matterName: string;
   candidateId: string;
+  artifactId?: string;
   decision: 'accept' | 'reject';
+  reducerName: string;
+  rationale: string;
   status: 'decided' | 'written' | 'blocked';
   createdAt: string;
   decidedAt: string;
   leaseId?: string;
   data: Record<string, unknown>;
+  metadata: Record<string, unknown>;
 }
 
 // ── Runtime Snapshot ─────────────────────────────────────────

@@ -1,6 +1,6 @@
 import Database = require('better-sqlite3');
 
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
 type MigrationFn = (db: Database.Database) => void;
 
@@ -120,9 +120,6 @@ export function initSchema(db: Database.Database): void {
     CREATE INDEX IF NOT EXISTS idx_tasks_matter ON tasks(matter_name);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
-    CREATE INDEX IF NOT EXISTS idx_tasks_lease ON tasks(lease_id);
-    CREATE INDEX IF NOT EXISTS idx_tasks_lease_expiry ON tasks(lease_expires_at);
-
     CREATE TABLE IF NOT EXISTS agent_runs (
       id TEXT PRIMARY KEY,
       matter_name TEXT NOT NULL,
@@ -204,8 +201,6 @@ export function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_matter ON scheduler_jobs(matter_name);
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_enabled ON scheduler_jobs(enabled);
-    CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_lease_expiry ON scheduler_jobs(lease_expires_at);
-
     CREATE TABLE IF NOT EXISTS runtime_kv (
       matter_name TEXT NOT NULL,
       key TEXT NOT NULL,
@@ -248,47 +243,128 @@ export function initSchema(db: Database.Database): void {
     addColumnIfMissing(txDb, 'scheduler_jobs', 'enabled', 'INTEGER NOT NULL DEFAULT 1');
   });
 
-  applyMigration(db, 2, CURRENT_SCHEMA_VERSION, 'governance: leases, reducer packets, migration ledger', (txDb) => {
-    const taskColumns: Array<[string, string]> = [
-      ['lease_id', 'TEXT'],
-      ['lease_owner', 'TEXT'],
-      ['lease_role', 'TEXT'],
-      ['lease_fencing_token', 'INTEGER NOT NULL DEFAULT 0'],
-      ['lease_expires_at', 'TEXT'],
-      ['lease_acquired_at', 'TEXT'],
-      ['lease_heartbeat_at', 'TEXT'],
-      ['blocked_reason', 'TEXT'],
-      ['attempt_count', 'INTEGER NOT NULL DEFAULT 0'],
-    ];
-    for (const [column, ddl] of taskColumns) addColumnIfMissing(txDb, 'tasks', column, ddl);
-
-    const jobColumns: Array<[string, string]> = [
-      ['lease_id', 'TEXT'],
-      ['lease_owner', 'TEXT'],
-      ['lease_fencing_token', 'INTEGER NOT NULL DEFAULT 0'],
-      ['lease_expires_at', 'TEXT'],
-      ['lease_acquired_at', 'TEXT'],
-      ['lease_heartbeat_at', 'TEXT'],
-      ['blocked_reason', 'TEXT'],
-      ['attempt_count', 'INTEGER NOT NULL DEFAULT 0'],
-    ];
-    for (const [column, ddl] of jobColumns) addColumnIfMissing(txDb, 'scheduler_jobs', column, ddl);
-
-    txDb.exec(`
-      CREATE TABLE IF NOT EXISTS reducer_packets (
-        id TEXT PRIMARY KEY,
-        matter_name TEXT NOT NULL,
-        candidate_id TEXT NOT NULL,
-        artifact_id TEXT,
-        decision TEXT NOT NULL,
-        reducer_name TEXT NOT NULL,
-        rationale TEXT NOT NULL DEFAULT '',
-        created_at TEXT NOT NULL,
-        metadata_json TEXT NOT NULL DEFAULT '{}'
-      );
-      CREATE INDEX IF NOT EXISTS idx_reducer_packets_matter ON reducer_packets(matter_name);
-      CREATE INDEX IF NOT EXISTS idx_reducer_packets_candidate ON reducer_packets(candidate_id);
-      CREATE INDEX IF NOT EXISTS idx_reducer_packets_decision ON reducer_packets(decision);
-    `);
+  applyMigration(db, 2, 3, 'governance: leases, reducer packets, migration ledger', (txDb) => {
+    ensureGovernanceSchema(txDb);
   });
+
+  applyMigration(db, 3, CURRENT_SCHEMA_VERSION, 'governance: durable lease and reducer packet compatibility', (txDb) => {
+    ensureGovernanceSchema(txDb);
+  });
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_tasks_lease ON tasks(lease_id);
+    CREATE INDEX IF NOT EXISTS idx_tasks_lease_expiry ON tasks(lease_expires_at);
+    CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_lease_expiry ON scheduler_jobs(lease_expires_at);
+  `);
+}
+
+function ensureGovernanceSchema(db: Database.Database): void {
+  const taskColumns: Array<[string, string]> = [
+    ['lease_id', 'TEXT'],
+    ['lease_owner', 'TEXT'],
+    ['lease_role', 'TEXT'],
+    ['lease_fencing_token', 'INTEGER NOT NULL DEFAULT 0'],
+    ['lease_expires_at', 'TEXT'],
+    ['lease_acquired_at', 'TEXT'],
+    ['lease_heartbeat_at', 'TEXT'],
+    ['blocked_reason', 'TEXT'],
+    ['attempt_count', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [column, ddl] of taskColumns) addColumnIfMissing(db, 'tasks', column, ddl);
+
+  const jobColumns: Array<[string, string]> = [
+    ['lease_id', 'TEXT'],
+    ['lease_owner', 'TEXT'],
+    ['lease_fencing_token', 'INTEGER NOT NULL DEFAULT 0'],
+    ['lease_expires_at', 'TEXT'],
+    ['lease_acquired_at', 'TEXT'],
+    ['lease_heartbeat_at', 'TEXT'],
+    ['blocked_reason', 'TEXT'],
+    ['attempt_count', 'INTEGER NOT NULL DEFAULT 0'],
+  ];
+  for (const [column, ddl] of jobColumns) addColumnIfMissing(db, 'scheduler_jobs', column, ddl);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS task_leases (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      matter_name TEXT NOT NULL,
+      owner TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'worker',
+      status TEXT NOT NULL DEFAULT 'active',
+      fencing_token INTEGER NOT NULL,
+      acquired_at TEXT NOT NULL,
+      renewed_at TEXT,
+      expires_at TEXT NOT NULL,
+      completed_at TEXT,
+      result_status TEXT,
+      reason TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_task_leases_one_active
+      ON task_leases(task_id, matter_name)
+      WHERE status = 'active';
+    CREATE INDEX IF NOT EXISTS idx_task_leases_matter ON task_leases(matter_name);
+    CREATE INDEX IF NOT EXISTS idx_task_leases_status ON task_leases(status);
+
+    CREATE TABLE IF NOT EXISTS reducer_packets (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      candidate_id TEXT NOT NULL,
+      artifact_id TEXT,
+      decision TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'decided',
+      reducer_name TEXT NOT NULL DEFAULT 'canonical-reducer',
+      rationale TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      decided_at TEXT NOT NULL DEFAULT '',
+      lease_id TEXT,
+      data_json TEXT NOT NULL DEFAULT '{}',
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_reducer_packets_matter ON reducer_packets(matter_name);
+    CREATE INDEX IF NOT EXISTS idx_reducer_packets_candidate ON reducer_packets(candidate_id);
+    CREATE INDEX IF NOT EXISTS idx_reducer_packets_decision ON reducer_packets(decision);
+  `);
+
+  const reducerColumns: Array<[string, string]> = [
+    ['artifact_id', 'TEXT'],
+    ['status', "TEXT NOT NULL DEFAULT 'decided'"],
+    ['reducer_name', "TEXT NOT NULL DEFAULT 'canonical-reducer'"],
+    ['rationale', "TEXT NOT NULL DEFAULT ''"],
+    ['decided_at', "TEXT NOT NULL DEFAULT ''"],
+    ['lease_id', 'TEXT'],
+    ['data_json', "TEXT NOT NULL DEFAULT '{}'"],
+    ['metadata_json', "TEXT NOT NULL DEFAULT '{}'"],
+  ];
+  for (const [column, ddl] of reducerColumns) addColumnIfMissing(db, 'reducer_packets', column, ddl);
+
+  db.exec(`
+    UPDATE reducer_packets
+    SET data_json = metadata_json
+    WHERE (data_json IS NULL OR data_json = '{}')
+      AND metadata_json IS NOT NULL
+      AND metadata_json <> '{}';
+  `);
+
+  db.exec(`
+    INSERT OR IGNORE INTO task_leases (
+      id, task_id, matter_name, owner, role, status, fencing_token,
+      acquired_at, renewed_at, expires_at, metadata_json
+    )
+    SELECT
+      lease_id,
+      id,
+      matter_name,
+      COALESCE(lease_owner, 'legacy'),
+      COALESCE(lease_role, 'worker'),
+      'active',
+      COALESCE(lease_fencing_token, 0),
+      COALESCE(lease_acquired_at, updated, created),
+      COALESCE(lease_heartbeat_at, lease_acquired_at, updated, created),
+      COALESCE(lease_expires_at, datetime('now')),
+      '{}'
+    FROM tasks
+    WHERE lease_id IS NOT NULL;
+  `);
 }

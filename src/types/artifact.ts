@@ -52,4 +52,6 @@ export interface Artifact {
   accepted: string;
   acceptedFrom: string;
   citations: CitationRef[];
+  canonicalWrite?: 'reducer';
+  reducerPacketId?: string;
 }

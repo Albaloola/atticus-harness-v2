@@ -9,7 +9,7 @@ import { saveCandidate, acceptCandidate, rejectCandidate } from '../../src/stora
 import { saveArtifact, listArtifacts } from '../../src/storage/artifact.js';
 import { createTask, getTask } from '../../src/state/tasks.js';
 import { acquireTaskLease, renewTaskLease, completeTaskLease, expireTaskLeases, listTaskLeases } from '../../src/state/leases.js';
-import { listReducerPackets } from '../../src/state/reducer-packets.js';
+import { createReducerPacket, listReducerPackets } from '../../src/state/reducer-packets.js';
 import { closeStateDb, getStateDb } from '../../src/state/store.js';
 import { initSchema } from '../../src/state/schema.js';
 import { latestStateSchemaVersion } from '../../src/state/migrations.js';
@@ -41,6 +41,105 @@ describe('reducer-only canonical writes', () => {
       citations: [],
     })).rejects.toThrow('reducer-only');
 
+    await expect(saveArtifact(matterName, {
+      id: 'forged-artifact',
+      matterName,
+      type: 'draft',
+      title: 'Forged write',
+      content: 'bypass',
+      accepted: new Date().toISOString(),
+      acceptedFrom: 'direct-candidate',
+      citations: [],
+    }, { canonicalWrite: 'reducer', reducerPacketId: 'missing-packet' })).rejects.toThrow('reducer packet missing-packet was not found');
+
+    const untargetedPacket = createReducerPacket({
+      matterName,
+      candidateId: 'candidate-untargeted',
+      decision: 'accept',
+    });
+    await expect(saveArtifact(matterName, {
+      id: 'untargeted-artifact',
+      matterName,
+      type: 'draft',
+      title: 'Untargeted write',
+      content: 'bypass',
+      accepted: new Date().toISOString(),
+      acceptedFrom: 'candidate-untargeted',
+      citations: [],
+    }, { canonicalWrite: 'reducer', reducerPacketId: untargetedPacket.id })).rejects.toThrow('has no artifact target');
+
+    const rejectedPacket = createReducerPacket({
+      matterName,
+      candidateId: 'candidate-rejected-packet',
+      artifactId: 'rejected-artifact',
+      decision: 'reject',
+    });
+    await expect(saveArtifact(matterName, {
+      id: 'rejected-artifact',
+      matterName,
+      type: 'draft',
+      title: 'Rejected write',
+      content: 'bypass',
+      accepted: new Date().toISOString(),
+      acceptedFrom: 'candidate-rejected-packet',
+      citations: [],
+    }, { canonicalWrite: 'reducer', reducerPacketId: rejectedPacket.id })).rejects.toThrow('decision is reject');
+
+    const mismatchedCandidatePacket = createReducerPacket({
+      matterName,
+      candidateId: 'candidate-owner',
+      artifactId: 'candidate-mismatch-artifact',
+      decision: 'accept',
+    });
+    await expect(saveArtifact(matterName, {
+      id: 'candidate-mismatch-artifact',
+      matterName,
+      type: 'draft',
+      title: 'Candidate mismatch',
+      content: 'bypass',
+      accepted: new Date().toISOString(),
+      acceptedFrom: 'different-candidate',
+      citations: [],
+    }, { canonicalWrite: 'reducer', reducerPacketId: mismatchedCandidatePacket.id })).rejects.toThrow('belongs to candidate candidate-owner');
+
+    expect(() => createReducerPacket({
+      matterName,
+      candidateId: 'unsafe-candidate',
+      artifactId: '../escape',
+      decision: 'accept',
+    })).toThrow('Unsafe reducer packet artifact id');
+
+    const db = getStateDb(matterName);
+    db.prepare(
+      `INSERT INTO reducer_packets (
+        id, matter_name, candidate_id, artifact_id, decision, status, reducer_name,
+        rationale, created_at, decided_at, data_json, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      'unsafe-packet',
+      matterName,
+      'unsafe-candidate',
+      '../escape',
+      'accept',
+      'decided',
+      'test-reducer',
+      'forged unsafe target',
+      new Date().toISOString(),
+      new Date().toISOString(),
+      '{}',
+      '{}',
+    );
+    await expect(saveArtifact(matterName, {
+      id: '../escape',
+      matterName,
+      type: 'draft',
+      title: 'Unsafe target',
+      content: 'bypass',
+      accepted: new Date().toISOString(),
+      acceptedFrom: 'unsafe-candidate',
+      citations: [],
+    }, { canonicalWrite: 'reducer', reducerPacketId: 'unsafe-packet' })).rejects.toThrow('Unsafe artifact id');
+
     await saveCandidate(matterName, {
       id: 'candidate-1',
       matterName,
@@ -64,6 +163,9 @@ describe('reducer-only canonical writes', () => {
     expect(packets).toHaveLength(1);
     expect(packets[0].decision).toBe('accept');
     expect(packets[0].status).toBe('written');
+    expect(packets[0].reducerName).toBe('accept-command-reducer');
+    expect(packets[0].rationale).toBe('Accepted candidate through reducer-only canonical promotion path.');
+    expect(packets[0].metadata.artifactId).toBe('candidate-1');
   });
 
   it('reject does not create a canonical artifact', async () => {
@@ -113,6 +215,16 @@ describe('task lease lifecycle', () => {
     expect(getTask(matterName, task.id)!.status).toBe('completed');
   });
 
+  it('rejects legacy complete calls when the task id does not own the lease', () => {
+    const leasedTask = createTask({ matterName, type: 'analysis', title: 'Lease owner' });
+    const otherTask = createTask({ matterName, type: 'analysis', title: 'Wrong task' });
+    const lease = acquireTaskLease({ matterName, taskId: leasedTask.id, owner: 'worker-a', ttlMs: 1000, now: new Date('2026-05-06T12:00:00Z') });
+
+    expect(() => completeTaskLease(matterName, otherTask.id, lease.id, 'completed')).toThrow(`Lease ${lease.id} is not active for task ${otherTask.id}`);
+    expect(getTask(matterName, leasedTask.id)!.status).toBe('in_progress');
+    expect(getTask(matterName, otherTask.id)!.status).toBe('pending');
+  });
+
   it('expires stale leases and lets a new owner reclaim with a higher fencing token', () => {
     const task = createTask({ matterName, type: 'analysis', title: 'Expire me' });
     const lease = acquireTaskLease({ matterName, taskId: task.id, owner: 'worker-a', ttlMs: 1000, now: new Date('2026-05-06T12:00:00Z') });
@@ -124,6 +236,36 @@ describe('task lease lifecycle', () => {
     const reclaimed = acquireTaskLease({ matterName, taskId: task.id, owner: 'worker-b', ttlMs: 1000, now: new Date('2026-05-06T12:00:03Z') });
     expect(reclaimed.fencingToken).toBe(2);
     expect(listTaskLeases(matterName)).toHaveLength(2);
+  });
+
+  it('preserves reducer packet metadata compatibility when data_json is empty', () => {
+    const db = getStateDb(matterName);
+    db.prepare(
+      `INSERT INTO reducer_packets (
+        id, matter_name, candidate_id, artifact_id, decision, status, reducer_name,
+        rationale, created_at, decided_at, data_json, metadata_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      'legacy-packet',
+      matterName,
+      'legacy-candidate',
+      null,
+      'accept',
+      'decided',
+      'legacy-reducer',
+      'legacy rationale',
+      '2026-05-06T12:00:00.000Z',
+      '',
+      '{}',
+      JSON.stringify({ artifactId: 'legacy-artifact', preserved: true }),
+    );
+
+    const packet = listReducerPackets(matterName, { candidateId: 'legacy-candidate' })[0];
+    expect(packet.reducerName).toBe('legacy-reducer');
+    expect(packet.rationale).toBe('legacy rationale');
+    expect(packet.artifactId).toBe('legacy-artifact');
+    expect(packet.data.preserved).toBe(true);
+    expect(packet.metadata.preserved).toBe(true);
   });
 });
 
@@ -189,11 +331,64 @@ describe('migration registry and control panel', () => {
     initSchema(db);
 
     const versions = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as { version: number }[];
-    expect(versions.map((row) => row.version)).toEqual([1, 2, 3]);
+    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4]);
     expect(versions.at(-1)!.version).toBe(latestStateSchemaVersion());
 
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
     expect(tables.map((row) => row.name)).toEqual(expect.arrayContaining(['task_leases', 'reducer_packets']));
+    db.close();
+  });
+
+  it('upgrades already-version-3 databases with durable lease and reducer compatibility schema', () => {
+    const db = new Database(':memory:');
+    initSchema(db);
+
+    db.exec(`
+      DELETE FROM schema_version WHERE version = 4;
+      DELETE FROM schema_migrations WHERE version_to = 4;
+      DROP TABLE task_leases;
+      DROP TABLE reducer_packets;
+      CREATE TABLE reducer_packets (
+        id TEXT PRIMARY KEY,
+        matter_name TEXT NOT NULL,
+        candidate_id TEXT NOT NULL,
+        artifact_id TEXT,
+        decision TEXT NOT NULL,
+        reducer_name TEXT NOT NULL,
+        rationale TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+      );
+      INSERT INTO reducer_packets (
+        id, matter_name, candidate_id, artifact_id, decision, reducer_name,
+        rationale, created_at, metadata_json
+      ) VALUES (
+        'legacy-packet', 'legacy-matter', 'legacy-candidate', NULL, 'accept',
+        'legacy-reducer', 'legacy rationale', '2026-05-06T12:00:00.000Z',
+        '{"artifactId":"legacy-artifact","preserved":true}'
+      );
+      INSERT INTO tasks (
+        id, matter_name, kind, type, title, status, created, updated,
+        lease_id, lease_owner, lease_role, lease_fencing_token, lease_expires_at,
+        lease_acquired_at, lease_heartbeat_at
+      ) VALUES (
+        'legacy-task', 'legacy-matter', '', 'analysis', 'Legacy leased task', 'in_progress',
+        '2026-05-06T12:00:00.000Z', '2026-05-06T12:00:00.000Z',
+        'lease-legacy', 'legacy-worker', 'worker', 7, '2026-05-06T12:15:00.000Z',
+        '2026-05-06T12:00:00.000Z', '2026-05-06T12:00:01.000Z'
+      );
+    `);
+
+    initSchema(db);
+
+    const version = db.prepare('SELECT MAX(version) AS version FROM schema_version').get() as { version: number };
+    expect(version.version).toBe(latestStateSchemaVersion());
+    const reducerColumns = db.prepare('PRAGMA table_info(reducer_packets)').all() as Array<{ name: string }>;
+    expect(reducerColumns.map((column) => column.name)).toEqual(expect.arrayContaining(['status', 'decided_at', 'lease_id', 'data_json']));
+    const packet = db.prepare('SELECT data_json FROM reducer_packets WHERE id = ?').get('legacy-packet') as { data_json: string };
+    expect(JSON.parse(packet.data_json)).toMatchObject({ artifactId: 'legacy-artifact', preserved: true });
+    const lease = db.prepare('SELECT * FROM task_leases WHERE id = ?').get('lease-legacy') as { task_id: string; owner: string; fencing_token: number } | undefined;
+    expect(lease).toMatchObject({ task_id: 'legacy-task', owner: 'legacy-worker', fencing_token: 7 });
     db.close();
   });
 

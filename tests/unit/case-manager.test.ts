@@ -3,8 +3,8 @@ import { writeFile } from 'fs/promises';
 import { initMatter, deleteMatter, getMatterPath } from '../../src/storage/matter.js';
 import { closeStateDb } from '../../src/state/store.js';
 import { registerEvidence } from '../../src/storage/evidence.js';
-import { saveArtifact, listArtifacts } from '../../src/storage/artifact.js';
-import { listCandidates } from '../../src/storage/candidate.js';
+import { listArtifacts } from '../../src/storage/artifact.js';
+import { acceptCandidate, listCandidates, saveCandidate } from '../../src/storage/candidate.js';
 import { listEvents } from '../../src/state/events.js';
 import { getRuntimeValue } from '../../src/state/runtime-kv.js';
 import { buildCaseMemoryPack } from '../../src/orchestration/case-memory.js';
@@ -30,16 +30,17 @@ describe('case memory pack', () => {
       metadata: {},
     });
     await writeFile(getMatterPath(matterName, '_extractions', 'EV-001.txt'), 'Tenant asked for repairs on 1 May.', 'utf-8');
-    await saveArtifact(matterName, {
+    await saveCandidate(matterName, {
       id: 'art-001',
       matterName,
       type: 'analysis',
       title: 'Case theory',
       content: 'The evidence supports a repair complaint.',
-      accepted: new Date().toISOString(),
-      acceptedFrom: 'cand-001',
-      citations: [],
+      status: 'candidate',
+      created: new Date().toISOString(),
+      metadata: { citations: [] },
     });
+    await acceptCandidate(matterName, 'art-001');
   });
 
   afterEach(async () => {

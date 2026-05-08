@@ -13,4 +13,3 @@ export interface FindingCitation {
   checkedAt: string;
   metadata: Record<string, unknown>;
 }
-

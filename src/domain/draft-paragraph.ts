@@ -13,4 +13,3 @@ export interface DraftParagraph {
   activeRevisionId?: string;
   metadata: Record<string, unknown>;
 }
-

@@ -235,13 +235,14 @@ harness rules court-session normalize --json
 ```
 
 `list`, `search`, and `context` are no-write lookup commands. The ScotCourts
-`index` command writes a metadata cache at
+`index` command writes the shared metadata cache at
 `.atticus/rules/scotcourts-corpus.index.json`; add `--extract-text
 --max-text-docs <n>` only for a deliberately bounded text cache. The Court of
-Session `index` command extracts rule text into
-`.atticus/rules/court-of-session-rules.index.json`. The `normalize` commands are
-mutating maintenance commands: they convert rules/procedure originals to
-Markdown and delete only successfully converted non-form originals.
+Session `index` command is a focused wrapper over the same ScotCourts cache: it
+refreshes ScotCourts metadata and extracts text only for Court of Session rule
+documents. The `normalize` commands are mutating maintenance commands: they
+convert rules/procedure originals to Markdown and delete only successfully
+converted non-form originals.
 
 Scots workflow phases automatically add `atticus-scotcourts-corpus` and focused
 `atticus-sheriff-court-rules` / `atticus-court-of-session-rules` skill context

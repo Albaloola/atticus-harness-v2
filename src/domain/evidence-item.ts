@@ -16,4 +16,3 @@ export interface EvidenceItem {
   sizeBytes: number;
   metadata: Record<string, unknown>;
 }
-

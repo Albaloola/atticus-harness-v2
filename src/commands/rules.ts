@@ -201,6 +201,7 @@ export async function handleCourtSessionRulesContext(
       phaseId: options.phase,
       skillIds: options.skill,
       matterMeta: { jurisdiction: 'Scotland' },
+      forceAttach: true,
       limit: parseLimit(options.limit, 6),
     });
     if (options.json) {

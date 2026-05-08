@@ -148,6 +148,7 @@ export async function buildScotCourtsCorpusIndex(input: {
   cachePath?: string;
   extractText?: boolean;
   maxTextDocs?: number;
+  extractTextFor?: (document: ScotCourtsDocument) => boolean;
 } = {}): Promise<ScotCourtsCorpusIndex> {
   const sourceDir = resolveScotCourtsCorpusDir(input.sourceDir);
   const cachePath = input.cachePath ?? DEFAULT_SCOTCOURTS_CORPUS_CACHE_PATH;
@@ -164,7 +165,8 @@ export async function buildScotCourtsCorpusIndex(input: {
       fileMtimeMs: Math.round(fileStat.mtimeMs),
     };
 
-    if (input.extractText && (input.maxTextDocs === undefined || extracted < input.maxTextDocs)) {
+    const shouldExtractText = input.extractText && (!input.extractTextFor || input.extractTextFor(document));
+    if (shouldExtractText && (input.maxTextDocs === undefined || extracted < input.maxTextDocs)) {
       try {
         const text = await extractText(document.path, { sourceId: `scotcourts:${document.id}` });
         entry.text = text.text;
@@ -429,7 +431,7 @@ function shouldAttachScotCourtsCorpus(input: ScotCourtsContextInput): boolean {
   return hasScotsSignal;
 }
 
-async function isScotCourtsIndexFresh(
+export async function isScotCourtsIndexFresh(
   index: ScotCourtsCorpusIndex,
   documents: ScotCourtsDocument[],
 ): Promise<boolean> {

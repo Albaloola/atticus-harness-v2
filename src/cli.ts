@@ -481,11 +481,11 @@ program
 	  )
 	  .addCommand(
 	    new Command('court-session')
-      .description('Use the local Rules of the Court of Session corpus')
+      .description('Use the Court of Session rules category in the local ScotCourts corpus')
       .addCommand(
         new Command('list')
           .description('List discovered Court of Session rule chapters')
-          .option('--source-dir <path>', 'Court of Session rules directory')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
           .option('--phase <id>', 'Filter by harness workflow phase')
           .option('--skill <id>', 'Filter by relevant skill', collect, [])
           .option('--limit <n>', 'Maximum chapters to show')
@@ -499,8 +499,8 @@ program
         new Command('search')
           .description('Search Court of Session rule chapters')
           .argument('<query>', 'Search query')
-          .option('--source-dir <path>', 'Court of Session rules directory')
-          .option('--cache-path <path>', 'Rules index cache path')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--cache-path <path>', 'Shared ScotCourts index cache path')
           .option('--phase <id>', 'Relevant harness workflow phase')
           .option('--skill <id>', 'Relevant skill', collect, [])
           .option('--limit <n>', 'Maximum results', '8')
@@ -514,8 +514,8 @@ program
         new Command('context')
           .description('Build the rule-context prompt injected into Scots skills/stages')
           .argument('<objective>', 'Matter objective or stage objective')
-          .option('--source-dir <path>', 'Court of Session rules directory')
-          .option('--cache-path <path>', 'Rules index cache path')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--cache-path <path>', 'Shared ScotCourts index cache path')
           .option('--phase <id>', 'Relevant harness workflow phase')
           .option('--skill <id>', 'Relevant skill', collect, [])
           .option('--limit <n>', 'Maximum results', '6')
@@ -527,9 +527,9 @@ program
       )
       .addCommand(
         new Command('index')
-          .description('Extract and cache searchable text from local Court of Session rule files')
-          .option('--source-dir <path>', 'Court of Session rules directory')
-          .option('--cache-path <path>', 'Rules index cache path')
+          .description('Refresh the shared ScotCourts index and extract Court of Session rule text')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--cache-path <path>', 'Shared ScotCourts index cache path')
           .option('--json', 'JSON output')
           .action(async (options) => {
             const { handleCourtSessionRulesIndex } = await import('./commands/rules.js');
@@ -539,7 +539,7 @@ program
       .addCommand(
         new Command('normalize')
           .description('Convert Court of Session rule originals to Markdown and delete converted originals by default')
-          .option('--source-dir <path>', 'Court of Session rules directory')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
           .option('--keep-originals', 'Keep original PDFs after successful Markdown conversion')
           .option('--json', 'JSON output')
           .action(async (options) => {

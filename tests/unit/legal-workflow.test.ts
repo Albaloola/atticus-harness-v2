@@ -314,6 +314,87 @@ describe('skills router', () => {
     expect(verifier.score).toBeGreaterThan(0);
   });
 
+  it('does not phase-boost Scots-specific skills for non-Scotland matters', () => {
+    const skills: SkillDefinition[] = [
+      skillDef('atticus-court-of-session-rules', 'Focused Court of Session procedural rule context'),
+      skillDef('red-team-verifier', 'Adversarial verification and hostile review of legal outputs'),
+    ];
+
+    const phase: PhaseDefinition = {
+      id: 'verification_and_hostile_review',
+      name: 'Verification and Hostile Review',
+      description: 'Stress-test outputs.',
+      expectedOutputTypes: [LegalArtifactType.hostile_review_report],
+      suggestedSkills: ['atticus-court-of-session-rules', 'red-team-verifier'],
+    };
+
+    const results = selectSkills(
+      skills,
+      'verify a California breach of contract complaint',
+      { jurisdiction: 'California', forum: 'Superior Court' },
+      phase,
+    );
+    const courtSession = results.find((r) => r.skill.skillId === 'atticus-court-of-session-rules')!;
+    const verifier = results.find((r) => r.skill.skillId === 'red-team-verifier')!;
+
+    expect(verifier.score).toBeGreaterThan(courtSession.score);
+    expect(courtSession.score).toBe(0);
+  });
+
+  it('does not treat generic sheriff references as Scots procedure routing signals', () => {
+    const skills: SkillDefinition[] = [
+      skillDef('atticus-sheriff-court-rules', 'Focused Sheriff Court procedural rule context'),
+      skillDef('generic-verifier', 'General verification'),
+    ];
+
+    const phase: PhaseDefinition = {
+      id: 'verification_and_hostile_review',
+      name: 'Verification and Hostile Review',
+      description: 'Stress-test outputs.',
+      expectedOutputTypes: [LegalArtifactType.hostile_review_report],
+      suggestedSkills: ['atticus-sheriff-court-rules', 'generic-verifier'],
+    };
+
+    const resultsWithoutPhase = selectSkills(
+      skills,
+      'verify a county sheriff seizure notice',
+      { jurisdiction: 'California', forum: 'Superior Court' },
+    );
+    const results = selectSkills(
+      skills,
+      'verify a county sheriff seizure notice',
+      { jurisdiction: 'California', forum: 'Superior Court' },
+      phase,
+    );
+    const sheriffRules = results.find((r) => r.skill.skillId === 'atticus-sheriff-court-rules')!;
+    const sheriffRulesWithoutPhase = resultsWithoutPhase.find((r) => r.skill.skillId === 'atticus-sheriff-court-rules')!;
+
+    expect(sheriffRules.score).toBe(sheriffRulesWithoutPhase.score);
+  });
+
+  it('phase-boosts Scots-specific skills when the matter has a Scotland signal', () => {
+    const skills: SkillDefinition[] = [
+      skillDef('atticus-court-of-session-rules', 'Focused Court of Session procedural rule context'),
+      skillDef('generic-verifier', 'General verification'),
+    ];
+
+    const phase: PhaseDefinition = {
+      id: 'verification_and_hostile_review',
+      name: 'Verification and Hostile Review',
+      description: 'Stress-test outputs.',
+      expectedOutputTypes: [LegalArtifactType.hostile_review_report],
+      suggestedSkills: ['atticus-court-of-session-rules'],
+    };
+
+    const results = selectSkills(
+      skills,
+      'verify a judicial review petition',
+      { jurisdiction: 'Scotland', forum: 'Court of Session' },
+      phase,
+    );
+    expect(results[0].skill.skillId).toBe('atticus-court-of-session-rules');
+  });
+
   it('respects the limit parameter', () => {
     const skills: SkillDefinition[] = Array.from({ length: 10 }, (_, i) =>
       skillDef(`skill-${i}`, `This is skill number ${i} for legal review analysis assessment`),

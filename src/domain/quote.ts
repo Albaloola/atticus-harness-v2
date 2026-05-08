@@ -7,4 +7,3 @@ export interface Quote {
   quoteHash: string;
   createdAt: string;
 }
-

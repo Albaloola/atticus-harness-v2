@@ -12,4 +12,3 @@ export interface OCRRun {
   error?: string;
   metadata: Record<string, unknown>;
 }
-

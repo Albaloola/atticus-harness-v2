@@ -39,6 +39,7 @@ export async function buildSystemPrompt(
     const rulesContext = await buildCourtOfSessionRuleContext({
       query: config.skillName,
       skillIds,
+      forceAttach: config.skillName === 'atticus-court-of-session-rules',
       limit: 6,
     }).catch((err: unknown) => formatCorpusContextWarning('Court of Session rules', err));
     if (rulesContext) prompts.push(rulesContext);

@@ -12,4 +12,3 @@ export interface EvidencePage {
   ocrConfidence?: number;
   metadata: Record<string, unknown>;
 }
-

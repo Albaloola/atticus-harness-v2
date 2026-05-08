@@ -10,4 +10,3 @@ export interface EvidenceChunk {
   charEnd?: number;
   metadata: Record<string, unknown>;
 }
-

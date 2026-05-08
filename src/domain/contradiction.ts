@@ -11,4 +11,3 @@ export interface Contradiction {
   createdAt: string;
   metadata: Record<string, unknown>;
 }
-

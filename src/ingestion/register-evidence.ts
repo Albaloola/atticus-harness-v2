@@ -50,4 +50,3 @@ export function persistExtractionV2(
   insertExtractionQualityReport(db, buildExtractionQualityReport(evidenceId, extracted));
   updateEvidenceItemV2Status(db, evidenceId, 'approved');
 }
-

@@ -9,4 +9,3 @@ export interface DraftOutline {
   createdAt: string;
   metadata: Record<string, unknown>;
 }
-

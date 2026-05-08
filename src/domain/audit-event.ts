@@ -8,4 +8,3 @@ export interface AuditEvent {
   payloadHash: string;
   metadata: Record<string, unknown>;
 }
-

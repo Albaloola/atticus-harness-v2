@@ -10,4 +10,3 @@ export interface ConsensusDecision {
   createdAt: string;
   metadata: Record<string, unknown>;
 }
-

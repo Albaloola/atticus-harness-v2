@@ -7,4 +7,3 @@ export function classifyEvidenceFormat(format: EvidenceFormat): string {
   if (format === 'text' || format === 'html') return 'text';
   return 'unknown';
 }
-

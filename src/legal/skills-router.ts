@@ -74,8 +74,37 @@ function tagScore(text: string, metadata: MatterMetadata): number {
   return score;
 }
 
-function phaseSkillBonus(skillId: string, phase?: PhaseDefinition): number {
+const SCOTS_SPECIFIC_SKILL_IDS = new Set([
+  'atticus-scotcourts-corpus',
+  'atticus-sheriff-court-rules',
+  'atticus-court-of-session-rules',
+  'scots-legal-humanizer',
+]);
+
+const SCOTS_ROUTING_SIGNAL_PATTERN =
+  /\b(scotland|scottish|scots|sheriff court|sheriffdom|sheriff principal|sheriff appeal court|sheriff appeal|simple procedure|ordinary cause|summary cause|small claim|court of session|inner house|outer house|reclaiming|lord ordinary|pursuer|defender|sist|interlocutor|decree|spso|slcc)\b/;
+
+function isScotsSpecificSkill(skillId: string): boolean {
+  return SCOTS_SPECIFIC_SKILL_IDS.has(skillId) || skillId.startsWith('atticus-scots-');
+}
+
+function hasScotsRoutingSignal(objective: string, metadata: MatterMetadata): boolean {
+  const haystack = [
+    objective,
+    metadata.jurisdiction,
+    metadata.type,
+    metadata.forum,
+    metadata.documentType,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLowerCase();
+  return SCOTS_ROUTING_SIGNAL_PATTERN.test(haystack);
+}
+
+function phaseSkillBonus(skillId: string, phase: PhaseDefinition | undefined, objective: string, metadata: MatterMetadata): number {
   if (!phase) return 0;
+  if (isScotsSpecificSkill(skillId) && !hasScotsRoutingSignal(objective, metadata)) return 0;
   return phase.suggestedSkills.includes(skillId) ? 5 : 0;
 }
 
@@ -96,7 +125,7 @@ function manifestTagBonus(skill: SkillDefinition, objective: string, metadata: M
     const lowerTag = tag.toLowerCase();
     if (lowerTag && haystack.includes(lowerTag)) score += 2;
     if (lowerTag === 'scots' || lowerTag === 'scotland') {
-      if (/\b(scotland|scottish|scots|sheriff|simple procedure|ordinary cause|court of session)\b/.test(haystack)) {
+      if (SCOTS_ROUTING_SIGNAL_PATTERN.test(haystack)) {
         score += 4;
       }
     }
@@ -171,7 +200,7 @@ function humanizerSelectionBonus(skill: SkillDefinition, objective: string, meta
   const wantsHumanizer = RELEVANCE_KEYWORDS.humanize.some((term) => lower.includes(term));
   if (!wantsHumanizer) return 0;
 
-  const isScottishLegal = /\b(scotland|scottish|scots|sheriff|simple procedure|ordinary cause|court of session|lord ordinary|sheriff appeal court|pursuer|defender|sist|interlocutor|decree|spso|slcc)\b/.test(lower);
+  const isScottishLegal = SCOTS_ROUTING_SIGNAL_PATTERN.test(lower);
 
   if (skill.skillId === 'scots-legal-humanizer' && isScottishLegal) return 10;
   if (skill.skillId === 'humanizer' && !isScottishLegal) return 10;
@@ -201,7 +230,7 @@ export function selectSkills(
 
     score += tagScore(combinedText, matterMeta);
 
-    score += phaseSkillBonus(skill.skillId, phase);
+    score += phaseSkillBonus(skill.skillId, phase, objective, matterMeta);
 
     score += categoryBonus(skill, categories);
     score += humanizerSelectionBonus(skill, objective, matterMeta);

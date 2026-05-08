@@ -11,4 +11,3 @@ export interface ExtractionQualityReport {
   createdAt: string;
   metadata: Record<string, unknown>;
 }
-

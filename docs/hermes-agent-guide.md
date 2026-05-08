@@ -426,7 +426,8 @@ legal-corpora/scotcourts
 Within the broad corpus, Court of Session rules live at
 `legal-corpora/scotcourts/court-of-session-rules`; the `court-session` command
 and `atticus-court-of-session-rules` skill are focused access surfaces over
-that category.
+that category. They share the ScotCourts corpus index rather than maintaining a
+separate Court of Session corpus cache.
 
 Hermes must not refer operators or Codex briefs to any external download/import
 folder for these documents. The only supported default corpus location is the
@@ -453,8 +454,10 @@ retrieval.
 Hermes must not run `harness rules scotcourts index`, `harness rules scotcourts
 normalize`, `harness rules court-session index`, or `harness rules court-session
 normalize` directly because they write generated cache files or mutate the corpus
-layout. If an index is stale, Markdown normalization is missing, or a path points
-outside a harness-owned corpus, Hermes should brief Codex to refresh it.
+layout. `harness rules court-session index` refreshes the shared ScotCourts cache
+with focused Court of Session rule text. If an index is stale, Markdown
+normalization is missing, or a path points outside a harness-owned corpus, Hermes
+should brief Codex to refresh it.
 
 For Scotland court forms, guidance, or mixed filing questions, Hermes should
 search `scotcourts` first to identify a small ranked shortlist. For Sheriff

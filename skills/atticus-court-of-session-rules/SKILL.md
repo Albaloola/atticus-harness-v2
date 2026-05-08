@@ -37,11 +37,11 @@ needs forms, guidance, or cross-court comparison.
 - List chapters: `harness rules court-session list --json`
 - Search rules: `harness rules court-session search "<issue or procedural step>" --phase <phase_id> --json`
 - Build stage context: `harness rules court-session context "<objective>" --phase <phase_id>`
-- Build the searchable text cache: `harness rules court-session index`
+- Refresh the shared ScotCourts cache with Court of Session rule text: `harness rules court-session index`
 - Normalize rule originals to Markdown: `harness rules court-session normalize --json`
 
 For Court of Session forms and broader Scotland court documents, use the
-separate harness-owned ScotCourts corpus:
+harness-owned ScotCourts corpus:
 
 - Search forms/guidance: `harness rules scotcourts search "<form or procedural step>" --phase <phase_id> --json`
 - Build scoped corpus context: `harness rules scotcourts context "<objective>" --phase <phase_id>`

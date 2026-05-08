@@ -25,4 +25,3 @@ export interface Finding {
   updatedAt: string;
   metadata: Record<string, unknown>;
 }
-

@@ -11,4 +11,3 @@ export function describeOptionalOCRAdapters(): OptionalOCRAdapter[] {
     { name: 'tesseract', command: 'tesseract', available: false },
   ];
 }
-

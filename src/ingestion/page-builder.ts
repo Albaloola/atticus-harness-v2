@@ -73,4 +73,3 @@ export function makePageId(evidenceId: string, pageNumber: number): string {
 export function makeChunkId(evidenceId: string, chunkIndex: number): string {
   return `${evidenceId}-C${String(chunkIndex).padStart(4, '0')}`;
 }
-

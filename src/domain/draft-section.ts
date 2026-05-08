@@ -9,4 +9,3 @@ export interface DraftSection {
   ordinal: number;
   metadata: Record<string, unknown>;
 }
-

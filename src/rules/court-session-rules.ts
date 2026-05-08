@@ -1,26 +1,25 @@
-import { mkdir, readFile, readdir, unlink, writeFile } from 'fs/promises';
-import { basename, extname, join } from 'path';
-import { hashFile, hashText } from '../extraction/hash.js';
+import { mkdir, unlink, writeFile } from 'fs/promises';
+import { basename, dirname, extname } from 'path';
 import { extractText } from '../extraction/index.js';
+import {
+  buildScotCourtsCorpusIndex,
+  DEFAULT_SCOTCOURTS_CORPUS_CACHE_PATH,
+  DEFAULT_SCOTCOURTS_CORPUS_DIR,
+  discoverScotCourtsCorpus,
+  isScotCourtsIndexFresh,
+  loadScotCourtsCorpusIndex,
+  resolveScotCourtsCorpusDir,
+  type ScotCourtsDocument,
+  type ScotCourtsIndexEntry,
+} from './scotcourts-corpus.js';
 
 export const DEFAULT_COURT_OF_SESSION_RULES_DIR =
-  'legal-corpora/scotcourts/court-of-session-rules';
+  DEFAULT_SCOTCOURTS_CORPUS_DIR;
 export const DEFAULT_COURT_OF_SESSION_RULES_CACHE_PATH =
-  '.atticus/rules/court-of-session-rules.index.json';
+  DEFAULT_SCOTCOURTS_CORPUS_CACHE_PATH;
 
-const CORPUS_ID = 'court-of-session-rules';
-const CORE_SCOTS_SKILLS = new Set([
-  'atticus-court-of-session-rules',
-  'atticus-scots-master-orchestrator',
-  'atticus-scots-procedure-router',
-  'atticus-scots-source-verification',
-  'atticus-scots-litigation-machinery',
-  'atticus-scots-hostile-review',
-  'atticus-scots-evidence-matrix',
-  'scots-legal-humanizer',
-  'witness-prep-session',
-]);
-
+const CORPUS_ID = 'scotcourts-corpus';
+const COURT_OF_SESSION_RULES_CATEGORY = 'court-of-session-rules';
 const COURT_OF_SESSION_PHASES = new Set([
   'intake_and_normalization',
   'evidence_ingestion_and_fact_extraction',
@@ -52,6 +51,7 @@ export interface CourtOfSessionRuleChapter {
   chapter: string;
   title: string;
   fileName: string;
+  relativePath?: string;
   path: string;
   stageIds: string[];
   skillIds: string[];
@@ -62,6 +62,8 @@ export interface CourtOfSessionRuleIndexEntry extends CourtOfSessionRuleChapter 
   sha256: string;
   textHash: string;
   text: string;
+  fileSizeBytes?: number;
+  fileMtimeMs?: number;
   pageCount?: number;
   extractedAt: string;
 }
@@ -77,6 +79,7 @@ export interface CourtOfSessionRuleSearchResult {
   chapter: string;
   title: string;
   fileName: string;
+  relativePath?: string;
   path: string;
   score: number;
   snippet?: string;
@@ -97,6 +100,7 @@ export interface CourtOfSessionRuleContextInput extends CourtOfSessionRuleSearch
   sourceDir?: string;
   cachePath?: string;
   matterMeta?: Record<string, string | undefined>;
+  forceAttach?: boolean;
 }
 
 export interface CourtOfSessionRulesNormalizeResult {
@@ -109,17 +113,20 @@ export interface CourtOfSessionRulesNormalizeResult {
 }
 
 export function resolveCourtOfSessionRulesDir(sourceDir?: string): string {
-  const configured = sourceDir ?? process.env.ATTICUS_COURT_SESSION_RULES_DIR ?? DEFAULT_COURT_OF_SESSION_RULES_DIR;
-  return configured.startsWith('/') ? configured : join(process.cwd(), configured);
+  const configured =
+    sourceDir
+    ?? process.env.ATTICUS_SCOTCOURTS_CORPUS_DIR
+    ?? DEFAULT_COURT_OF_SESSION_RULES_DIR;
+  return resolveScotCourtsCorpusDir(configured);
 }
 
 export async function discoverCourtOfSessionRules(
   sourceDir = resolveCourtOfSessionRulesDir(),
 ): Promise<CourtOfSessionRuleChapter[]> {
-  const files = await readdir(sourceDir);
-  return files
-    .filter((file) => ['.pdf', '.md'].includes(extname(file).toLowerCase()))
-    .map((file) => buildChapterMetadata(sourceDir, file))
+  const documents = await discoverScotCourtsCorpus(sourceDir);
+  return documents
+    .filter(isCourtOfSessionRuleDocument)
+    .map(toCourtOfSessionRuleChapter)
     .sort(compareChapters);
 }
 
@@ -129,42 +136,36 @@ export async function buildCourtOfSessionRulesIndex(input: {
 } = {}): Promise<CourtOfSessionRuleIndex> {
   const sourceDir = resolveCourtOfSessionRulesDir(input.sourceDir);
   const cachePath = input.cachePath ?? DEFAULT_COURT_OF_SESSION_RULES_CACHE_PATH;
-  const chapters = await discoverCourtOfSessionRules(sourceDir);
-  const entries: CourtOfSessionRuleIndexEntry[] = [];
+  const scotCourtsIndex = await buildScotCourtsCorpusIndex({
+    sourceDir,
+    cachePath,
+    extractText: true,
+    extractTextFor: isCourtOfSessionRuleDocument,
+  });
 
-  for (const chapter of chapters) {
-    const extracted = await extractText(chapter.path, { sourceId: `court-session-rule:${chapter.chapter}` });
-    entries.push({
-      ...chapter,
-      sha256: await hashFile(chapter.path),
-      textHash: hashText(extracted.text),
-      text: extracted.text,
-      pageCount: extracted.pageCount,
-      extractedAt: extracted.extractedAt,
-    });
-  }
-
-  const index: CourtOfSessionRuleIndex = {
+  return {
     corpusId: CORPUS_ID,
     sourceDir,
-    indexedAt: new Date().toISOString(),
-    entries,
+    indexedAt: scotCourtsIndex.indexedAt,
+    entries: scotCourtsIndex.entries
+      .filter(isCourtOfSessionRuleDocument)
+      .map((entry) => toCourtOfSessionRuleIndexEntry(entry, scotCourtsIndex.indexedAt)),
   };
-  await mkdirForFile(cachePath);
-  await writeFile(cachePath, JSON.stringify(index, null, 2), 'utf-8');
-  return index;
 }
 
 export async function loadCourtOfSessionRulesIndex(
   cachePath = DEFAULT_COURT_OF_SESSION_RULES_CACHE_PATH,
 ): Promise<CourtOfSessionRuleIndex | undefined> {
-  try {
-    const parsed = JSON.parse(await readFile(cachePath, 'utf-8')) as CourtOfSessionRuleIndex;
-    if (parsed.corpusId !== CORPUS_ID || !Array.isArray(parsed.entries)) return undefined;
-    return parsed;
-  } catch {
-    return undefined;
-  }
+  const scotCourtsIndex = await loadScotCourtsCorpusIndex(cachePath);
+  if (!scotCourtsIndex) return undefined;
+  return {
+    corpusId: CORPUS_ID,
+    sourceDir: scotCourtsIndex.sourceDir,
+    indexedAt: scotCourtsIndex.indexedAt,
+    entries: scotCourtsIndex.entries
+      .filter(isCourtOfSessionRuleDocument)
+      .map((entry) => toCourtOfSessionRuleIndexEntry(entry, scotCourtsIndex.indexedAt)),
+  };
 }
 
 export async function normalizeCourtOfSessionRulesToMarkdown(input: {
@@ -211,9 +212,13 @@ export async function normalizeCourtOfSessionRulesToMarkdown(input: {
 
 export async function searchCourtOfSessionRules(input: CourtOfSessionRuleContextInput): Promise<CourtOfSessionRuleSearchResult[]> {
   const sourceDir = resolveCourtOfSessionRulesDir(input.sourceDir);
-  const index = await loadCourtOfSessionRulesIndex(input.cachePath ?? DEFAULT_COURT_OF_SESSION_RULES_CACHE_PATH);
-  if (index && index.sourceDir === sourceDir) {
-    return searchCourtOfSessionRuleEntries(index.entries, {
+  const documents = await discoverScotCourtsCorpus(sourceDir);
+  const index = await loadScotCourtsCorpusIndex(input.cachePath ?? DEFAULT_COURT_OF_SESSION_RULES_CACHE_PATH);
+  if (index && index.sourceDir === sourceDir && await isScotCourtsIndexFresh(index, documents)) {
+    const entries = index.entries
+      .filter(isCourtOfSessionRuleDocument)
+      .map((entry) => toCourtOfSessionRuleIndexEntry(entry, index.indexedAt));
+    return searchCourtOfSessionRuleEntries(entries, {
       query: input.query,
       phaseId: input.phaseId,
       skillIds: input.skillIds,
@@ -221,8 +226,7 @@ export async function searchCourtOfSessionRules(input: CourtOfSessionRuleContext
     });
   }
 
-  const chapters = await discoverCourtOfSessionRules(sourceDir);
-  return searchCourtOfSessionRuleEntries(chapters, {
+  return searchCourtOfSessionRuleEntries(documents.filter(isCourtOfSessionRuleDocument).map(toCourtOfSessionRuleChapter), {
     query: input.query,
     phaseId: input.phaseId,
     skillIds: input.skillIds,
@@ -260,6 +264,7 @@ export function searchCourtOfSessionRuleEntries(
         chapter: entry.chapter,
         title: entry.title,
         fileName: entry.fileName,
+        relativePath: entry.relativePath,
         path: entry.path,
         score,
         snippet: indexed ? makeSnippet(text, terms) : undefined,
@@ -285,13 +290,13 @@ export async function buildCourtOfSessionRuleContext(input: CourtOfSessionRuleCo
 
   return [
     '## Court of Session Rules Corpus',
-    `Local official-rule folder: ${resolveCourtOfSessionRulesDir(input.sourceDir)}`,
-    'Use these local Rules of the Court of Session Markdown files as primary procedural sources for Court of Session work. Record the chapter title, local path, access date, and exact proposition supported in any source log.',
+    `Harness corpus category: legal-corpora/scotcourts/${COURT_OF_SESSION_RULES_CATEGORY}`,
+    'Use these repository-owned ScotCourts Rules of the Court of Session Markdown files as primary procedural sources for Court of Session work. Record the chapter title, local corpus path, access date, and exact proposition supported in any source log.',
     'Before finalising any procedural step, deadline, form, motion, petition, proof, reclaiming, judicial review, appeal, or bundle checklist, search the corpus and cite the exact chapter/rule text rather than relying on memory.',
     '',
     ...results.map((result) => {
       const snippet = result.snippet ? `\n  Snippet: ${result.snippet}` : '';
-      return `- Chapter ${result.chapter}: ${result.title}\n  Path: ${result.path}\n  Relevant stages: ${result.stageIds.join(', ')}${snippet}`;
+      return `- Chapter ${result.chapter}: ${result.title}\n  Path: ${result.relativePath ?? result.path}\n  Relevant stages: ${result.stageIds.join(', ')}${snippet}`;
     }),
     '',
     `CLI: harness rules court-session search "${escapeForPrompt(input.query || input.phaseId || 'Court of Session rules')}" --phase ${input.phaseId ?? 'law_and_policy_research'} --json`,
@@ -299,19 +304,44 @@ export async function buildCourtOfSessionRuleContext(input: CourtOfSessionRuleCo
 }
 
 function shouldAttachCourtOfSessionRules(input: CourtOfSessionRuleContextInput): boolean {
-  if (input.phaseId && COURT_OF_SESSION_PHASES.has(input.phaseId)) return true;
-  if (input.skillIds?.some((skill) => CORE_SCOTS_SKILLS.has(skill))) return true;
   const haystack = [
     input.query,
     input.matterMeta?.jurisdiction,
     input.matterMeta?.forum,
     input.matterMeta?.type,
   ].filter(Boolean).join(' ').toLowerCase();
-  return /\b(court of session|rules of court|rcs|lord ordinary|inner house|outer house|reclaiming|petition|motion|proof|judicial review|scotland|scots|scottish)\b/.test(haystack);
+  if (input.forceAttach) return true;
+
+  const hasScotsSignal = /\b(scot|scots|scotland|scottish)\b/.test(haystack);
+  const hasExplicitCourtOfSessionSignal =
+    /\b(court of session|rules of the court of session|court of session rules|rcs|lord ordinary|inner house|outer house|reclaiming)\b/.test(haystack);
+  const hasProcedureSignal = /\b(rules of court|judicial review|petition|motion|proof)\b/.test(haystack);
+  const forumIsNotCourtOfSession =
+    /\b(sheriff court|sheriff appeal|high court|justice of the peace|jp court|tribunal|county court|superior court)\b/.test(
+      input.matterMeta?.forum?.toLowerCase() ?? '',
+    );
+
+  if (forumIsNotCourtOfSession) return false;
+  if (hasExplicitCourtOfSessionSignal) return true;
+  return Boolean(hasScotsSignal && (hasProcedureSignal || input.phaseId && COURT_OF_SESSION_PHASES.has(input.phaseId)));
 }
 
-function buildChapterMetadata(sourceDir: string, fileName: string): CourtOfSessionRuleChapter {
-  const chapter = parseChapter(fileName);
+function isCourtOfSessionRuleDocument(document: ScotCourtsDocument | ScotCourtsIndexEntry): boolean {
+  const fileName = document.fileName.toLowerCase();
+  const isChapterFile = /^chap(?:ter)?[-_]?0?\d+[a-z]?/.test(fileName);
+  const isFocusedRoot = document.category === 'root' && isChapterFile;
+  const isCourtOfSessionCategory =
+    document.category === COURT_OF_SESSION_RULES_CATEGORY
+    || document.categoryPath === COURT_OF_SESSION_RULES_CATEGORY
+    || document.categoryPath.startsWith(`${COURT_OF_SESSION_RULES_CATEGORY}/`);
+  const isRuleLike = document.documentKind === 'rule' || isChapterFile;
+
+  return isRuleLike && (document.court === 'court_of_session' || isCourtOfSessionCategory || isFocusedRoot);
+}
+
+function toCourtOfSessionRuleChapter(document: ScotCourtsDocument): CourtOfSessionRuleChapter {
+  const fileName = document.fileName;
+  const chapter = parseChapter(document.fileName);
   const title = parseTitle(fileName, chapter);
   const keywords = deriveKeywords(chapter, title, fileName);
   const stageIds = deriveStageIds(chapter, title);
@@ -320,11 +350,27 @@ function buildChapterMetadata(sourceDir: string, fileName: string): CourtOfSessi
     corpusId: CORPUS_ID,
     chapter,
     title,
-    fileName,
-    path: join(sourceDir, fileName),
+    fileName: document.fileName,
+    relativePath: document.relativePath,
+    path: document.path,
     stageIds,
     skillIds,
     keywords,
+  };
+}
+
+function toCourtOfSessionRuleIndexEntry(
+  document: ScotCourtsIndexEntry,
+  indexedAt: string,
+): CourtOfSessionRuleIndexEntry {
+  return {
+    ...toCourtOfSessionRuleChapter(document),
+    sha256: document.sha256,
+    textHash: document.textHash ?? '',
+    text: document.text ?? '',
+    fileSizeBytes: document.fileSizeBytes,
+    fileMtimeMs: document.fileMtimeMs,
+    extractedAt: document.extractedAt ?? indexedAt,
   };
 }
 
@@ -472,7 +518,7 @@ function titleCase(value: string): string {
 }
 
 async function mkdirForFile(filePath: string): Promise<void> {
-  await mkdir(filePath.split('/').slice(0, -1).join('/') || '.', { recursive: true });
+  await mkdir(dirname(filePath), { recursive: true });
 }
 
 function escapeForPrompt(value: string): string {

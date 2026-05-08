@@ -6,4 +6,3 @@ export interface DraftCitation {
   verificationStatus: 'unchecked' | 'verified' | 'failed';
   metadata: Record<string, unknown>;
 }
-

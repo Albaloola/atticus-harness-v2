@@ -46,7 +46,7 @@ import { OpenRouterClient, createLLMClient } from '../../src/llm/client.js';
 import type { OrchestratorConfig } from '../../src/orchestration/master-orchestrator.js';
 import { MasterOrchestrator } from '../../src/orchestration/master-orchestrator.js';
 
-function mockWorkerStatus(status: 'completed' | 'blocked' | 'failed'): void {
+function mockWorkerStatus(status: 'completed' | 'blocked' | 'needs_followup' | 'failed'): void {
   const fakeClient = {
     chatWithTools: vi.fn().mockResolvedValue({
       content: JSON.stringify({
@@ -211,6 +211,38 @@ describe('MasterOrchestrator', () => {
     expect(result.phaseResults.every((phase) => phase.status === 'blocked')).toBe(true);
     expect(listTasks(matterName, { status: 'blocked' }).length).toBeGreaterThan(0);
     expect((await loadMatter(matterName)).status).toBe('analyzing');
+    expect(orchestrator.getActiveRunCount()).toBe(0);
+  }, 30000);
+
+  it('surfaces needs-followup worker results as blocked phase work', async () => {
+    mockWorkerStatus('needs_followup');
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Follow-up worker test',
+      maxDepth: 2,
+      maxConcurrency: 2,
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe('needs_followup');
+    expect(result.phaseResults.every((phase) => phase.status === 'blocked')).toBe(true);
+    expect(listTasks(matterName, { status: 'blocked' }).length).toBeGreaterThan(0);
+    expect((await loadMatter(matterName)).status).toBe('analyzing');
+  }, 30000);
+
+  it('normalizes invalid concurrency instead of stalling the batch loop', async () => {
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Invalid concurrency test',
+      maxDepth: 2,
+      maxConcurrency: 0,
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.phaseResults).toHaveLength(10);
+    expect(result.status).toBe('completed');
     expect(orchestrator.getActiveRunCount()).toBe(0);
   }, 30000);
 });

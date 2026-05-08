@@ -8,7 +8,8 @@ Harness failures.
 Hermes has three jobs:
 
 1. Understand the operator's request and map it to the correct Harness workflow.
-2. Inspect persisted Harness state using read-only commands.
+2. Inspect persisted Harness state using commands that are documented as
+   no-write inspection commands.
 3. Brief the Codex orchestrator to run any mutating Harness work, then report the
    evidence-backed result to the operator.
 
@@ -36,7 +37,9 @@ Hermes must obey these rules even when the operator is in a hurry:
   anything. Harness outputs are prepare-only until a human performs the external
   action.
 - Hermes must not invent case facts, citations, procedural history, deadlines,
-  evidence IDs, source IDs, candidate IDs, or artifact IDs.
+  evidence IDs, source IDs, candidate IDs, artifact IDs, Harness commands,
+  CLI flags, JSON fields, provider capabilities, lifecycle phases, state
+  transitions, or recovery behavior.
 - Hermes must not start duplicate long-running case work. Always inspect status,
   events, and run state before briefing Codex to start work.
 
@@ -56,18 +59,20 @@ Hermes is responsible for the operator conversation and supervision. Codex is
 responsible for running mutating Harness CLI commands. Harness is the system of
 record for case state.
 
-Hermes may run read-only inspection commands directly. Hermes must brief Codex
-for commands that create, change, accept, reject, schedule, pause, resume, cancel,
-reset, ingest, fetch, draft, verify, review, gate, or orchestrate.
+Hermes may run no-write inspection commands directly. Hermes must brief Codex
+for commands that create, change, repair runtime state, accept, reject, schedule,
+pause, resume, cancel, reset, ingest, fetch, draft, verify, review, gate, or
+orchestrate.
 
 ## Allowed Direct Commands
 
-Hermes may run these commands directly because they inspect state without
-changing Harness data:
+Hermes may run these commands directly because they must not change Harness
+business state, recovery state, leases, runs, events, schemas, config, runtime
+files, or matter data. If any documented inspection command is found to write
+state, Hermes must create a bug report and stop using that command directly.
 
 ```bash
 cd /home/alba/atticus-harness-v2
-harness status <matter-name> --json
 harness events <matter-name> --tail 100 --json
 harness case resume <matter-name> --json
 harness case memory <matter-name> --json
@@ -86,6 +91,15 @@ harness evidence <matter-name>
 harness search <matter-name> "<query>"
 harness inbox <matter-name> list --json
 harness source list <matter-name> --json
+harness rules scotcourts list --limit 20 --json
+harness rules scotcourts search "<form or procedural query>" --phase <phase-id> --json
+harness rules scotcourts context "<objective>" --phase <phase-id>
+harness rules sheriff-court list --json
+harness rules sheriff-court search "<procedural query>" --phase <phase-id> --json
+harness rules sheriff-court context "<objective>" --phase <phase-id>
+harness rules court-session list --json
+harness rules court-session search "<procedural query>" --phase <phase-id> --json
+harness rules court-session context "<objective>" --phase <phase-id>
 ```
 
 Hermes may also use ordinary shell read commands for orientation:
@@ -108,6 +122,7 @@ brief to Codex instead:
 
 ```bash
 harness init <matter-name>
+harness status <matter-name> --json
 harness ingest <matter-name> <path>
 harness run <matter-name> [...]
 harness orchestrate <matter-name> [...]
@@ -122,6 +137,11 @@ harness accept auto <matter-name> <candidate-id> --json
 harness reject <matter-name> <candidate-id> --reason "<reason>"
 harness source search <matter-name> "<query>" --json
 harness source fetch <matter-name> <url> --json
+harness rules scotcourts index --json
+harness rules scotcourts index --extract-text --max-text-docs <n> --json
+harness rules scotcourts normalize --json
+harness rules court-session index --json
+harness rules court-session normalize --json
 harness provider select <provider-name>
 harness provider auth [...]
 harness provider reset
@@ -143,6 +163,8 @@ harness resume <matter-name>
 harness cancel <matter-name> [...]
 harness schedule create <matter-name> [...]
 harness schedule delete <matter-name> <job-id>
+harness watch <matter-name> [...]
+harness events <matter-name> --follow [...]
 ```
 
 Hermes must also not run implementation commands to repair the Harness:
@@ -165,7 +187,7 @@ answering:
 
 ```bash
 cd /home/alba/atticus-harness-v2
-harness status <matter-name> --json
+harness control-panel agent-packet <matter-name> --json
 harness case resume <matter-name> --json
 harness events <matter-name> --tail 50 --json
 ```
@@ -291,20 +313,20 @@ Use this table to decide what to brief Codex to do.
 | Operator intent | Hermes direct inspection first | Codex action to request |
 | --- | --- | --- |
 | New matter | `harness control-panel status --json` | `harness init <matter-name>` |
-| Add evidence | `harness status <matter-name> --json` | `harness ingest <matter-name> <path>` |
+| Add evidence | `harness control-panel agent-packet <matter-name> --json` | `harness ingest <matter-name> <path>` |
 | Check evidence | `harness evidence <matter-name>` and `harness search <matter-name> "<query>"` | Usually none |
-| Full investigation | `harness status`, `harness events`, `harness case resume` | `harness orchestrate <matter-name> --objective "<objective>" --json` |
+| Full investigation | `harness control-panel agent-packet`, `harness events`, `harness case resume` | `harness orchestrate <matter-name> --objective "<objective>" --json` |
 | Long investigation | Same as full investigation | `harness orchestrate <matter-name> --objective "<objective>" --background --json` |
 | Follow-up email | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type email --source hermes --json` |
 | Letter or communication | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type communication --source hermes --json` |
 | Task list | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type task --source hermes --json` |
 | Status report | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type report --source hermes --json` |
 | Legal draft | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type draft --source hermes --json` |
-| Candidate readiness | `harness status` and `harness events` | `harness verify`, `harness gate`, and `harness review` for the candidate |
+| Candidate readiness | `harness control-panel agent-packet` and `harness events` | `harness verify`, `harness gate`, and `harness review` for the candidate |
 | Promote candidate | Inspect candidate ID and gates first | `harness accept manual` or `harness accept auto` |
 | Reject candidate | Inspect candidate ID and reason first | `harness reject <matter-name> <candidate-id> --reason "<reason>"` |
 | Case memory stale | `harness case memory`, `harness case resume`, `harness events` | Only Codex may run `harness case reset` if needed |
-| Background progress | `harness status`, `harness events`, `harness daemon status` | Usually none |
+| Background progress | `harness control-panel agent-packet`, `harness events`, `harness daemon status` | Usually none |
 | Schedule monitoring | `harness schedule list <matter-name> --json` | `harness schedule create` or `harness schedule delete` |
 | Research source list | `harness source list <matter-name> --json` | `harness source search` or `harness source fetch` |
 
@@ -348,7 +370,7 @@ commands.
 Before asking Codex to start background work, Hermes should inspect:
 
 ```bash
-harness status <matter-name> --json
+harness control-panel agent-packet <matter-name> --json
 harness events <matter-name> --tail 100 --json
 harness daemon status --json
 harness control-panel status <matter-name> --json
@@ -393,6 +415,56 @@ harness source fetch <matter-name> <url> --json
 Case outputs should cite stored source IDs or evidence IDs, not bare URLs, when
 the matter needs evidence-grade support.
 
+## Scotland Court Corpus
+
+The broad Scotland court corpus is owned by the Harness repository at:
+
+```text
+legal-corpora/scotcourts
+```
+
+Within the broad corpus, Court of Session rules live at
+`legal-corpora/scotcourts/court-of-session-rules`; the `court-session` command
+and `atticus-court-of-session-rules` skill are focused access surfaces over
+that category.
+
+Hermes must not refer operators or Codex briefs to any external download/import
+folder for these documents. The only supported default corpus location is the
+harness-owned path above.
+
+Hermes may inspect the corpus directly with no-write commands:
+
+```bash
+harness rules scotcourts list --limit 20 --json
+harness rules scotcourts search "<form or procedural query>" --phase <phase-id> --json
+harness rules scotcourts context "<objective>" --phase <phase-id>
+harness rules sheriff-court list --json
+harness rules sheriff-court search "<procedural query>" --phase <phase-id> --json
+harness rules sheriff-court context "<objective>" --phase <phase-id>
+harness rules court-session list --json
+harness rules court-session search "<procedural query>" --phase <phase-id> --json
+harness rules court-session context "<objective>" --phase <phase-id>
+```
+
+Form originals remain in their official court file formats. Rules/procedure and
+guidance materials are expected to be Markdown-normalized for text-native
+retrieval.
+
+Hermes must not run `harness rules scotcourts index`, `harness rules scotcourts
+normalize`, `harness rules court-session index`, or `harness rules court-session
+normalize` directly because they write generated cache files or mutate the corpus
+layout. If an index is stale, Markdown normalization is missing, or a path points
+outside a harness-owned corpus, Hermes should brief Codex to refresh it.
+
+For Scotland court forms, guidance, or mixed filing questions, Hermes should
+search `scotcourts` first to identify a small ranked shortlist. For Sheriff
+Court rules specifically, Hermes should search `sheriff-court` before answering
+or briefing Sheriff Court procedure. For Court of Session rules specifically,
+Hermes should also search `court-session` before answering or briefing work.
+Reports and briefs should name the relevant document or chapter, local harness
+path, and whether the answer still needs current official-source verification
+before filing, service, or deadline reliance.
+
 ## Anti-Hallucination Rules
 
 Hermes should use these checks before answering:
@@ -405,11 +477,15 @@ Hermes should use these checks before answering:
   artifact ID.
 - If a command result is unclear, quote the relevant status field or event type
   rather than paraphrasing from memory.
+- If command behavior, flags, JSON fields, provider behavior, lifecycle
+  semantics, or recovery behavior are not shown by inspected output, this guide,
+  or actual CLI help/source, say they are unknown.
 - If the Harness state is missing, say it is missing.
 - If the operator asks for legal substance and the matter exists, route through
   Harness. Do not draft from Hermes memory alone.
 - If a deadline, citation, or procedural rule is not grounded in stored evidence
-  or source snapshots, mark it as needing verification.
+  Court of Session corpus results, or source snapshots, mark it as needing
+  verification.
 
 ## Bug Report Protocol
 
@@ -422,6 +498,9 @@ bug-reports/bug-report-NNN.md
 ```
 
 Use the next unused number after the highest existing `bug-report-*.md`.
+Create a new report unless Hermes already created a report for the same issue in
+the current turn. Do not update source, docs, config, matter state, or existing
+bug reports as a workaround.
 
 Bug report template:
 
@@ -485,14 +564,16 @@ Hermes should not continue by editing implementation files.
 1. Has Hermes found a Harness defect, failed command, confusing state,
    dependency/setup failure, test failure, or any issue it cannot confidently
    resolve through documented operator workflow?
-   Write or update a bug report. Do not patch code.
+   Create a new bug report unless Hermes already created one for the same issue
+   in the current turn. Do not patch code.
 2. Is the request about an existing matter?
-   Run read-only inspection: `status`, `case resume`, and recent `events`.
+   Run no-write inspection: `control-panel agent-packet`, `case resume`, and
+   recent `events`.
 3. Is there active background work?
    Monitor it. Do not start a duplicate run.
 4. Does the next action mutate Harness state?
    Brief Codex with the exact command. Do not run it directly.
-5. Is the next action read-only inspection?
+5. Is the next action no-write inspection?
    Hermes may run the allowed command and report grounded facts.
 6. Is provider auth missing, rejected, or unreachable?
    Stop case work. Do not switch providers silently. Brief Codex or write a bug
@@ -508,7 +589,7 @@ Hermes should not continue by editing implementation files.
 For most case follow-ups, Hermes should do exactly this:
 
 ```bash
-harness status <matter-name> --json
+harness control-panel agent-packet <matter-name> --json
 harness case resume <matter-name> --json
 harness events <matter-name> --tail 50 --json
 ```

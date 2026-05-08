@@ -1,9 +1,11 @@
 import { copyFile, stat, mkdir, writeFile } from 'fs/promises';
 import { join, basename } from 'path';
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
-import type { EvidenceRecord, EvidenceFormat } from '../types/evidence.js';
+import type { EvidenceRecord } from '../types/evidence.js';
 import { extractText, hashFile } from '../extraction/index.js';
 import { detectFormatByMagic, getMimeType } from '../extraction/detect.js';
+import { appendEvent } from '../state/events.js';
+import { registerCopiedEvidenceV2, persistExtractionV2 } from '../ingestion/register-evidence.js';
 
 export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: string }, unknown> {
   readonly name = 'evidence_ingest';
@@ -20,8 +22,9 @@ export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: 
   isEnabled(): boolean { return true; }
 
   async call(args: { matterName: string; filePath: string }, context: ToolUseContext): Promise<ToolResult<unknown>> {
+    let fileStat;
     try {
-      await stat(args.filePath);
+      fileStat = await stat(args.filePath);
     } catch {
       return { success: false, error: `File not found: ${args.filePath}` };
     }
@@ -38,21 +41,6 @@ export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: 
     const internalPath = join(evidenceDir, `${evidenceId}_${fileName}`);
     await copyFile(args.filePath, internalPath);
 
-    let extracted;
-    try {
-      extracted = await extractText(args.filePath, { sourceId: evidenceId });
-    } catch (err: unknown) {
-      return {
-        success: true,
-        data: { evidenceId, sha256, format, extraction: 'failed' },
-        output: `Ingested ${fileName} as ${evidenceId} but text extraction failed: ${(err as Error).message}`,
-      };
-    }
-
-    await mkdir(extractionDir, { recursive: true });
-    const extractionPath = join(extractionDir, `${evidenceId}.txt`);
-    await writeFile(extractionPath, extracted.text, 'utf-8');
-
     const record: EvidenceRecord = {
       id: evidenceId,
       matterName: args.matterName,
@@ -61,34 +49,109 @@ export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: 
       sha256,
       mimeType: getMimeType(format),
       format,
-      status: 'extracted',
+      status: 'copied_unindexed',
       ingested: new Date().toISOString(),
-      sizeBytes: 0,
+      sizeBytes: fileStat.size,
       metadata: { originalFileName: fileName },
     };
 
     try {
       const { getDb } = await import('../storage/sqlite/index.js');
       const { insertEvidence } = await import('../storage/sqlite/evidence.js');
-      const { chunkText, insertChunks } = await import('../storage/sqlite/chunks.js');
       const db = getDb(args.matterName);
       insertEvidence(db, record);
-      const chunks = chunkText(evidenceId, extracted.text, extracted.confidence);
-      insertChunks(db, chunks);
+      registerCopiedEvidenceV2(db, record);
+      await appendEvent({
+        matterName: args.matterName,
+        type: 'evidence.copied_unindexed',
+        data: { evidenceId, fileName, sha256 },
+        source: 'tool',
+      });
     } catch (err: unknown) {
       return {
-        success: true,
-        data: { evidenceId, sha256, format, sqliteIndexing: 'failed' },
-        output: `Ingested ${fileName} as ${evidenceId} but SQLite indexing failed: ${(err as Error).message}`,
+        success: false,
+        data: { evidenceId, sha256, format, indexing: 'failed' },
+        error: `Copied ${fileName} as ${evidenceId} but could not register copied evidence: ${(err as Error).message}`,
       };
     }
 
-    const totalChunks = Math.ceil(extracted.text.length / 4000);
+    let extracted;
+    try {
+      extracted = await extractText(args.filePath, { sourceId: evidenceId });
+    } catch (err: unknown) {
+      try {
+        const { getDb } = await import('../storage/sqlite/index.js');
+        const { insertEvidence, updateEvidenceItemV2Status } = await import('../storage/sqlite/evidence.js');
+        const db = getDb(args.matterName);
+        insertEvidence(db, { ...record, status: 'qc_failed' });
+        updateEvidenceItemV2Status(db, evidenceId, 'qc_failed', {
+          ...record.metadata,
+          extractionError: (err as Error).message,
+        });
+        await appendEvent({
+          matterName: args.matterName,
+          type: 'evidence.ingestion_failed',
+          data: { evidenceId, fileName, error: (err as Error).message },
+          source: 'tool',
+        });
+      } catch {}
+      return {
+        success: false,
+        data: { evidenceId, sha256, format, extraction: 'failed' },
+        error: `Copied ${fileName} as ${evidenceId} but text extraction failed: ${(err as Error).message}`,
+      };
+    }
+
+    await mkdir(extractionDir, { recursive: true });
+    const extractionPath = join(extractionDir, `${evidenceId}.txt`);
+    await writeFile(extractionPath, extracted.text, 'utf-8');
+
+    let indexedChunks = 0;
+    try {
+      const { getDb } = await import('../storage/sqlite/index.js');
+      const { insertEvidence } = await import('../storage/sqlite/evidence.js');
+      const { chunkText, insertChunks } = await import('../storage/sqlite/chunks.js');
+      const db = getDb(args.matterName);
+      const approvedRecord: EvidenceRecord = { ...record, status: 'approved' };
+      insertEvidence(db, approvedRecord);
+      const chunks = chunkText(evidenceId, extracted.text, extracted.confidence);
+      insertChunks(db, chunks);
+      persistExtractionV2(db, evidenceId, extracted, chunks);
+      indexedChunks = chunks.length;
+      await appendEvent({
+        matterName: args.matterName,
+        type: 'evidence.ingested',
+        data: { evidenceId, fileName, format, sha256, chunks: chunks.length },
+        source: 'tool',
+      });
+    } catch (err: unknown) {
+      try {
+        const { getDb } = await import('../storage/sqlite/index.js');
+        const { insertEvidence, updateEvidenceItemV2Status } = await import('../storage/sqlite/evidence.js');
+        const db = getDb(args.matterName);
+        insertEvidence(db, { ...record, status: 'failed' });
+        updateEvidenceItemV2Status(db, evidenceId, 'failed', {
+          ...record.metadata,
+          indexingError: (err as Error).message,
+        });
+        await appendEvent({
+          matterName: args.matterName,
+          type: 'evidence.index_failed',
+          data: { evidenceId, fileName, error: (err as Error).message },
+          source: 'tool',
+        });
+      } catch {}
+      return {
+        success: false,
+        data: { evidenceId, sha256, format, sqliteIndexing: 'failed' },
+        error: `Copied and extracted ${fileName} as ${evidenceId} but SQLite indexing failed: ${(err as Error).message}`,
+      };
+    }
 
     return {
       success: true,
-      data: { evidenceId, sha256, format, method: extracted.method, chunks: totalChunks },
-      output: `Ingested ${fileName} as ${evidenceId} (${format}, ${extracted.method}, ${extracted.confidence * 100}% confidence, ${totalChunks} chunks indexed)`,
+      data: { evidenceId, sha256, format, method: extracted.method, chunks: indexedChunks },
+      output: `Ingested ${fileName} as ${evidenceId} (${format}, ${extracted.method}, ${extracted.confidence * 100}% confidence, ${indexedChunks} chunks indexed)`,
     };
   }
 }

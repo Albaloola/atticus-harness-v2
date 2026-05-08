@@ -23,16 +23,20 @@ export async function recoverStaleRuntimeState(
   const expiredLeases = expireTaskLeases(matterName, { now });
   const activeRuns = listRuns(matterName, { status: 'running' })
     .filter((run) => isRunLive(run, now, options.staleAfterMs));
+  const activeRunIds = new Set(activeRuns.map((run) => run.id));
   const staleRunIds = new Set(staleRuns.map((run) => run.runId));
   const failedTasks: string[] = [];
+  const failedTaskReasons = new Map<string, string>();
 
   for (const task of listTasks(matterName, { status: 'in_progress' })) {
-    const runWentStale = Boolean(task.runId && staleRunIds.has(task.runId));
-    if (activeRuns.length > 0 && !runWentStale) continue;
+    if (hasLiveLease(task, now)) continue;
+    if (task.runId && activeRunIds.has(task.runId)) continue;
 
-    const reason = runWentStale
+    const reason = task.runId && staleRunIds.has(task.runId)
       ? `owning run ${task.runId} went stale`
-      : 'no live agent run remains for in-progress task';
+      : task.runId
+        ? `owning run ${task.runId} is not live`
+        : 'task has no owning run';
     updateTask(matterName, task.id, {
       status: 'failed',
       data: {
@@ -43,6 +47,7 @@ export async function recoverStaleRuntimeState(
       },
     });
     failedTasks.push(task.id);
+    failedTaskReasons.set(task.id, reason);
   }
 
   await Promise.all([
@@ -58,7 +63,7 @@ export async function recoverStaleRuntimeState(
       type: 'agent.run.error' as const,
       taskId,
       source: 'system',
-      data: { recovery: 'stale_task', reason: 'in-progress task had no live agent run' },
+      data: { recovery: 'stale_task', reason: failedTaskReasons.get(taskId) ?? 'in-progress task had no live agent run' },
     }).catch(() => undefined)),
   ]);
 
@@ -67,4 +72,10 @@ export async function recoverStaleRuntimeState(
     expiredLeases: expiredLeases.length,
     failedTasks,
   };
+}
+
+function hasLiveLease(task: ReturnType<typeof listTasks>[number], now: Date): boolean {
+  if (!task.leaseId || !task.leaseExpiresAt) return false;
+  const expiresAtMs = new Date(task.leaseExpiresAt).getTime();
+  return Number.isFinite(expiresAtMs) && expiresAtMs > now.getTime();
 }

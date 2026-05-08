@@ -80,7 +80,7 @@ export async function buildCaseMemoryPack(
   const limits = { ...DEFAULT_LIMITS, ...options.limits };
   const [matter, dashboard, resolvedConfig, evidence, artifacts, candidates, inbox] = await Promise.all([
     loadMatter(matterName),
-    deriveSnapshot(matterName),
+    deriveSnapshot(matterName, { recoverRuntime: false }),
     resolveConfig({ matterName }),
     listEvidence(matterName).catch(() => []),
     listArtifacts(matterName).catch(() => []),

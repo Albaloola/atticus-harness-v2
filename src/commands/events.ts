@@ -4,10 +4,11 @@ import { loadMatter, getMatterPath } from '../storage/matter.js';
 import { listEvents, getEventCount } from '../state/events.js';
 import { createInterface } from 'readline';
 import { watch } from 'fs';
+import type { MatterEventType } from '../types/state.js';
 
 export default async function eventsHandler(
   matterName: string,
-  options: { tail?: string; follow?: boolean; json?: boolean },
+  options: { tail?: string; follow?: boolean; json?: boolean; type?: string; legal?: boolean },
 ): Promise<void> {
   try {
     await loadMatter(matterName);
@@ -22,12 +23,16 @@ export default async function eventsHandler(
   }
 
   const tail = options.tail ? parseInt(options.tail, 10) || 10 : 10;
+  const type = options.type as MatterEventType | undefined;
 
   const printEvents = () => {
-    const events = listEvents(matterName, { tail });
+    const events = listEvents(matterName, { tail, type });
     const sorted = events.reverse();
+    const filtered = options.legal
+      ? sorted.filter((event) => /finding|citation|contradiction|investigation|review|consensus|draft|export/.test(event.type))
+      : sorted;
 
-    for (const event of sorted) {
+    for (const event of filtered) {
       if (options.json) {
         console.log(JSON.stringify(event));
       } else {

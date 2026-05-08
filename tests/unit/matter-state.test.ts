@@ -6,6 +6,7 @@ import { createTask, updateTask, getTask, listTasks } from '../../src/state/task
 import { acquireTaskLease, completeTaskLease, expireTaskLeases } from '../../src/state/leases.js';
 import { createRun, updateRun, getRun, listRuns } from '../../src/state/runs.js';
 import { deriveSnapshot } from '../../src/state/snapshot.js';
+import { listRunnableTasks } from '../../src/orchestration/task-graph.js';
 import { appendInboxMessage, listInboxMessages } from '../../src/state/inbox.js';
 import { initMatter, deleteMatter, getMatterPath } from '../../src/storage/matter.js';
 import { saveCandidate, acceptCandidate } from '../../src/storage/candidate.js';
@@ -50,9 +51,9 @@ describe('Schema migration', () => {
       version: number;
     };
     expect(row).toBeTruthy();
-    expect(row.version).toBe(5);
+    expect(row.version).toBe(7);
     const migrations = db.prepare('SELECT version_from, version_to FROM schema_migrations ORDER BY version_to').all() as Array<{ version_from: number; version_to: number }>;
-    expect(migrations.map((m) => `${m.version_from}->${m.version_to}`)).toEqual(['0->1', '1->2', '2->3', '3->4', '4->5']);
+    expect(migrations.map((m) => `${m.version_from}->${m.version_to}`)).toEqual(['0->1', '1->2', '2->3', '3->4', '4->5', '5->6', '6->7']);
   });
 
   it('can be called twice safely (idempotent)', () => {
@@ -63,8 +64,8 @@ describe('Schema migration', () => {
     const tables = db2
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
       .all() as { name: string }[];
-    expect(tables.map((table) => table.name)).toEqual(expect.arrayContaining(['task_leases', 'reducer_packets']));
-    expect(tables.length).toBe(11);
+    expect(tables.map((table) => table.name)).toEqual(expect.arrayContaining(['task_leases', 'reducer_packets', 'findings', 'finding_citations']));
+    expect(tables.length).toBeGreaterThanOrEqual(25);
   });
 });
 
@@ -248,6 +249,31 @@ describe('Task CRUD', () => {
     });
 
     expect(task.id).toBe('custom-task-id');
+  });
+
+  it('rejects missing parent task ids', () => {
+    expect(() => createTask({
+      matterName,
+      type: 'review',
+      title: 'Child with missing parent',
+      parentId: 'missing-parent',
+    })).toThrow('Parent task "missing-parent" was not found');
+  });
+
+  it('only lists tasks as runnable after dependencies complete', () => {
+    const dependency = createTask({ matterName, type: 'analysis', title: 'Dependency' });
+    const dependent = createTask({
+      matterName,
+      type: 'analysis',
+      title: 'Dependent',
+      dependencies: [dependency.id],
+    });
+
+    expect(listRunnableTasks(matterName).map((task) => task.id)).not.toContain(dependent.id);
+
+    updateTask(matterName, dependency.id, { status: 'completed' });
+
+    expect(listRunnableTasks(matterName).map((task) => task.id)).toContain(dependent.id);
   });
 
   it('getTask retrieves a created task', () => {
@@ -635,6 +661,21 @@ describe('Snapshot', () => {
     expect(snapshot.activeAgents).toHaveLength(0);
     expect(getRun(matterName, run.id)?.status).toBe('error');
     expect(getTask(matterName, task.id)?.status).toBe('failed');
+  });
+
+  it('recovers orphaned in-progress tasks even while an unrelated run is live', async () => {
+    const terminalRun = createRun({ matterName, model: 'terminal-owner' });
+    updateRun(matterName, terminalRun.id, { status: 'completed' });
+    const terminalOwnedTask = createTask({ matterName, type: 'stale', title: 'Terminal-owned task', runId: terminalRun.id });
+    const ownerlessTask = createTask({ matterName, type: 'stale', title: 'Ownerless task' });
+    updateTask(matterName, terminalOwnedTask.id, { status: 'in_progress' });
+    updateTask(matterName, ownerlessTask.id, { status: 'in_progress' });
+
+    const snapshot = await deriveSnapshot(matterName);
+
+    expect(snapshot.activeAgents).toHaveLength(1);
+    expect(getTask(matterName, terminalOwnedTask.id)?.status).toBe('failed');
+    expect(getTask(matterName, ownerlessTask.id)?.status).toBe('failed');
   });
 
   it('snapshot for unknown matter throws', async () => {

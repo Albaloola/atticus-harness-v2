@@ -5,7 +5,7 @@ Standalone terminal-native agent for legal work. Ingests evidence, runs hierarch
 
 ## Current status and architecture research
 
-Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, provider-routed tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, and 915 bundled legal/writing skills.
+Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, provider-routed tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, 900+ bundled legal/writing skills, and harness-owned Scotland court corpora.
 
 The architecture papers now separate the legacy control-plane reference from the current TypeScript agent architecture:
 
@@ -84,6 +84,13 @@ harness policy preset auto-internal     # Auto-approve internal tool use
 harness policy preset auto-accept-gated # Auto-accept after gates pass
 harness policy preset full-local-autonomy  # Full autonomy (prepare-only output)
 ```
+
+Hermes operators must treat the examples below as general operator/Codex CLI
+examples, not as a Hermes execution allowlist. Hermes direct execution is
+limited to the no-write inspection and briefing runbook in
+[`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md); all mutating,
+repairing, or long-running commands must be briefed to Codex or escalated as a
+bug report.
 
 ## Usage
 
@@ -193,6 +200,55 @@ harness source list my-case                                    # List stored sou
 stores hashed snapshots under the matter so later verification works from saved text,
 not bare URLs.
 
+### Scotland court corpora
+
+The broad ScotCourts corpus is copied into the harness under
+`legal-corpora/scotcourts`. It contains Scotland court forms, civil and criminal
+procedure rules, and court guidance across sheriff court, sheriff appeal, Court
+of Session, and criminal procedure categories. Form originals stay in their
+official file formats. Rules/procedure/guidance materials are normalised to
+Markdown for text-native retrieval. Court of Session rules live inside the broad
+corpus at `legal-corpora/scotcourts/court-of-session-rules`; the
+`court-session` commands and `atticus-court-of-session-rules` skill are focused
+access surfaces over that category, not a second physical corpus.
+
+Models must not load the whole Scotland corpus into prompt context. Use the
+metadata index and scoped `search`/`context` commands to select a small ranked
+shortlist, then open or extract only the specific documents needed for the task.
+
+```bash
+harness rules scotcourts list --limit 20 --json
+harness rules scotcourts search "simple procedure claim form" --phase document_production --json
+harness rules scotcourts context "ordinary cause defences sheriff court" --phase procedural_route_planning
+harness rules scotcourts index --json
+harness rules scotcourts normalize --json
+
+harness rules sheriff-court list --json
+harness rules sheriff-court search "ordinary cause defences sheriff court" --phase procedural_route_planning --json
+harness rules sheriff-court context "simple procedure claim response" --phase document_production
+
+harness rules court-session list --json
+harness rules court-session search "judicial review petition time limit" --phase procedural_route_planning --json
+harness rules court-session context "productions recovery proof" --phase evidence_ingestion_and_fact_extraction
+harness rules court-session index --json
+harness rules court-session normalize --json
+```
+
+`list`, `search`, and `context` are no-write lookup commands. The ScotCourts
+`index` command writes a metadata cache at
+`.atticus/rules/scotcourts-corpus.index.json`; add `--extract-text
+--max-text-docs <n>` only for a deliberately bounded text cache. The Court of
+Session `index` command extracts rule text into
+`.atticus/rules/court-of-session-rules.index.json`. The `normalize` commands are
+mutating maintenance commands: they convert rules/procedure originals to
+Markdown and delete only successfully converted non-form originals.
+
+Scots workflow phases automatically add `atticus-scotcourts-corpus` and focused
+`atticus-sheriff-court-rules` / `atticus-court-of-session-rules` skill context
+so procedural route planning, drafting, verification, proof/evidence work,
+bundle checks, and operator handoff receive only the relevant local document
+shortlist.
+
 ### Scheduling
 
 ```bash
@@ -264,6 +320,7 @@ src/
 ├── scheduler/          # 5-field cron parser + leased scheduled job loop
 ├── daemon/             # Background process manager, supervisor, control queue
 ├── research/           # Web search/fetch, source snapshots, citation verification
+├── rules/              # Local legal rule corpus discovery, indexing, search, and prompt context
 ├── legal/              # 10-phase workflow, 24 artifact types, templates, skills router
 ├── acceptance/         # 10-gate scoring, auto-acceptance, review quorum
 ├── reducer/            # Reducer packets + canonical writer boundary
@@ -274,7 +331,8 @@ src/
 ├── types/              # Shared TypeScript interfaces
 ├── skills/             # SKILL.md parser and loader
 └── permissions/        # Approval decision engine (plan)
-skills/                 # 915 bundled SKILL.md files
+skills/                 # 900+ bundled SKILL.md files
+legal-corpora/          # Harness-owned local legal corpora, including broad ScotCourts forms and Markdown rule/procedure corpora
 tests/                  # Unit coverage for CLI, state, tools, orchestration, extraction
 ```
 
@@ -305,10 +363,11 @@ npm run dev          # Watch mode
 - ✅ Scheduled recurring/one-shot jobs with cron expressions
 - ✅ Non-interrupting status snapshots and event streaming
 - ✅ Evidence-grade web research with source snapshots and citation verification
+- ✅ Harness-owned Scotland court corpora with stage/skill-scoped lookup
 - ✅ 10-phase legal workflow (intake through operator handoff)
 - ✅ 10-gate quality scoring with policy-controlled auto-acceptance
 - ✅ Review quorum with hostile reviewer agent
-- ✅ 915 bundled legal and writing skills, including UK/Scots refined skills
+- ✅ 900+ bundled legal and writing skills, including UK/Scots refined skills
 - ✅ SQLite + JSONL dual persistence for audit trails
 - ✅ Reducer packets and canonical writer boundary for accepted artifacts
 - ✅ Task and scheduler leases with fencing tokens, heartbeat/expiry tracking, and blocked reasons

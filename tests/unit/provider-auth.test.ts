@@ -163,6 +163,58 @@ describe('provider profiles and auth preflight', () => {
     expect(config.providers['openrouter-deepseek']).toBeDefined();
   });
 
+  it('refreshes stale built-in profile metadata and model optimisations on load', async () => {
+    const configDir = join(tmpHome, '.atticus-harness');
+    mkdirSync(configDir, { recursive: true });
+    const config = structuredClone(DEFAULTS);
+    config.profiles['deepseek-direct'] = {
+      name: 'deepseek-direct',
+      label: 'DeepSeek direct',
+      preset: 'deepseek-direct',
+      authType: 'api-key',
+      keyName: 'DEEPSEEK_API_KEY',
+      baseUrl: 'https://api.deepseek.com',
+      models: {
+        fast: 'old-fast',
+        reasoning: 'old-reasoning',
+        drafting: 'old-drafting',
+        reviewer: 'old-reviewer',
+        citation: 'old-citation',
+        cheap: 'old-cheap',
+      },
+      fallbackModel: 'old-fallback',
+      isCustom: false,
+    };
+    config.activeProvider = 'deepseek-direct';
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify(config), 'utf-8');
+
+    const { config: loaded } = await loadGlobalConfig();
+
+    expect(loaded.profiles['deepseek-direct'].providerKind).toBe('openai-compatible');
+    expect(loaded.profiles['deepseek-direct'].reasoningControl).toBe('deepseek-thinking');
+    expect(loaded.profiles['deepseek-direct'].models.fast).toBe('deepseek-v4-flash');
+    expect(loaded.profiles['deepseek-direct'].models.reasoning).toBe('deepseek-v4-pro');
+  });
+
+  it('fails closed when raw config contains incompatible selected profile models', async () => {
+    const configDir = join(tmpHome, '.atticus-harness');
+    mkdirSync(configDir, { recursive: true });
+    const config = structuredClone(DEFAULTS);
+    const deepseek = structuredClone(PROVIDER_PRESETS['deepseek-direct']);
+    config.activeProvider = 'deepseek-direct';
+    config.profiles['deepseek-direct'] = {
+      ...deepseek,
+      models: {
+        ...deepseek.models,
+        fast: 'gpt-5.5',
+      },
+      isCustom: true,
+    };
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify(config), 'utf-8');
+
+    await expect(resolveConfig()).rejects.toThrow('Direct DeepSeek profiles expect deepseek-* model ids');
+  });
+
   it('resolves API keys from harness secrets before environment variables', async () => {
     const configDir = join(tmpHome, '.atticus-harness');
     mkdirSync(configDir, { recursive: true });

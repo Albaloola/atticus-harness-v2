@@ -8,7 +8,7 @@ vi.mock('@openai/codex-sdk', () => ({
   Codex: codexSdkMock.Codex,
 }));
 
-import { OpenAICompatibleClient, AnthropicClient, CodexSdkClient } from '../../src/llm/index.ts';
+import { OpenAICompatibleClient, AnthropicClient, CodexSdkClient, createLLMClient } from '../../src/llm/index.ts';
 import { buildModelDelegationPrompt, selectModelForTask } from '../../src/llm/prompt-builder.ts';
 
 describe('OpenAICompatibleClient', () => {
@@ -315,6 +315,44 @@ describe('AnthropicClient', () => {
     expect(response.content).toBe('done');
     expect(response.toolCalls?.[0]).toEqual({ id: 'toolu_1', name: 'search', args: { q: 'x' } });
     expect(response.usage?.totalTokens).toBe(10);
+  });
+
+  it('sends Anthropic OAuth tokens as bearer auth for health and messages', async () => {
+    const fetchMock = vi.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      json: async () => url.endsWith('/models')
+        ? { data: [] }
+        : {
+            content: [{ type: 'text', text: 'done' }],
+            usage: { input_tokens: 4, output_tokens: 6 },
+            model: 'claude-sonnet-4',
+          },
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = createLLMClient({
+      providerName: 'anthropic-oauth',
+      providerKind: 'anthropic',
+      authType: 'oauth',
+      apiKey: 'oauth-token',
+      baseUrl: 'https://api.anthropic.com/v1',
+    });
+
+    await expect(client.healthCheck()).resolves.toBe(true);
+    await client.chat({
+      messages: [{ role: 'user', content: 'hello' }],
+      config: { model: 'claude-sonnet-4' },
+    });
+
+    const [modelsUrl, modelsInit] = fetchMock.mock.calls[0];
+    const [messagesUrl, messagesInit] = fetchMock.mock.calls[1];
+    expect(modelsUrl).toBe('https://api.anthropic.com/v1/models');
+    expect(modelsInit.headers.Authorization).toBe('Bearer oauth-token');
+    expect(modelsInit.headers['x-api-key']).toBeUndefined();
+    expect(messagesUrl).toBe('https://api.anthropic.com/v1/messages');
+    expect(messagesInit.headers.Authorization).toBe('Bearer oauth-token');
+    expect(messagesInit.headers['x-api-key']).toBeUndefined();
   });
 
   it('maps reasoning effort to Anthropic thinking budgets for non-tool calls', async () => {

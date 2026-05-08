@@ -6,6 +6,10 @@ import { createLLMClient } from '../llm/client.js';
 import { resolveConfig } from '../config/loader.js';
 import { listEvidence } from '../storage/evidence.js';
 import { appendEvent } from '../state/events.js';
+import { listCandidates } from '../storage/candidate.js';
+import { runAdversarialReview } from '../review/adversarial-reviewer.js';
+import { listReviewFindings, listReviewTasks } from '../review/review-store.js';
+import { reviewFindingWorkflow } from '../workflows/review-workflow.js';
 
 export default async function reviewHandler(
   matterName: string,
@@ -95,6 +99,87 @@ For each finding, rate severity: CRITICAL, HIGH, MEDIUM, LOW, or INFO.`;
     console.log(chalk.gray('Review saved:'), chalk.cyan(reviewPath));
   } catch (err: unknown) {
     console.error(chalk.red('Review failed:'), (err as Error).message);
+    process.exit(1);
+  }
+}
+
+export async function handleReviewFinding(
+  matterName: string,
+  findingId: string,
+  options: { json?: boolean } = {},
+): Promise<void> {
+  try {
+    await loadMatter(matterName);
+    const result = await reviewFindingWorkflow(matterName, findingId);
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(chalk.green('✓'), 'Finding review recorded');
+    console.log(`  Finding: ${chalk.cyan(findingId)}`);
+    console.log(`  Review tasks: ${result.reviewTaskIds.length}`);
+    console.log(`  Blockers: ${result.blockers.length}`);
+    for (const blocker of result.blockers) {
+      console.log(`  - ${blocker.objectId}: ${blocker.reason}`);
+    }
+  } catch (err: unknown) {
+    console.error(chalk.red('Finding review failed:'), (err as Error).message);
+    process.exit(1);
+  }
+}
+
+export async function handleReviewDraft(
+  matterName: string,
+  candidateId: string,
+  options: { json?: boolean } = {},
+): Promise<void> {
+  try {
+    await loadMatter(matterName);
+    const candidate = (await listCandidates(matterName)).find((item) => item.id === candidateId);
+    if (!candidate) {
+      throw new Error(`Candidate "${candidateId}" not found`);
+    }
+    const result = await runAdversarialReview({
+      matterName,
+      targetType: 'draft',
+      targetId: candidateId,
+      content: candidate.content,
+    });
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(chalk.green('✓'), 'Draft review recorded');
+    console.log(`  Candidate: ${chalk.cyan(candidateId)}`);
+    console.log(`  Review task: ${chalk.cyan(result.reviewTaskId)}`);
+    console.log(`  Findings: ${result.findingCount}`);
+  } catch (err: unknown) {
+    console.error(chalk.red('Draft review failed:'), (err as Error).message);
+    process.exit(1);
+  }
+}
+
+export async function handleReviewQueue(
+  matterName: string,
+  options: { json?: boolean } = {},
+): Promise<void> {
+  try {
+    await loadMatter(matterName);
+    const tasks = listReviewTasks(matterName);
+    const output = tasks.map((task) => ({
+      ...task,
+      findings: listReviewFindings(matterName, { reviewTaskId: task.reviewTaskId }),
+    }));
+    if (options.json) {
+      console.log(JSON.stringify(output, null, 2));
+      return;
+    }
+    console.log(chalk.cyan(`Review queue for ${matterName}`));
+    for (const task of output) {
+      console.log(`  - ${task.reviewTaskId}: ${task.status} ${task.targetType}/${task.targetId} (${task.findings.length} findings)`);
+    }
+  } catch (err: unknown) {
+    console.error(chalk.red('Review queue failed:'), (err as Error).message);
     process.exit(1);
   }
 }

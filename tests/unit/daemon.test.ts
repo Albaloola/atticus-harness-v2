@@ -5,14 +5,19 @@ import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { getConfigDir } from '../../src/config/paths.js';
 import { isSchedulerRunning } from '../../src/scheduler/loop.js';
+import { ackControlCommand, enqueueControlCommand, getPendingControlCommandCount, listPendingControlCommands } from '../../src/daemon/control-queue.js';
 
 const RUNTIME_DIR = join(getConfigDir(), 'runtime');
 const PID_FILE = join(RUNTIME_DIR, 'daemon.pid');
 const STATUS_FILE = join(RUNTIME_DIR, 'daemon.json');
+const COMMANDS_FILE = join(RUNTIME_DIR, 'commands.jsonl');
+const ACKS_FILE = join(RUNTIME_DIR, 'commands-applied.jsonl');
 
 function cleanRuntime(): void {
   try { unlinkSync(PID_FILE); } catch {}
   try { unlinkSync(STATUS_FILE); } catch {}
+  try { unlinkSync(COMMANDS_FILE); } catch {}
+  try { unlinkSync(ACKS_FILE); } catch {}
 }
 
 describe('Supervisor', () => {
@@ -131,6 +136,29 @@ describe('Supervisor', () => {
     supervisor.cancelRun('lifecycle-run');
     expect(supervisor.getRun('lifecycle-run')!.status).toBe('cancelled');
     expect(entry.abortController!.signal.aborted).toBe(true);
+  });
+});
+
+describe('Control queue', () => {
+  beforeEach(() => {
+    cleanRuntime();
+  });
+
+  afterEach(() => {
+    cleanRuntime();
+  });
+
+  it('tracks pending commands until they are acknowledged', async () => {
+    const pause = await enqueueControlCommand({ action: 'pause', matterName: 'matter-a' });
+    await enqueueControlCommand({ action: 'cancel', matterName: 'matter-b', runId: 'run-b' });
+
+    expect(getPendingControlCommandCount()).toBe(2);
+    expect(await listPendingControlCommands({ matterName: 'matter-a', runId: 'run-a' })).toEqual([pause]);
+
+    await ackControlCommand(pause.id, 'applied', 'paused');
+
+    expect(getPendingControlCommandCount()).toBe(1);
+    expect(await listPendingControlCommands({ matterName: 'matter-a', runId: 'run-a' })).toEqual([]);
   });
 });
 

@@ -25,7 +25,11 @@ export function spawnBackgroundHarness(args: string[]): BackgroundRun {
     detached: true,
     stdio: ['ignore', out, err],
     cwd: process.cwd(),
-    env: process.env,
+    env: {
+      ...process.env,
+      ATTICUS_RUN_ID: runId,
+      ATTICUS_BACKGROUND_RUN_ID: runId,
+    },
   });
   child.unref();
 

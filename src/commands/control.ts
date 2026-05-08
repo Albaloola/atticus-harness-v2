@@ -22,15 +22,18 @@ export default async function controlHandler(
     const { getSupervisor } = await import('../daemon/daemon.js');
     const { enqueueControlCommand } = await import('../daemon/control-queue.js');
     const supervisor = getSupervisor();
+    const activeRunId = supervisor?.listActive().find((run) => run.matterName === matterName)?.runId;
     let applied = false;
-    if (action === 'pause') {
-      applied = supervisor?.pauseRun(matterName) ?? false;
-    } else {
-      applied = supervisor?.resumeRun(matterName) ?? false;
+    if (activeRunId) {
+      if (action === 'pause') {
+        applied = supervisor?.pauseRun(activeRunId) ?? false;
+      } else {
+        applied = supervisor?.resumeRun(activeRunId) ?? false;
+      }
     }
     if (!applied) {
-      await enqueueControlCommand({ action, matterName });
-      console.log(chalk.yellow('Queued control command for daemon/runtime pickup'));
+      const command = await enqueueControlCommand({ action, matterName, runId: activeRunId });
+      console.log(chalk.yellow('Queued control command for daemon/runtime pickup'), chalk.gray(command.id));
     } else {
       console.log(chalk.green(`OK`));
     }
@@ -58,10 +61,11 @@ export async function handleCancel(
     const { getSupervisor } = await import('../daemon/daemon.js');
     const { enqueueControlCommand } = await import('../daemon/control-queue.js');
     const supervisor = getSupervisor();
-    const applied = supervisor?.cancelRun(target) ?? false;
+    const activeRunId = options.run ?? supervisor?.listActive().find((run) => run.matterName === matterName)?.runId;
+    const applied = activeRunId ? (supervisor?.cancelRun(activeRunId) ?? false) : false;
     if (!applied) {
-      await enqueueControlCommand({ action: 'cancel', matterName, runId: options.run });
-      console.log(chalk.yellow('Queued cancellation for daemon/runtime pickup'));
+      const command = await enqueueControlCommand({ action: 'cancel', matterName, runId: options.run });
+      console.log(chalk.yellow('Queued cancellation for daemon/runtime pickup'), chalk.gray(command.id));
     } else {
       console.log(chalk.green('Cancelled'));
     }

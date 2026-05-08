@@ -31,7 +31,11 @@ export function listRunnableTasks(
   matterName: string,
   status?: TaskStatus,
 ): TaskDagNode[] {
-  return listTasks(matterName, { status: status || 'pending' });
+  const tasks = listTasks(matterName);
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  return tasks
+    .filter((task) => task.status === (status || 'pending'))
+    .filter((task) => task.dependencies.every((dependencyId) => byId.get(dependencyId)?.status === 'completed'));
 }
 
 export function markTaskComplete(

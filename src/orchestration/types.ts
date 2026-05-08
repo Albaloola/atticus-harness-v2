@@ -5,6 +5,7 @@ import type { OrchestrationRuntime } from './runtime.js';
 
 export interface OrchestratorConfig {
   matterName: string;
+  runId?: string;
   objective?: string;
   model?: string;
   maxDepth: number;

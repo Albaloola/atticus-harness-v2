@@ -3,6 +3,9 @@ import { loadSkillsFromDir } from './loader.js';
 import { selectSkills, type MatterMetadata } from '../legal/skills-router.js';
 import { getPhaseByName, type PhaseDefinition } from '../legal/workflow.js';
 import type { SkillDefinition } from './types.js';
+import { buildCourtOfSessionRuleContext } from '../rules/court-session-rules.js';
+import { buildSheriffCourtRuleContext } from '../rules/sheriff-court-rules.js';
+import { buildScotCourtsCorpusContext } from '../rules/scotcourts-corpus.js';
 
 const DEFAULT_SKILL_LIMIT = 4;
 const DEFAULT_BODY_CHARS = 1800;
@@ -48,19 +51,47 @@ export class SkillSelectionWorker {
   async buildContext(input: SkillSelectionInput): Promise<SkillContextPack> {
     const selectedSkills = await this.select(input);
     const maxBodyChars = input.maxBodyChars ?? DEFAULT_BODY_CHARS;
+    const skillIds = selectedSkills.map(({ skill }) => skill.skillId);
+    const ruleContext = await buildCourtOfSessionRuleContext({
+      query: input.objective,
+      phaseId: input.phaseId,
+      skillIds,
+      matterMeta: input.matterMeta,
+      limit: 6,
+    }).catch((err: unknown) => formatCorpusContextWarning('Court of Session rules', err));
+    const sheriffRulesContext = await buildSheriffCourtRuleContext({
+      query: input.objective,
+      phaseId: input.phaseId,
+      skillIds,
+      matterMeta: input.matterMeta,
+      limit: 6,
+    }).catch((err: unknown) => formatCorpusContextWarning('Sheriff Court rules', err));
+    const scotCourtsContext = shouldAttachBroadScotCourtsContext(skillIds)
+      ? await buildScotCourtsCorpusContext({
+        query: input.objective,
+        phaseId: input.phaseId,
+        skillIds,
+        matterMeta: input.matterMeta,
+        includeSnippets: false,
+        limit: 6,
+      }).catch((err: unknown) => formatCorpusContextWarning('ScotCourts corpus', err))
+      : '';
 
-    if (selectedSkills.length === 0) {
+    if (selectedSkills.length === 0 && !ruleContext && !sheriffRulesContext && !scotCourtsContext) {
       return { selectedSkills, promptSection: '' };
     }
 
-    const promptSection = [
-      '## Selected Harness Skills',
-      'Use only these selected skill instructions where they match the assigned task. If no selected skill fits, proceed without forcing one.',
-      'Do not load the entire skill catalog into context. Request a narrower follow-up if a referenced form/template is needed.',
-      'If context becomes tight, preserve the task objective, selected skill names, evidence IDs, conclusions, blockers, and next actions in the final structured output.',
-      '',
-      ...selectedSkills.map(({ skill, score }) => formatSkill(skill, score, maxBodyChars)),
-    ].join('\n');
+    const skillSection = selectedSkills.length > 0
+      ? [
+        '## Selected Harness Skills',
+        'Use only these selected skill instructions where they match the assigned task. If no selected skill fits, proceed without forcing one.',
+        'Do not load the entire skill catalog into context. Request a narrower follow-up if a referenced form/template is needed.',
+        'If context becomes tight, preserve the task objective, selected skill names, evidence IDs, conclusions, blockers, and next actions in the final structured output.',
+        '',
+        ...selectedSkills.map(({ skill, score }) => formatSkill(skill, score, maxBodyChars)),
+      ].join('\n')
+      : '';
+    const promptSection = [skillSection, ruleContext, sheriffRulesContext, scotCourtsContext].filter(Boolean).join('\n\n');
 
     return { selectedSkills, promptSection };
   }
@@ -103,3 +134,11 @@ function truncate(value: string, maxChars: number): string {
   return value.slice(0, maxChars) + '\n... [skill excerpt truncated]';
 }
 
+function formatCorpusContextWarning(corpusName: string, err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return `## ${corpusName} Context Warning\nUnable to load ${corpusName} context: ${message}`;
+}
+
+function shouldAttachBroadScotCourtsContext(skillIds: string[]): boolean {
+  return !skillIds.includes('atticus-sheriff-court-rules') || skillIds.includes('atticus-scotcourts-corpus');
+}

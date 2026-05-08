@@ -37,6 +37,7 @@ export const CASE_REQUEST_TYPES: readonly CaseRequestType[] = [
 
 export interface CaseManagerRequest {
   matterName: string;
+  runId?: string;
   instruction: string;
   requestedType?: CaseRequestType;
   source?: string;
@@ -83,6 +84,7 @@ export class CaseManager {
     const requestedType = request.requestedType ?? inferRequestType(request.instruction);
     const source = request.source ?? 'hermes';
     const run = createRun({
+      id: request.runId ?? process.env.ATTICUS_RUN_ID,
       matterName: request.matterName,
       model: this.model ?? DEFAULT_MODEL,
       agentType: 'main_orchestrator',

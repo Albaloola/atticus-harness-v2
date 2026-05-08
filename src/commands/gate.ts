@@ -3,6 +3,7 @@ import { readFile } from 'fs/promises';
 import { loadMatter, getMatterPath } from '../storage/matter.js';
 import { listEvidence } from '../storage/evidence.js';
 import { appendEvent } from '../state/events.js';
+import { evaluateLegalReadiness } from '../gates/legal-readiness.js';
 
 export default async function gateHandler(
   matterName: string,
@@ -99,4 +100,42 @@ export default async function gateHandler(
   try {
     await appendEvent({ matterName, type: 'draft.gated', data: { candidateId, passed, failed, totalChecks: String(checks.length) }, source: 'tool' });
   } catch {}
+}
+
+export async function handleLegalGate(
+  matterName: string,
+  options: { target?: string; json?: boolean; requireAcceptedArtifact?: boolean } = {},
+): Promise<void> {
+  try {
+    await loadMatter(matterName);
+    const result = await evaluateLegalReadiness({
+      matterName,
+      targetId: options.target,
+      requireAcceptedArtifact: options.requireAcceptedArtifact ?? Boolean(options.target),
+    });
+    await appendEvent({
+      matterName,
+      type: 'draft.gated',
+      data: {
+        targetId: options.target,
+        ready: result.ready,
+        blockerCount: result.blockerCount,
+        legalReadiness: true,
+      },
+      source: 'legal-readiness',
+    });
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    console.log(result.ready ? chalk.green('PASS') : chalk.red('FAIL'));
+    console.log(`  Legal blockers: ${result.blockerCount}`);
+    for (const blocker of result.blockers.slice(0, 20)) {
+      console.log(`  - ${blocker.objectId}: ${blocker.reason}`);
+      console.log(`    ${chalk.gray(blocker.remediation)}`);
+    }
+  } catch (err: unknown) {
+    console.error(chalk.red('Legal gate failed:'), (err as Error).message);
+    process.exit(1);
+  }
 }

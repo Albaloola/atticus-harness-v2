@@ -51,6 +51,8 @@ export class MiniOrchestrator {
       const childMaxDepth = remainingDepth(maxDepth, 1);
 
       for (let i = 0; i < workers.length; i += limit) {
+        await runtime?.applyControlCommands(miniRun.id);
+        await runtime?.waitIfPaused(miniRun.id);
         if (runtime?.isAborted()) break;
 
         const batch = workers.slice(i, i + limit);

@@ -19,6 +19,7 @@ import {
 } from './schema.js';
 import { validateProviderPolicy } from './policy.js';
 import { canonicalProviderPolicy, assertProviderPolicyAllowed } from './provider-policy.js';
+import { assertModelCompatibleWithProfile, validateProfileModelCompatibility } from './model-compat.js';
 import {
   DEFAULT_ACTIVE_PROVIDER,
   isLegacyCodexOAuthProfileName,
@@ -190,6 +191,10 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
   }
   const profile = globalConfig.profiles[selectedProviderName];
   if (!profile) throw new Error(`Provider "${selectedProviderName}" is not configured`);
+  if (profile.authType === 'oauth' && profile.oauthProvider === 'codex') {
+    throw new Error(legacyCodexOAuthMigrationMessage(profile.name));
+  }
+  validateProfileModelCompatibility(profile);
   let model = profile.models.fast;
 
   if (matterName) {
@@ -218,6 +223,7 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
     }
   }
 
+  assertModelCompatibleWithProfile(profile, model);
   const provider = await buildProviderConfig(globalConfig.providers, selectedProviderName, profile);
   const providersForPolicy = {
     ...globalConfig.providers,

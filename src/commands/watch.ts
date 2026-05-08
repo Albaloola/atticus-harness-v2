@@ -16,17 +16,17 @@ export default async function watchHandler(
   console.log(chalk.gray('Press Ctrl+C to stop'));
 
   if (options.json) {
-    const { deriveSnapshot } = await import('../state/snapshot.js');
-    const snapshot = await deriveSnapshot(matterName);
-    console.log(JSON.stringify(snapshot, null, 2));
+    const { buildOperatorReadModel } = await import('../observability/read-model.js');
+    const model = await buildOperatorReadModel(matterName);
+    console.log(JSON.stringify(model, null, 2));
   } else {
-    const { deriveSnapshot } = await import('../state/snapshot.js');
-    const snapshot = await deriveSnapshot(matterName);
-    console.log(`Status: ${chalk.yellow(snapshot.status)}`);
-    console.log(`Phase:  ${snapshot.phase}`);
-    console.log(`Active agents: ${snapshot.activeAgents.length}`);
-    if (snapshot.nextActions.length > 0) {
-      console.log(`Next actions: ${snapshot.nextActions.join(', ')}`);
+    const { buildOperatorReadModel } = await import('../observability/read-model.js');
+    const { formatOperatorSummary } = await import('../tui/summary.js');
+    const { formatLegalBlockers } = await import('../tui/blockers.js');
+    const model = await buildOperatorReadModel(matterName);
+    console.log(formatOperatorSummary(model));
+    if (model.legalBlockers.total > 0) {
+      console.log(formatLegalBlockers(model.legalBlockers));
     }
   }
 }

@@ -331,7 +331,9 @@ describe('migration registry and control panel', () => {
     initSchema(db);
 
     const versions = db.prepare('SELECT version FROM schema_version ORDER BY version').all() as { version: number }[];
-    expect(versions.map((row) => row.version)).toEqual([1, 2, 3, 4, 5]);
+    expect(versions.map((row) => row.version)).toEqual(
+      Array.from({ length: latestStateSchemaVersion() }, (_, index) => index + 1),
+    );
     expect(versions.at(-1)!.version).toBe(latestStateSchemaVersion());
 
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as { name: string }[];
@@ -344,8 +346,8 @@ describe('migration registry and control panel', () => {
     initSchema(db);
 
     db.exec(`
-      DELETE FROM schema_version WHERE version IN (4, 5);
-      DELETE FROM schema_migrations WHERE version_to IN (4, 5);
+      DELETE FROM schema_version WHERE version >= 4;
+      DELETE FROM schema_migrations WHERE version_to >= 4;
       DROP TABLE task_leases;
       DROP TABLE reducer_packets;
       CREATE TABLE reducer_packets (

@@ -5,6 +5,11 @@ import { getActionMatterName, getActionProviderName, requiresLlmPrecheck } from 
 
 const program = new Command();
 
+function collect(value: string, previous: string[]): string[] {
+  previous.push(value);
+  return previous;
+}
+
 program
   .name('harness')
   .description('Standalone legal operations agent CLI')
@@ -40,6 +45,8 @@ program.command('status <matter-name>')
 program.command('events <matter-name>')
   .description('List matter event log')
   .option('--tail <n>', 'Number of events to show', '10')
+  .option('--type <type>', 'Filter by exact event type')
+  .option('--legal', 'Show only legal lifecycle events')
   .option('--follow', 'Follow new events in real time')
   .option('--json', 'JSON output mode')
   .action(async (matterName, options) => {
@@ -114,15 +121,108 @@ program.command('search <matter-name>')
     await handler(matterName, query, options);
   });
 
+program.command('investigate <matter-name>')
+  .description('Create and complete a controlled investigation thread')
+  .argument('<objective>', 'Investigation objective')
+  .option('--claim-element <text>', 'Claim element to scope', collect, [])
+  .option('--evidence <id>', 'Evidence ID to scope', collect, [])
+  .option('--parent-thread <id>', 'Parent investigation thread ID')
+  .option('--max-depth <n>', 'Maximum permitted investigation depth', '3')
+  .option('--budget <usd>', 'Remaining budget in USD')
+  .option('--estimated-cost <usd>', 'Estimated cost for this thread')
+  .option('--json', 'JSON output')
+  .action(async (matterName, objective, options) => {
+    const { default: handler } = await import('./commands/investigate.js');
+    await handler(matterName, objective, options);
+  });
+
 // Agent output - draft
-program.command('draft <matter-name>')
+program
+  .command('draft')
   .description('Draft a document from evidence')
-  .argument('<brief>', 'Drafting brief')
+  .argument('[matter-name]', 'Matter name for legacy one-shot draft')
+  .argument('[brief]', 'Drafting brief for legacy one-shot draft')
   .option('-t, --type <type>', 'Document type', 'brief')
   .action(async (matterName, brief, options) => {
+    if (!matterName || !brief) {
+      console.error(chalk.red('Error:'), 'Use "harness draft <matter-name> <brief>" or a draft subcommand.');
+      process.exit(1);
+    }
     const { default: handler } = await import('./commands/draft.js');
     await handler(matterName, brief, options);
-  });
+  })
+  .addCommand(
+    new Command('outline')
+      .description('Create a staged draft outline')
+      .argument('<matter-name>', 'Matter name')
+      .option('-t, --type <type>', 'Document type', 'brief')
+      .option('--section <heading:purpose>', 'Add a section', collect, [])
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleDraftOutline } = await import('./commands/draft.js');
+        await handleDraftOutline(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('section')
+      .description('Populate a draft section from accepted findings')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<section-id>', 'Draft section ID')
+      .option('--claim-element <text>', 'Claim element to target', collect, [])
+      .option('--max-paragraphs <n>', 'Maximum paragraphs to create')
+      .option('--json', 'JSON output')
+      .action(async (matterName, sectionId, options) => {
+        const { handleDraftSection } = await import('./commands/draft.js');
+        await handleDraftSection(matterName, sectionId, options);
+      })
+  )
+  .addCommand(
+    new Command('trace')
+      .description('Evaluate and approve/block a draft paragraph trace')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<paragraph-id>', 'Draft paragraph ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, paragraphId, options) => {
+        const { handleDraftTrace } = await import('./commands/draft.js');
+        await handleDraftTrace(matterName, paragraphId, options);
+      })
+  )
+  .addCommand(
+    new Command('assemble')
+      .description('Assemble a fully traced outline into a candidate')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<outline-id>', 'Draft outline ID')
+      .option('--title <title>', 'Candidate title')
+      .option('--coverage-threshold <n>', 'Required approved paragraph coverage', '1')
+      .option('--json', 'JSON output')
+      .action(async (matterName, outlineId, options) => {
+        const { handleDraftAssemble } = await import('./commands/draft.js');
+        await handleDraftAssemble(matterName, outlineId, options);
+      })
+  )
+  .addCommand(
+    new Command('workflow')
+      .description('Run deterministic outline, section, trace, and assembly steps')
+      .argument('<matter-name>', 'Matter name')
+      .option('-t, --type <type>', 'Document type', 'brief')
+      .option('--title <title>', 'Candidate title')
+      .option('--claim-element <text>', 'Claim element to target', collect, [])
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleDraftWorkflow } = await import('./commands/draft.js');
+        await handleDraftWorkflow(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('list')
+      .description('List staged draft outlines')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleDraftList } = await import('./commands/draft.js');
+        await handleDraftList(matterName, options);
+      })
+  );
 
 // Agent output - verify citations
 program.command('verify <matter-name>')
@@ -134,22 +234,145 @@ program.command('verify <matter-name>')
   });
 
 // Agent output - hostile review
-program.command('review <matter-name>')
-  .description('Hostile review of a draft')
-  .argument('<candidate-id>', 'Candidate ID to review')
-  .action(async (matterName, candidateId, options) => {
+program
+  .command('review')
+  .description('Review findings and drafts')
+  .argument('[matter-name]', 'Matter name for legacy draft review')
+  .argument('[candidate-id]', 'Candidate ID for legacy draft review')
+  .action(async (matterName, candidateId) => {
+    if (!matterName || !candidateId) {
+      console.error(chalk.red('Error:'), 'Use "harness review <matter-name> <candidate-id>" or a review subcommand.');
+      process.exit(1);
+    }
     const { default: handler } = await import('./commands/review.js');
     await handler(matterName, candidateId);
-  });
+  })
+  .addCommand(
+    new Command('finding')
+      .description('Review an accepted/proposed finding with stored review tasks')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<finding-id>', 'Finding ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, findingId, options) => {
+        const { handleReviewFinding } = await import('./commands/review.js');
+        await handleReviewFinding(matterName, findingId, options);
+      })
+  )
+  .addCommand(
+    new Command('draft')
+      .description('Run deterministic stored review for a draft candidate')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<candidate-id>', 'Candidate ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, candidateId, options) => {
+        const { handleReviewDraft } = await import('./commands/review.js');
+        await handleReviewDraft(matterName, candidateId, options);
+      })
+  )
+  .addCommand(
+    new Command('queue')
+      .description('List stored review tasks')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleReviewQueue } = await import('./commands/review.js');
+        await handleReviewQueue(matterName, options);
+      })
+  );
 
 // Agent output - quality gate
 program.command('gate <matter-name>')
   .description('Run quality checks on a draft')
-  .argument('<candidate-id>', 'Candidate ID to check')
+  .argument('[candidate-id]', 'Candidate ID to check')
+  .option('--legal', 'Run strict legal readiness gate')
+  .option('--json', 'JSON output')
   .action(async (matterName, candidateId, options) => {
-    const { default: handler } = await import('./commands/gate.js');
+    const { default: handler, handleLegalGate } = await import('./commands/gate.js');
+    if (options.legal || !candidateId) {
+      await handleLegalGate(matterName, { target: candidateId, json: options.json });
+      return;
+    }
     await handler(matterName, candidateId);
   });
+
+program
+  .command('graph')
+  .description('Manage projection-only legal graph read models')
+  .addCommand(
+    new Command('rebuild')
+      .description('Rebuild graph projection from canonical records')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleGraphRebuild } = await import('./commands/graph.js');
+        await handleGraphRebuild(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('neighbors')
+      .description('Show bounded graph neighbors for a projection node')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<node-id>', 'Graph node ID')
+      .option('--depth <n>', 'Traversal depth', '1')
+      .option('--json', 'JSON output')
+      .action(async (matterName, nodeId, options) => {
+        const { handleGraphNeighbors } = await import('./commands/graph.js');
+        await handleGraphNeighbors(matterName, nodeId, options);
+      })
+  )
+  .addCommand(
+    new Command('explain')
+      .description('Explain projection node and immediate neighborhood for an object')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<object-type>', 'Object type')
+      .argument('<object-id>', 'Object ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, objectType, objectId, options) => {
+        const { handleGraphExplain } = await import('./commands/graph.js');
+        await handleGraphExplain(matterName, objectType, objectId, options);
+      })
+  );
+
+program
+  .command('export')
+  .description('Prepare local court-ready export bundles')
+  .addCommand(
+    new Command('readiness')
+      .description('Check export readiness and create/update an export record')
+      .argument('<matter-name>', 'Matter name')
+      .option('--artifact <id>', 'Reducer-approved artifact ID')
+      .option('--export-id <id>', 'Existing export ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleExportReadiness } = await import('./commands/export.js');
+        await handleExportReadiness(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('signoff')
+      .description('Record operator signoff for local prepare-only export')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<export-id>', 'Export ID')
+      .option('--operator <id>', 'Operator identifier', 'operator')
+      .option('--json', 'JSON output')
+      .action(async (matterName, exportId, options) => {
+        const { handleExportSignoff } = await import('./commands/export.js');
+        await handleExportSignoff(matterName, exportId, options);
+      })
+  )
+  .addCommand(
+    new Command('bundle')
+      .description('Create a local prepare-only export bundle')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<export-id>', 'Export ID')
+      .option('--profile <id>', 'Bundle profile', 'court-ready-markdown-json')
+      .option('--artifact <id>', 'Reducer-approved artifact ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName, exportId, options) => {
+        const { handleExportBundle } = await import('./commands/export.js');
+        await handleExportBundle(matterName, exportId, options);
+      })
+  );
 
 // Output acceptance
 program.command('accept')
@@ -204,6 +427,206 @@ program.command('skill')
         const { default: handler } = await import('./commands/skill-use.js');
         await handler(name);
       })
+  );
+
+program
+  .command('rules')
+	  .description('Manage local legal rule corpora')
+	  .addCommand(
+	    new Command('sheriff-court')
+	      .description('Use the local Sheriff Court civil procedure rules within the ScotCourts corpus')
+	      .addCommand(
+	        new Command('list')
+	          .description('List discovered Sheriff Court rule documents')
+	          .option('--source-dir <path>', 'ScotCourts corpus directory')
+	          .option('--phase <id>', 'Filter by harness workflow phase')
+	          .option('--skill <id>', 'Filter by relevant skill', collect, [])
+	          .option('--limit <n>', 'Maximum documents to show')
+	          .option('--json', 'JSON output')
+	          .action(async (options) => {
+	            const { handleSheriffCourtRulesList } = await import('./commands/rules.js');
+	            await handleSheriffCourtRulesList(options);
+	          })
+	      )
+	      .addCommand(
+	        new Command('search')
+	          .description('Search Sheriff Court civil procedure rule documents')
+	          .argument('<query>', 'Search query')
+	          .option('--source-dir <path>', 'ScotCourts corpus directory')
+	          .option('--cache-path <path>', 'ScotCourts corpus index cache path')
+	          .option('--phase <id>', 'Relevant harness workflow phase')
+	          .option('--skill <id>', 'Relevant skill', collect, [])
+	          .option('--limit <n>', 'Maximum results', '8')
+	          .option('--json', 'JSON output')
+	          .action(async (query, options) => {
+	            const { handleSheriffCourtRulesSearch } = await import('./commands/rules.js');
+	            await handleSheriffCourtRulesSearch(query, options);
+	          })
+	      )
+	      .addCommand(
+	        new Command('context')
+	          .description('Build focused Sheriff Court rule context for Scots skills/stages')
+	          .argument('<objective>', 'Matter objective or stage objective')
+	          .option('--source-dir <path>', 'ScotCourts corpus directory')
+	          .option('--cache-path <path>', 'ScotCourts corpus index cache path')
+	          .option('--phase <id>', 'Relevant harness workflow phase')
+	          .option('--skill <id>', 'Relevant skill', collect, [])
+	          .option('--limit <n>', 'Maximum results', '6')
+	          .option('--json', 'JSON output')
+	          .action(async (objective, options) => {
+	            const { handleSheriffCourtRulesContext } = await import('./commands/rules.js');
+	            await handleSheriffCourtRulesContext(objective, options);
+	          })
+	      )
+	  )
+	  .addCommand(
+	    new Command('court-session')
+      .description('Use the local Rules of the Court of Session corpus')
+      .addCommand(
+        new Command('list')
+          .description('List discovered Court of Session rule chapters')
+          .option('--source-dir <path>', 'Court of Session rules directory')
+          .option('--phase <id>', 'Filter by harness workflow phase')
+          .option('--skill <id>', 'Filter by relevant skill', collect, [])
+          .option('--limit <n>', 'Maximum chapters to show')
+          .option('--json', 'JSON output')
+          .action(async (options) => {
+            const { handleCourtSessionRulesList } = await import('./commands/rules.js');
+            await handleCourtSessionRulesList(options);
+          })
+      )
+      .addCommand(
+        new Command('search')
+          .description('Search Court of Session rule chapters')
+          .argument('<query>', 'Search query')
+          .option('--source-dir <path>', 'Court of Session rules directory')
+          .option('--cache-path <path>', 'Rules index cache path')
+          .option('--phase <id>', 'Relevant harness workflow phase')
+          .option('--skill <id>', 'Relevant skill', collect, [])
+          .option('--limit <n>', 'Maximum results', '8')
+          .option('--json', 'JSON output')
+          .action(async (query, options) => {
+            const { handleCourtSessionRulesSearch } = await import('./commands/rules.js');
+            await handleCourtSessionRulesSearch(query, options);
+          })
+      )
+      .addCommand(
+        new Command('context')
+          .description('Build the rule-context prompt injected into Scots skills/stages')
+          .argument('<objective>', 'Matter objective or stage objective')
+          .option('--source-dir <path>', 'Court of Session rules directory')
+          .option('--cache-path <path>', 'Rules index cache path')
+          .option('--phase <id>', 'Relevant harness workflow phase')
+          .option('--skill <id>', 'Relevant skill', collect, [])
+          .option('--limit <n>', 'Maximum results', '6')
+          .option('--json', 'JSON output')
+          .action(async (objective, options) => {
+            const { handleCourtSessionRulesContext } = await import('./commands/rules.js');
+            await handleCourtSessionRulesContext(objective, options);
+          })
+      )
+      .addCommand(
+        new Command('index')
+          .description('Extract and cache searchable text from local Court of Session rule files')
+          .option('--source-dir <path>', 'Court of Session rules directory')
+          .option('--cache-path <path>', 'Rules index cache path')
+          .option('--json', 'JSON output')
+          .action(async (options) => {
+            const { handleCourtSessionRulesIndex } = await import('./commands/rules.js');
+            await handleCourtSessionRulesIndex(options);
+          })
+      )
+      .addCommand(
+        new Command('normalize')
+          .description('Convert Court of Session rule originals to Markdown and delete converted originals by default')
+          .option('--source-dir <path>', 'Court of Session rules directory')
+          .option('--keep-originals', 'Keep original PDFs after successful Markdown conversion')
+          .option('--json', 'JSON output')
+          .action(async (options) => {
+            const { handleCourtSessionRulesNormalize } = await import('./commands/rules.js');
+            await handleCourtSessionRulesNormalize(options);
+          })
+      )
+  )
+  .addCommand(
+    new Command('scotcourts')
+      .description('Use the repository-owned ScotCourts forms, rules, and guidance corpus')
+      .addCommand(
+        new Command('list')
+          .description('List discovered ScotCourts corpus documents')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--phase <id>', 'Filter by harness workflow phase')
+          .option('--skill <id>', 'Filter by relevant skill', collect, [])
+          .option('--category <id>', 'Filter by corpus category or category path', collect, [])
+          .option('--court <id>', 'Filter by court id')
+          .option('--kind <kind>', 'Filter by document kind: form, rule, guidance, fee, other')
+          .option('--limit <n>', 'Maximum documents to show')
+          .option('--json', 'JSON output')
+          .action(async (options) => {
+            const { handleScotCourtsCorpusList } = await import('./commands/rules.js');
+            await handleScotCourtsCorpusList(options);
+          })
+      )
+      .addCommand(
+        new Command('search')
+          .description('Search ScotCourts forms, rules, and guidance')
+          .argument('<query>', 'Search query')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--cache-path <path>', 'Corpus index cache path')
+          .option('--phase <id>', 'Relevant harness workflow phase')
+          .option('--skill <id>', 'Relevant skill', collect, [])
+          .option('--category <id>', 'Filter by corpus category or category path', collect, [])
+          .option('--court <id>', 'Filter by court id')
+          .option('--kind <kind>', 'Filter by document kind: form, rule, guidance, fee, other')
+          .option('--limit <n>', 'Maximum results', '10')
+          .option('--json', 'JSON output')
+          .action(async (query, options) => {
+            const { handleScotCourtsCorpusSearch } = await import('./commands/rules.js');
+            await handleScotCourtsCorpusSearch(query, options);
+          })
+      )
+      .addCommand(
+        new Command('context')
+          .description('Build the scoped ScotCourts corpus prompt context')
+          .argument('<objective>', 'Matter objective or stage objective')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--cache-path <path>', 'Corpus index cache path')
+          .option('--phase <id>', 'Relevant harness workflow phase')
+          .option('--skill <id>', 'Relevant skill', collect, [])
+          .option('--category <id>', 'Filter by corpus category or category path', collect, [])
+          .option('--court <id>', 'Filter by court id')
+          .option('--kind <kind>', 'Filter by document kind: form, rule, guidance, fee, other')
+          .option('--limit <n>', 'Maximum results', '6')
+          .option('--json', 'JSON output')
+          .action(async (objective, options) => {
+            const { handleScotCourtsCorpusContext } = await import('./commands/rules.js');
+            await handleScotCourtsCorpusContext(objective, options);
+          })
+      )
+      .addCommand(
+        new Command('index')
+          .description('Refresh the metadata cache for the ScotCourts corpus')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--cache-path <path>', 'Corpus index cache path')
+          .option('--extract-text', 'Also extract text into the cache')
+          .option('--max-text-docs <n>', 'Maximum documents to text-extract when --extract-text is set')
+          .option('--json', 'JSON output')
+          .action(async (options) => {
+            const { handleScotCourtsCorpusIndex } = await import('./commands/rules.js');
+            await handleScotCourtsCorpusIndex(options);
+          })
+      )
+      .addCommand(
+        new Command('normalize')
+          .description('Convert ScotCourts rules/procedure originals to Markdown while preserving form originals')
+          .option('--source-dir <path>', 'ScotCourts corpus directory')
+          .option('--keep-originals', 'Keep converted non-form originals instead of deleting them')
+          .option('--json', 'JSON output')
+          .action(async (options) => {
+            const { handleScotCourtsCorpusNormalize } = await import('./commands/rules.js');
+            await handleScotCourtsCorpusNormalize(options);
+          })
+      )
   );
 
 // Config management

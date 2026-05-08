@@ -18,11 +18,26 @@ export async function handleCaseManage(
 
   if (options.background) {
     const { spawnBackgroundHarness } = await import('../daemon/background.js');
+    const { appendEvent } = await import('../state/events.js');
     const args = ['case', 'manage', matterName, instruction];
     if (options.type) args.push('--type', options.type);
     if (options.source) args.push('--source', options.source);
     if (options.autoAccept) args.push('--auto-accept');
     const background = spawnBackgroundHarness(args);
+    await appendEvent({
+      matterName,
+      type: 'run.started',
+      runId: background.runId,
+      source: 'tool',
+      data: {
+        background: true,
+        runId: background.runId,
+        pid: background.pid,
+        logPath: background.logPath,
+        command: 'case manage',
+        instruction,
+      },
+    });
     if (options.json) {
       console.log(JSON.stringify(background, null, 2));
     } else {

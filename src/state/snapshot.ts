@@ -8,11 +8,16 @@ import { recoverStaleRuntimeState } from './runtime-recovery.js';
 import type { MatterRuntimeSnapshot, TaskCounts, RuntimeCosts } from '../types/state.js';
 import type { MatterStatus } from '../types/matter.js';
 
-export async function deriveSnapshot(matterName: string): Promise<MatterRuntimeSnapshot> {
+export async function deriveSnapshot(
+  matterName: string,
+  options: { recoverRuntime?: boolean } = {},
+): Promise<MatterRuntimeSnapshot> {
   const index = await loadMatter(matterName);
   const evidence = await listEvidence(matterName).catch(() => []);
   const candidates = await listCandidates(matterName).catch(() => []);
-  await recoverStaleRuntimeState(matterName);
+  if (options.recoverRuntime !== false) {
+    await recoverStaleRuntimeState(matterName);
+  }
 
   const tasks = listTasks(matterName);
   const runs = listRuns(matterName);

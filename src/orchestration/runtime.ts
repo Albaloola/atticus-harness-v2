@@ -1,6 +1,7 @@
 import { appendEvent } from '../state/events.js';
 import { heartbeatRun } from '../state/runs.js';
 import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH, normalizePositiveInteger } from './limits.js';
+import { ackControlCommand, listPendingControlCommands } from '../daemon/control-queue.js';
 
 export class OrchestrationRuntime {
   private matterName: string;
@@ -11,6 +12,7 @@ export class OrchestrationRuntime {
   private runningWorkers = new Set<string>();
   private heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private aborted = false;
+  private paused = false;
   private depth = 0;
   private totalCost = 0;
 
@@ -57,18 +59,48 @@ export class OrchestrationRuntime {
     this.totalCost += usd;
   }
 
-  abort(): void {
+  async applyControlCommands(runId?: string): Promise<void> {
+    const commands = await listPendingControlCommands({ matterName: this.matterName, runId });
+    for (const command of commands) {
+      if (command.action === 'pause') {
+        this.paused = true;
+        await ackControlCommand(command.id, 'applied', `Paused ${runId ?? this.matterName}`);
+        await this.emitControlEvent('paused', command.id, runId);
+      } else if (command.action === 'resume') {
+        this.paused = false;
+        await ackControlCommand(command.id, 'applied', `Resumed ${runId ?? this.matterName}`);
+        await this.emitControlEvent('resumed', command.id, runId);
+      } else if (command.action === 'cancel') {
+        this.abort('cancelled by control command');
+        await ackControlCommand(command.id, 'applied', `Cancelled ${runId ?? this.matterName}`);
+        await this.emitControlEvent('cancelled', command.id, runId);
+      }
+    }
+  }
+
+  async waitIfPaused(runId?: string): Promise<void> {
+    while (this.paused && !this.aborted) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await this.applyControlCommands(runId);
+    }
+  }
+
+  abort(reason = 'aborted'): void {
     this.aborted = true;
     appendEvent({
       matterName: this.matterName,
       type: 'run.completed',
-      data: { reason: 'aborted', runningAgents: this.running.size },
+      data: { reason, runningAgents: this.running.size },
       source: 'system',
     }).catch(() => {});
   }
 
   isAborted(): boolean {
     return this.aborted;
+  }
+
+  isPaused(): boolean {
+    return this.paused;
   }
 
   getActiveCount(): number {
@@ -105,5 +137,15 @@ export class OrchestrationRuntime {
       data: { summary: summary?.substring(0, 500), totalCost: this.totalCost },
       source: 'system',
     });
+  }
+
+  private async emitControlEvent(action: string, commandId: string, runId?: string): Promise<void> {
+    await appendEvent({
+      matterName: this.matterName,
+      type: action === 'cancelled' ? 'agent.run.error' : 'agent.run.blocked',
+      runId,
+      data: { controlCommandId: commandId, action },
+      source: 'system',
+    }).catch(() => {});
   }
 }

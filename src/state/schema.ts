@@ -1,6 +1,6 @@
 import Database = require('better-sqlite3');
 
-const CURRENT_SCHEMA_VERSION = 5;
+const CURRENT_SCHEMA_VERSION = 7;
 
 type MigrationFn = (db: Database.Database) => void;
 
@@ -203,14 +203,217 @@ export function initSchema(db: Database.Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_matter ON scheduler_jobs(matter_name);
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_enabled ON scheduler_jobs(enabled);
-    CREATE TABLE IF NOT EXISTS runtime_kv (
-      matter_name TEXT NOT NULL,
-      key TEXT NOT NULL,
-      value_json TEXT NOT NULL DEFAULT 'null',
-      updated_at TEXT NOT NULL,
-      PRIMARY KEY (matter_name, key)
-    );
-  `);
+	    CREATE TABLE IF NOT EXISTS runtime_kv (
+	      matter_name TEXT NOT NULL,
+	      key TEXT NOT NULL,
+	      value_json TEXT NOT NULL DEFAULT 'null',
+	      updated_at TEXT NOT NULL,
+	      PRIMARY KEY (matter_name, key)
+	    );
+
+	    CREATE TABLE IF NOT EXISTS findings (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      statement TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'proposed',
+	      criticality TEXT NOT NULL DEFAULT 'ordinary',
+	      confidence REAL NOT NULL DEFAULT 0,
+	      created_at TEXT NOT NULL,
+	      updated_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE INDEX IF NOT EXISTS idx_findings_matter ON findings(matter_name);
+	    CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(matter_name, status);
+
+	    CREATE TABLE IF NOT EXISTS finding_citations (
+	      id TEXT PRIMARY KEY,
+	      finding_id TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+	      evidence_id TEXT NOT NULL,
+	      page_id TEXT NOT NULL,
+	      chunk_id TEXT NOT NULL,
+	      quote TEXT NOT NULL,
+	      quote_hash TEXT NOT NULL,
+	      source_hash TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'unchecked',
+	      checked_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE INDEX IF NOT EXISTS idx_finding_citations_finding ON finding_citations(finding_id);
+	    CREATE INDEX IF NOT EXISTS idx_finding_citations_evidence ON finding_citations(evidence_id);
+
+	    CREATE TABLE IF NOT EXISTS quotes (
+	      id TEXT PRIMARY KEY,
+	      evidence_id TEXT NOT NULL,
+	      page_id TEXT NOT NULL,
+	      chunk_id TEXT NOT NULL,
+	      text TEXT NOT NULL,
+	      quote_hash TEXT NOT NULL,
+	      created_at TEXT NOT NULL
+	    );
+
+	    CREATE TABLE IF NOT EXISTS contradictions (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      finding_id_a TEXT NOT NULL,
+	      finding_id_b TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'open',
+	      severity TEXT NOT NULL DEFAULT 'medium',
+	      rationale TEXT NOT NULL,
+	      created_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS investigation_threads (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      parent_thread_id TEXT,
+	      objective TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'queued',
+	      depth INTEGER NOT NULL DEFAULT 0,
+	      budget_usd REAL,
+	      stop_reason TEXT,
+	      created_at TEXT NOT NULL,
+	      updated_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS review_tasks (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      target_type TEXT NOT NULL,
+	      target_id TEXT NOT NULL,
+	      reviewer_role TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'queued',
+	      created_at TEXT NOT NULL,
+	      completed_at TEXT,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS review_findings (
+	      id TEXT PRIMARY KEY,
+	      review_task_id TEXT NOT NULL REFERENCES review_tasks(id) ON DELETE CASCADE,
+	      severity TEXT NOT NULL,
+	      type TEXT NOT NULL,
+	      description TEXT NOT NULL,
+	      target_locator TEXT NOT NULL,
+	      recommended_action TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS consensus_decisions (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      target_type TEXT NOT NULL,
+	      target_id TEXT NOT NULL,
+	      decision TEXT NOT NULL,
+	      required_quorum INTEGER NOT NULL DEFAULT 1,
+	      achieved_quorum INTEGER NOT NULL DEFAULT 0,
+	      adjudicator_role TEXT,
+	      created_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS draft_outlines (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      document_type TEXT NOT NULL,
+	      version INTEGER NOT NULL DEFAULT 1,
+	      status TEXT NOT NULL DEFAULT 'draft',
+	      created_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS draft_sections (
+	      id TEXT PRIMARY KEY,
+	      outline_id TEXT NOT NULL REFERENCES draft_outlines(id) ON DELETE CASCADE,
+	      heading TEXT NOT NULL,
+	      purpose TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'todo',
+	      ordinal INTEGER NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS draft_paragraphs (
+	      id TEXT PRIMARY KEY,
+	      section_id TEXT NOT NULL REFERENCES draft_sections(id) ON DELETE CASCADE,
+	      ordinal INTEGER NOT NULL,
+	      text TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'draft',
+	      trace_status TEXT NOT NULL DEFAULT 'missing',
+	      finding_ids_json TEXT NOT NULL DEFAULT '[]',
+	      draft_citation_ids_json TEXT NOT NULL DEFAULT '[]',
+	      active_revision_id TEXT,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS draft_citations (
+	      id TEXT PRIMARY KEY,
+	      paragraph_id TEXT NOT NULL REFERENCES draft_paragraphs(id) ON DELETE CASCADE,
+	      finding_citation_id TEXT NOT NULL,
+	      render_form TEXT NOT NULL,
+	      verification_status TEXT NOT NULL DEFAULT 'unchecked',
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS export_bundles (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      bundle_type TEXT NOT NULL,
+	      status TEXT NOT NULL DEFAULT 'draft',
+	      output_path TEXT,
+	      manifest_path TEXT,
+	      created_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS export_signoffs (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      export_id TEXT NOT NULL,
+	      operator_id TEXT NOT NULL,
+	      status TEXT NOT NULL,
+	      signed_at TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+
+	    CREATE TABLE IF NOT EXISTS graph_nodes (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      object_type TEXT NOT NULL,
+	      object_id TEXT NOT NULL,
+	      label TEXT NOT NULL,
+	      canonical INTEGER NOT NULL DEFAULT 0,
+	      source_table TEXT NOT NULL,
+	      source_hash TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}',
+	      UNIQUE(matter_name, object_type, object_id)
+	    );
+
+	    CREATE TABLE IF NOT EXISTS graph_edges (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      from_node_id TEXT NOT NULL,
+	      to_node_id TEXT NOT NULL,
+	      edge_type TEXT NOT NULL,
+	      source_table TEXT NOT NULL,
+	      source_hash TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}',
+	      UNIQUE(matter_name, from_node_id, to_node_id, edge_type)
+	    );
+
+	    CREATE TABLE IF NOT EXISTS graph_rebuilds (
+	      id TEXT PRIMARY KEY,
+	      matter_name TEXT NOT NULL,
+	      started_at TEXT NOT NULL,
+	      completed_at TEXT NOT NULL,
+	      node_count INTEGER NOT NULL DEFAULT 0,
+	      edge_count INTEGER NOT NULL DEFAULT 0,
+	      source_hash TEXT NOT NULL,
+	      metadata_json TEXT NOT NULL DEFAULT '{}'
+	    );
+	  `);
 
   ensureMigrationLedger(db);
 
@@ -253,14 +456,241 @@ export function initSchema(db: Database.Database): void {
     ensureGovernanceSchema(txDb);
   });
 
-  applyMigration(db, 4, 5, 'runtime: agent run heartbeat and process liveness', (txDb) => {
-    ensureRunLivenessSchema(txDb);
-  });
+	  applyMigration(db, 4, 5, 'runtime: agent run heartbeat and process liveness', (txDb) => {
+	    ensureRunLivenessSchema(txDb);
+	  });
+
+	  applyMigration(db, 5, 6, 'court-ready legal workflow tables', (txDb) => {
+	    ensureCourtReadyLegalSchema(txDb);
+	  });
+
+	  applyMigration(db, 6, 7, 'court-ready graph projection tables', (txDb) => {
+	    ensureGraphProjectionSchema(txDb);
+	  });
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_tasks_lease ON tasks(lease_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_lease_expiry ON tasks(lease_expires_at);
     CREATE INDEX IF NOT EXISTS idx_scheduler_jobs_lease_expiry ON scheduler_jobs(lease_expires_at);
+  `);
+}
+
+function ensureCourtReadyLegalSchema(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS findings (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      statement TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'proposed',
+      criticality TEXT NOT NULL DEFAULT 'ordinary',
+      confidence REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_findings_matter ON findings(matter_name);
+    CREATE INDEX IF NOT EXISTS idx_findings_status ON findings(matter_name, status);
+
+    CREATE TABLE IF NOT EXISTS finding_citations (
+      id TEXT PRIMARY KEY,
+      finding_id TEXT NOT NULL REFERENCES findings(id) ON DELETE CASCADE,
+      evidence_id TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      chunk_id TEXT NOT NULL,
+      quote TEXT NOT NULL,
+      quote_hash TEXT NOT NULL,
+      source_hash TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'unchecked',
+      checked_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_finding_citations_finding ON finding_citations(finding_id);
+    CREATE INDEX IF NOT EXISTS idx_finding_citations_evidence ON finding_citations(evidence_id);
+
+    CREATE TABLE IF NOT EXISTS quotes (
+      id TEXT PRIMARY KEY,
+      evidence_id TEXT NOT NULL,
+      page_id TEXT NOT NULL,
+      chunk_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      quote_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS contradictions (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      finding_id_a TEXT NOT NULL,
+      finding_id_b TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'open',
+      severity TEXT NOT NULL DEFAULT 'medium',
+      rationale TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS investigation_threads (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      parent_thread_id TEXT,
+      objective TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      depth INTEGER NOT NULL DEFAULT 0,
+      budget_usd REAL,
+      stop_reason TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS review_tasks (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      reviewer_role TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued',
+      created_at TEXT NOT NULL,
+      completed_at TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS review_findings (
+      id TEXT PRIMARY KEY,
+      review_task_id TEXT NOT NULL REFERENCES review_tasks(id) ON DELETE CASCADE,
+      severity TEXT NOT NULL,
+      type TEXT NOT NULL,
+      description TEXT NOT NULL,
+      target_locator TEXT NOT NULL,
+      recommended_action TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS consensus_decisions (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      decision TEXT NOT NULL,
+      required_quorum INTEGER NOT NULL DEFAULT 1,
+      achieved_quorum INTEGER NOT NULL DEFAULT 0,
+      adjudicator_role TEXT,
+      created_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS draft_outlines (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      document_type TEXT NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS draft_sections (
+      id TEXT PRIMARY KEY,
+      outline_id TEXT NOT NULL REFERENCES draft_outlines(id) ON DELETE CASCADE,
+      heading TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'todo',
+      ordinal INTEGER NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS draft_paragraphs (
+      id TEXT PRIMARY KEY,
+      section_id TEXT NOT NULL REFERENCES draft_sections(id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL,
+      text TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      trace_status TEXT NOT NULL DEFAULT 'missing',
+      finding_ids_json TEXT NOT NULL DEFAULT '[]',
+      draft_citation_ids_json TEXT NOT NULL DEFAULT '[]',
+      active_revision_id TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS draft_citations (
+      id TEXT PRIMARY KEY,
+      paragraph_id TEXT NOT NULL REFERENCES draft_paragraphs(id) ON DELETE CASCADE,
+      finding_citation_id TEXT NOT NULL,
+      render_form TEXT NOT NULL,
+      verification_status TEXT NOT NULL DEFAULT 'unchecked',
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS export_bundles (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      bundle_type TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'draft',
+      output_path TEXT,
+      manifest_path TEXT,
+      created_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE TABLE IF NOT EXISTS export_signoffs (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      export_id TEXT NOT NULL,
+      operator_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      signed_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+  `);
+}
+
+function ensureGraphProjectionSchema(db: Database.Database): void {
+  db.exec(`
+    -- Projection-only read model. Canonical facts remain in evidence,
+    -- findings, review, draft, and export tables.
+    CREATE TABLE IF NOT EXISTS graph_nodes (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      object_type TEXT NOT NULL,
+      object_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      canonical INTEGER NOT NULL DEFAULT 0,
+      source_table TEXT NOT NULL,
+      source_hash TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      UNIQUE(matter_name, object_type, object_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_graph_nodes_matter_type
+      ON graph_nodes(matter_name, object_type);
+
+    CREATE TABLE IF NOT EXISTS graph_edges (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      from_node_id TEXT NOT NULL,
+      to_node_id TEXT NOT NULL,
+      edge_type TEXT NOT NULL,
+      source_table TEXT NOT NULL,
+      source_hash TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      UNIQUE(matter_name, from_node_id, to_node_id, edge_type)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_graph_edges_from
+      ON graph_edges(matter_name, from_node_id);
+    CREATE INDEX IF NOT EXISTS idx_graph_edges_to
+      ON graph_edges(matter_name, to_node_id);
+
+    CREATE TABLE IF NOT EXISTS graph_rebuilds (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT NOT NULL,
+      node_count INTEGER NOT NULL DEFAULT 0,
+      edge_count INTEGER NOT NULL DEFAULT 0,
+      source_hash TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
   `);
 }
 

@@ -22,6 +22,7 @@ export class MasterOrchestrator {
       matterName: config.matterName,
       maxDepth: config.maxDepth,
       maxConcurrency: config.maxConcurrency,
+      maxBudgetUsd: config.maxRunBudgetUsd,
     });
   }
 
@@ -39,6 +40,7 @@ export class MasterOrchestrator {
     });
 
     const masterRun = createRun({
+      id: this.config.runId ?? process.env.ATTICUS_RUN_ID,
       matterName,
       model: masterModel,
       agentType: 'master_orchestrator',
@@ -59,6 +61,8 @@ export class MasterOrchestrator {
       let stoppedReason: 'aborted' | 'budget_exceeded' | undefined;
 
       for (const phase of phases) {
+        await this.runtime.applyControlCommands(masterRun.id);
+        await this.runtime.waitIfPaused(masterRun.id);
         if (this.runtime.isAborted()) {
           stoppedReason = 'aborted';
           break;

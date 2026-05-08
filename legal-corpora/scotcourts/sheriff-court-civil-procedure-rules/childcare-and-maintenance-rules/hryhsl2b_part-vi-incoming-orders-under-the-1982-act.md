@@ -1,0 +1,63 @@
+---
+corpus: scotcourts-corpus
+title: "Hryhsl2b Part Vi Incoming Orders Under The 1982 Act"
+source_file: "hryhsl2b_part-vi-incoming-orders-under-the-1982-act.doc"
+source_relative_path: "sheriff-court-civil-procedure-rules/childcare-and-maintenance-rules/hryhsl2b_part-vi-incoming-orders-under-the-1982-act.doc"
+document_kind: rule
+court: sheriff_court
+category: "sheriff-court-civil-procedure-rules/childcare-and-maintenance-rules"
+conversion: atticus-markdown-normalization-v1
+---
+
+# Hryhsl2b Part Vi Incoming Orders Under The 1982 Act
+
+Act of Sederunt (Child Care and Maintenance Rules) 1997
+Statutory Instrument 1997 No. 291 (S.19)
+Applications lodged before 28 November 2011
+
+PART VI  INCOMING ORDERS UNDER THE 1982 ACT
+5.38	Applications under section 5  or 5A of the 1982 Act
+5.39	Address of applicant's solicitor for service
+5.40	Notice of determination of application
+5.41	Appeal by party against whom enforcement is authorised
+5.42	Appeal by applicant
+5.43	Enforcement of registered order
+
+
+Applications under section 5 or 5A of the 1982 Act
+5.38	(1)	Applications under section 5 or 5A of the 1982 Act shall be in writing addressed to the Scottish Ministers, signed by the applicant, or a solicitor or professional person qualified to act in such matters in the Contracting State of origin on his behalf, and shall specify-
+(a)	an address within Scotland for service on the applicant;
+(b)	the usual and last known address of the person against whom judgement was granted;
+(c)	the place where the applicant seeks to enforce the judgement;
+(d)	whether at the date of the application the judgement has been satisfied in whole or in part;
+(e)	whether interest is recoverable under the judgement in accordance with the law of the country in which it was granted and, if so, the rate of interest and the date from which interest became due; and
+(f)	whether the time for bringing an appeal against the judgement has expired without an appeal having been brought or whether an appeal has been brought against the judgement and is pending or has been finally disposed of.
+(2)	An application under paragraph (1) shall be accompanied by-
+(a)	a copy of the judgement authenticated by the court which made the order;
+(b)	documents which establish that, according to the law of the country in which the judgement has been given, the judgement is enforceable and has been served;
+(c)	in the case of a judgement given in default, documents which establish that the party in default was served with the documents instituting the proceedings;
+(d)	where appropriate, a document showing that the applicant is in receipt of legal aid in the country in which the judgement was given; and
+(e)	where the judgement or any of the documents specified in sub-paragraphs (b) to (d) are in a language other than English, a translation into English certified by a person qualified to do so in one of the Contracting States.
+(3)	Where the applicant does not produce a document required under paragraph (2)(c) or (d), the sheriff clerk may-
+(a)	fix a time within which the document is to be produced;
+(b)	accept an equivalent document; or
+(c)	dispense with production of the document.
+
+Address of applicant's solicitor for service
+5.39	Where the sheriff clerk is informed by a solicitor practising in Scotland that he is acting on behalf of the applicant, the business address of the solicitor shall thereafter be treated as the address for service on the applicant.
+
+Notice of determination of application
+5.40	Immediately after determination of an application for the recognition or enforcement of an order, the sheriff clerk shall serve, in accordance with the Ordinary Cause Rules so far as not inconsistent with the terms of this Chapter, a notice in Form 73 on the applicant and on the person against whom enforcement is sought.
+
+Appeal by party against whom enforcement is authorised
+5.41	(1)	Where enforcement of a maintenance order is authorised to any extent, the party against whom enforcement is authorised may appeal by way of summary application to the sheriff against the decision of the sheriff clerk-
+(a)	within one month from the date of service of the notice under rule 5.40; or
+(b)	if the person against whom enforcement is sought is domiciled in a Contracting State other than the United Kingdom, within two months from the date of service of such notice.
+(2)	The determination of the sheriff of such a summary application shall be subject to a final appeal on a point of law to the Inner House of the Court of Session in accordance with the Ordinary Cause Rules.
+
+Appeal by applicant
+5.42	(1)	Where the application for enforcement of a maintenance order is refused, the applicant may appeal by way of summary application to the sheriff within one month from the date of service of the notice under rule 5.40.
+(2)	The determination of the sheriff of such a summary application shall be subject to a final appeal on a point of law to the Inner House of the Court of Session in accordance with the Ordinary Cause Rules.
+
+Enforcement of registered order
+5.43	The applicant may obtain an extract of a registered order and proceed to arrest in execution, to intimate the order (for the purposes of section 54(1) of the Debtors (Scotland) Act 1987), to inhibit and to charge and poind thereon, but may not proceed to an action of furthcoming in respect of an arrestment, serve a current maintenance arrestment schedule, make application for a conjoined arrestment order, proceed to adjudication in respect of inhibition or sale in respect of a poinding until the time for appeal against the determination of the sheriff under rules 5.41 or 5.42 has elapsed and any appeal has been disposed of.

@@ -11,6 +11,7 @@ export function searchEvidence(matterName: string, query: string, options?: Sear
 
   // Sanitize FTS5 query syntax
   const sanitized = sanitizeFtsQuery(query);
+  if (!sanitized) return [];
 
   try {
     const rows = db.prepare(`
@@ -25,6 +26,7 @@ export function searchEvidence(matterName: string, query: string, options?: Sear
       JOIN extraction_chunks ec ON evidence_fts.rowid = ec.id
       JOIN evidence e ON ec.evidence_id = e.id
       WHERE evidence_fts MATCH ?
+        AND e.status IN ('extracted', 'indexed', 'approved')
       ORDER BY rank
       LIMIT ?
     `).all(sanitized, topK) as Record<string, unknown>[];
@@ -58,6 +60,7 @@ function sanitizeFtsQuery(query: string): string {
 function fallbackSearch(matterName: string, query: string, topK: number): SearchResult[] {
   const db = getDb(matterName);
   const terms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+  if (terms.length === 0) return [];
 
   // Simple LIKE-based fallback
   const likeConditions = terms.map(() => 'LOWER(ec.content) LIKE ?').join(' AND ');
@@ -67,7 +70,8 @@ function fallbackSearch(matterName: string, query: string, topK: number): Search
            SUBSTR(ec.content, 1, 200) as snippet
     FROM extraction_chunks ec
     JOIN evidence e ON ec.evidence_id = e.id
-    WHERE ${likeConditions}
+    WHERE e.status IN ('extracted', 'indexed', 'approved')
+      AND ${likeConditions}
     LIMIT ?
   `).all(...terms.map(t => `%${t}%`), topK) as Record<string, unknown>[];
 

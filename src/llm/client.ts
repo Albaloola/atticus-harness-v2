@@ -480,8 +480,10 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
   }
 
   if (providerKind === 'anthropic' || providerName === 'anthropic' || providerName.startsWith('anthropic')) {
+    const useOAuthBearer = providerMetadata.authType === 'oauth';
     return new AnthropicClient({
-      apiKey,
+      apiKey: useOAuthBearer ? undefined : apiKey,
+      authToken: useOAuthBearer ? apiKey : undefined,
       baseUrl,
       timeoutMs,
       providerName,

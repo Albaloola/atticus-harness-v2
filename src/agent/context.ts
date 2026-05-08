@@ -4,6 +4,9 @@ import type { MatterIndex } from '../types/matter.js';
 import type { AgentConfig } from '../types/agent.js';
 import { buildHarnessSystemPrompt } from './system-prompt.js';
 import { resolveConfig } from '../config/loader.js';
+import { buildCourtOfSessionRuleContext } from '../rules/court-session-rules.js';
+import { buildSheriffCourtRuleContext } from '../rules/sheriff-court-rules.js';
+import { buildScotCourtsCorpusContext } from '../rules/scotcourts-corpus.js';
 
 const AGENT_ROLE_INSTRUCTIONS = `You work on legal matters by analyzing evidence, drafting documents, verifying citations, running review/gates, and managing case workflows.
 
@@ -32,6 +35,28 @@ export async function buildSystemPrompt(
     } catch {
       prompts.push(`## Active Skill: ${config.skillName}\n(Unable to load skill file)`);
     }
+    const skillIds = [config.skillName];
+    const rulesContext = await buildCourtOfSessionRuleContext({
+      query: config.skillName,
+      skillIds,
+      limit: 6,
+    }).catch((err: unknown) => formatCorpusContextWarning('Court of Session rules', err));
+    if (rulesContext) prompts.push(rulesContext);
+    const sheriffRulesContext = await buildSheriffCourtRuleContext({
+      query: config.skillName,
+      skillIds,
+      limit: 6,
+    }).catch((err: unknown) => formatCorpusContextWarning('Sheriff Court rules', err));
+    if (sheriffRulesContext) prompts.push(sheriffRulesContext);
+    if (shouldAttachBroadScotCourtsContext(skillIds)) {
+      const scotCourtsContext = await buildScotCourtsCorpusContext({
+        query: config.skillName,
+        skillIds,
+        includeSnippets: false,
+        limit: 6,
+      }).catch((err: unknown) => formatCorpusContextWarning('ScotCourts corpus', err));
+      if (scotCourtsContext) prompts.push(scotCourtsContext);
+    }
   }
 
   const resolved = await resolveConfig({ matterName }).catch(() => undefined);
@@ -45,4 +70,13 @@ export async function buildSystemPrompt(
     toolPolicy: resolved?.toolPolicy,
     skillSection: prompts.filter(Boolean).join('\n\n') || undefined,
   });
+}
+
+function formatCorpusContextWarning(corpusName: string, err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  return `## ${corpusName} Context Warning\nUnable to load ${corpusName} context: ${message}`;
+}
+
+function shouldAttachBroadScotCourtsContext(skillIds: string[]): boolean {
+  return !skillIds.includes('atticus-sheriff-court-rules') || skillIds.includes('atticus-scotcourts-corpus');
 }

@@ -77,6 +77,41 @@ describe('workflow', () => {
       expect(phase).toBeDefined();
       expect(phase.suggestedSkills).toContain('red-team-verifier');
       expect(phase.suggestedSkills).toContain('citation-integrity');
+      expect(phase.suggestedSkills).toContain('atticus-court-of-session-rules');
+      expect(phase.suggestedSkills).toContain('atticus-sheriff-court-rules');
+      expect(phase.suggestedSkills).toContain('atticus-scots-source-verification');
+    });
+
+    it('makes Court of Session rule support available across procedural stages', () => {
+      for (const phaseId of [
+        'law_and_policy_research',
+        'procedural_route_planning',
+        'document_production',
+        'verification_and_hostile_review',
+        'bundle_and_war_room_assembly',
+      ]) {
+        const phase = PHASES.find((p) => p.id === phaseId)!;
+        expect(phase.suggestedSkills).toContain('atticus-court-of-session-rules');
+      }
+    });
+
+    it('makes Sheriff Court rule support available across procedural stages', () => {
+      for (const phaseId of [
+        'law_and_policy_research',
+        'procedural_route_planning',
+        'document_production',
+        'verification_and_hostile_review',
+        'bundle_and_war_room_assembly',
+      ]) {
+        const phase = PHASES.find((p) => p.id === phaseId)!;
+        expect(phase.suggestedSkills).toContain('atticus-sheriff-court-rules');
+      }
+    });
+
+    it('makes the broad ScotCourts corpus available across the full Scots workflow', () => {
+      for (const phase of PHASES) {
+        expect(phase.suggestedSkills).toContain('atticus-scotcourts-corpus');
+      }
     });
   });
 

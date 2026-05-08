@@ -206,10 +206,10 @@ export function normalizeProviderProfiles(config: GlobalHarnessConfig): GlobalHa
   const hadProfiles = Boolean(config.profiles) && Object.keys(config.profiles ?? {}).length > 0;
   const diskProfiles = { ...(config.profiles ?? {}) };
   delete diskProfiles[LEGACY_CODEX_OAUTH_PROFILE];
-  const profiles: Record<string, ProviderProfile> = {
-    ...cloneDefaultProviderProfiles(),
-    ...diskProfiles,
-  };
+  const profiles = cloneDefaultProviderProfiles();
+  for (const [name, profile] of Object.entries(diskProfiles)) {
+    profiles[name] = normalizeDiskProfile(name, profile);
+  }
 
   if (!hadProfiles) {
     const legacyOpenRouter = config.providers?.openrouter;
@@ -248,6 +248,47 @@ export function normalizeProviderProfiles(config: GlobalHarnessConfig): GlobalHa
     profiles,
     providers,
     defaultModel: config.defaultModel || activeProfile.models.fast,
+  };
+}
+
+function normalizeDiskProfile(name: string, diskProfile: ProviderProfile): ProviderProfile {
+  const preset = DEFAULT_PROVIDER_PROFILES[diskProfile.preset] ?? DEFAULT_PROVIDER_PROFILES[name];
+  if (!preset) {
+    return {
+      ...diskProfile,
+      name: diskProfile.name || name,
+      label: diskProfile.label || name,
+      preset: diskProfile.preset || 'custom',
+      providerKind: diskProfile.providerKind ?? 'openai-compatible',
+      authType: diskProfile.authType ?? 'api-key',
+      models: { ...DEFAULT_PROVIDER_PROFILES[DEFAULT_ACTIVE_PROVIDER].models, ...(diskProfile.models ?? {}) },
+      fallbackModel: diskProfile.fallbackModel,
+      isCustom: true,
+    };
+  }
+
+  if (!diskProfile.isCustom) {
+    return structuredClone(preset);
+  }
+
+  return {
+    ...preset,
+    ...diskProfile,
+    name: diskProfile.name || name,
+    label: diskProfile.label || preset.label,
+    preset: diskProfile.preset || preset.preset,
+    providerKind: diskProfile.providerKind ?? preset.providerKind,
+    authType: diskProfile.authType ?? preset.authType,
+    keyName: diskProfile.keyName ?? preset.keyName,
+    oauthProvider: diskProfile.oauthProvider ?? preset.oauthProvider,
+    delegatedAuthProvider: diskProfile.delegatedAuthProvider ?? preset.delegatedAuthProvider,
+    baseUrl: diskProfile.baseUrl || preset.baseUrl,
+    apiPath: diskProfile.apiPath ?? preset.apiPath,
+    anthropicFormat: diskProfile.anthropicFormat ?? preset.anthropicFormat,
+    reasoningControl: diskProfile.reasoningControl ?? preset.reasoningControl,
+    models: { ...preset.models, ...(diskProfile.models ?? {}) },
+    fallbackModel: diskProfile.fallbackModel ?? preset.fallbackModel,
+    isCustom: true,
   };
 }
 

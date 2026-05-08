@@ -4,6 +4,9 @@ import type { AutonomyPolicy } from '../config/schema.js';
 import type { ReviewSeverity } from '../types/review.js';
 import { computeGateScore, type GateResult, type GateScoringContext } from './gate-score.js';
 import { hasQuorum, aggregateFindings, getQuorumDecision, type QuorumContext } from './review-quorum.js';
+import { stateDbExists } from '../state/store.js';
+import { listFindings } from '../findings/finding-store.js';
+import { evaluateFindingCriticalityGate, isCriticalFinding } from '../review/criticality.js';
 
 export interface AutoAcceptResult {
   accepted: boolean;
@@ -142,6 +145,11 @@ async function doAccept(
     }
   }
 
+  const criticalLegalBlocker = getCriticalAutoAcceptBlocker(matterName);
+  if (criticalLegalBlocker) {
+    return { accepted: false, reason: criticalLegalBlocker };
+  }
+
   try {
     const artifact = await acceptCandidate(matterName, candidate.id);
     return {
@@ -154,4 +162,16 @@ async function doAccept(
   } catch (err: unknown) {
     return { accepted: false, reason: `Accept failed: ${(err as Error).message}` };
   }
+}
+
+function getCriticalAutoAcceptBlocker(matterName: string): string | undefined {
+  if (!stateDbExists(matterName)) return undefined;
+  const criticalFindings = listFindings(matterName).filter(isCriticalFinding);
+  for (const finding of criticalFindings) {
+    const gate = evaluateFindingCriticalityGate(matterName, finding);
+    if (!gate.passed) {
+      return `Critical finding ${finding.findingId} is blocked: ${gate.blockers.map((blocker) => blocker.reason).join('; ')}`;
+    }
+  }
+  return undefined;
 }

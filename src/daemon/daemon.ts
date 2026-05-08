@@ -5,6 +5,7 @@ import { getConfigDir } from '../config/paths.js';
 import { Supervisor } from './supervisor.js';
 import type { DaemonStatus } from '../types/state.js';
 import { isSchedulerRunning, startSchedulerLoop, stopSchedulerLoop } from '../scheduler/loop.js';
+import { getPendingControlCommandCount } from './control-queue.js';
 
 const RUNTIME_DIR = join(getConfigDir(), 'runtime');
 const PID_FILE = join(RUNTIME_DIR, 'daemon.pid');
@@ -137,11 +138,5 @@ function isProcessAlive(pid: number): boolean {
 }
 
 function readPendingCommandCount(): number {
-  try {
-    const commandsPath = join(RUNTIME_DIR, 'commands.jsonl');
-    if (!existsSync(commandsPath)) return 0;
-    return readFileSync(commandsPath, 'utf-8').split('\n').filter(Boolean).length;
-  } catch {
-    return 0;
-  }
+  return getPendingControlCommandCount();
 }

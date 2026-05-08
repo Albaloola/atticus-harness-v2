@@ -27,6 +27,31 @@ export async function getEvidenceById(matterName: string, id: string): Promise<E
   return records.find(r => r.id === id);
 }
 
+export async function updateEvidenceRecord(
+  matterName: string,
+  evidenceId: string,
+  patch: Partial<EvidenceRecord>,
+): Promise<EvidenceRecord> {
+  const records = await loadEvidenceIndex(matterName);
+  const index = records.findIndex((record) => record.id === evidenceId);
+  if (index === -1) {
+    throw new Error(`Evidence "${evidenceId}" not found in "${matterName}"`);
+  }
+
+  const updated = {
+    ...records[index],
+    ...patch,
+    metadata: {
+      ...records[index].metadata,
+      ...(patch.metadata ?? {}),
+    },
+  };
+  records[index] = updated;
+  const indexPath = getMatterPath(matterName, '_evidence', '_index.json');
+  await writeFile(indexPath, JSON.stringify(records, null, 2), 'utf-8');
+  return updated;
+}
+
 export function getEvidencePath(matterName: string, evidenceId: string): string {
   return getMatterPath(matterName, '_evidence', evidenceId);
 }

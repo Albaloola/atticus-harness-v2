@@ -1,0 +1,183 @@
+---
+corpus: scotcourts-corpus
+title: "C3ghbwqy 06 Part 6 July 2018"
+source_file: "c3ghbwqy_06-part-6-july-2018.doc"
+source_relative_path: "sheriff-court-civil-procedure-rules/simple-procedure-rules-for-claims-initiated-before-31-may-2023/c3ghbwqy_06-part-6-july-2018.doc"
+document_kind: rule
+court: sheriff_court
+category: "sheriff-court-civil-procedure-rules/simple-procedure-rules-for-claims-initiated-before-31-may-2023"
+conversion: atticus-markdown-normalization-v1
+---
+
+# C3ghbwqy 06 Part 6 July 2018
+
+Act of Sederunt (Simple Procedure) 2016 SSI 2016/200
+SCHEDULE 1
+
+The Simple Procedure Rules
+
+
+Part 6:	Sending and formal service
+
+6.1	 What is this Part about?
+6.2	What is the difference between sending and formally serving?
+6.3	When must something be sent or formally served?
+6.4	 Can a party object to how sending or formal service was done?
+6.5	 How can the court send something to a party?
+6.6	 How can a party send something to the court?
+6.7	 How can a party send something to another party?
+6.8	 How can you formally serve a document on someone living within Scotland?
+6.9	 How can you formally serve a document on someone living outside Scotland?
+6.10	 What if a person uses a trading name?
+6.11	 How can the Claim Form be formally served on the respondent?
+6.12	 What if the claimant does not know the respondent’s address?
+6.13	 What if the sheriff considers that formal service of the Claim Form has not been done properly?
+
+
+6.1	What is this Part about?
+
+(1)	This Part is about what has to be done when these Rules require something to be sent to someone.
+
+(2)	This Part is also about what has to be done when these Rules require a document to be formally served on someone.
+
+
+6.2	What is the difference between sending and formally serving?
+
+(1)	When these Rules require something to be “sent”, that may be done by anyone and in a number of ways.
+
+(2)	When these Rules require a document to be “formally served” on someone, that may only be done by certain people (sheriff officers, sheriff clerks or solicitors) and may only be done in certain ways.
+
+
+6.3	When must something be sent or formally served?
+
+(1)	If these Rules say that something must be sent or formally served within a period or number of days, it must be sent or formally served in time for it to arrive before the end of that period or the last day.
+
+(2)	If these Rules say that something must be sent or formally served by a particular day, it must be sent or formally served in time for it to arrive before the end of that day.
+
+(3)	If these Rules say that something must be sent to court within a period, number of days or by a particular day and the end of that period or that day is a Saturday, Sunday, public holiday or court holiday, then it must be sent so that it will be received before the end of the next working day.
+
+
+6.4	Can a party object to how sending or formal service was done?
+
+(1)	A party who responds to something (such as sending a Response Form in response to a Claim Form or objecting to an application) may not object to how that thing was sent or formally served.
+
+
+Sending
+
+
+6.5	How can the court send something to a party?
+
+(1)	The court may send something to a party in one of 5 ways:
+
+(a)	handing it to that party or to that party’s representative in person,
+
+(b)	posting it to that party or that party’s representative,
+
+
+(c)	emailing it to that party or that party’s representative, using an email address given on the Claim Form, Response Form or Time to Pay Application,
+
+(d)	making it available to that party or that party’s representative using the portal on the Scottish Courts and Tribunals Service website.
+(e)	delivering it to a document exchange of which that party or that party’s representative is a member.
+
+
+6.6	How can a party send something to the court?
+
+(1)	A party may send something to the court in one of four ways:
+
+(a)	handing it in to the court in person,
+
+(b)	posting it to the court using a postal service which records delivery,
+
+(c)	submitting it to the court using the portal on the Scottish Courts and Tribunals Service website.
+(d)	delivering it to a document exchange of which the sheriff clerk is a member.
+
+
+6.7	How can a party send something to another party?
+
+(1)	A party may send something to another party in one of four ways:
+
+(a)	posting it to that party or that party’s representative using a next-day postal service which records delivery,
+
+(b)	emailing it to that party or that party’s representative, using an email address given on the Claim Form, Response Form or Time to Pay Application,
+
+(c)	making it available to that party or that party’s representative using the portal on the Scottish Courts and Tribunals Service website.
+(d)	delivering it to a document exchange of which that party or that party’s representative is a member.
+
+(2) 	If none of those ways has worked, a party may send it to another party by sheriff officer using one of the methods of formal service mentioned in rule 18.3.
+
+
+Formal service
+
+
+6.8	How can you formally serve a document on someone living within Scotland?
+
+(1)	Part 18 of these Rules is about formal service on someone living in Scotland.
+
+
+6.9	How can you formally serve a document on someone living outside Scotland?
+
+(1)	Part 19 of these Rules is about formal service on someone living outside Scotland.
+
+
+6.10	What if a person uses a trading name?
+
+(1)	If a person uses a trading name, a document may be formally served on that person at any place of business or office at which that business is carried on within the sheriffdom.
+
+(2)	If that person does not have a place of business or office within the sheriffdom, a document may be formally served on that person at any place where that business is carried on (including the office of the clerk or secretary of a company, association or firm).
+
+
+6.11	How can the Claim Form be formally served on the respondent?
+
+(1)	As well as following the rules for formal service in Part 18 or Part 19, there are some additional requirements when formally serving the Claim Form.
+
+(2)	The sheriff clerk may formally serve the Claim Form if:
+
+(a)	the claimant is not a company, limited liability partnership or partnership, and
+
+(b)	the claimant is not legally represented.
+
+(3)	When formally serving a Claim Form, the envelope must contain only the following:
+
+(a)	a copy of the Claim Form,
+
+(b)	any Further Claimant Forms or Further Respondent Forms,
+
+(c)	a blank Response Form,
+
+(d)	a copy of the Notice of Claim,
+
+(e)	a copy of the Timetable,
+
+(f)	if the respondent can apply for time to pay, a blank Time to Pay Application, and
+
+(g)	any other document approved by the sheriff principal in that sheriffdom.
+
+(4)	If a solicitor or sheriff officer has formally served the Claim Form, then a Confirmation of Formal Service must be sent to the court at least 2 days before the last date for a response.
+
+
+6.12	What if the claimant does not know the respondent’s address?
+
+(1)	The claimant must take all reasonable steps to find out the respondent’s address.
+
+(2)	If the claimant does not know the respondent’s address and cannot find it out, then the claimant does not need to formally serve a copy of the Claim Form on the respondent.
+
+(3)	The claimant must instead complete a Service by Advertisement Application and send it to court with the Claim Form.
+
+(4)	The sheriff may order the details of the claim to be publicised by advertisement on the Scottish Courts and Tribunals Service website.
+
+(5)	The sheriff clerk must make a copy of the Claim Form available for the respondent to collect at the sheriff court.
+
+(6)	If the respondent’s address becomes known, the sheriff must order:
+
+(a)	the Claim Form to be amended,
+
+(b)	the claimant to formally serve the Claim Form on the respondent,
+
+(c)	a change to the timetable.
+
+
+6.13	What if the sheriff considers that formal service of the Claim Form has not been done properly?
+
+(1)	If the sheriff considers that formal service of the Claim Form was not done correctly, then the sheriff may change the timetable.
+
+(2)	If the sheriff changes the timetable, the sheriff clerk must send a new Timetable to the claimant or to the parties.

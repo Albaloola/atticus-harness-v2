@@ -21,6 +21,17 @@ export function createTask(params: CreateTaskParams): TaskDagNode {
   const db = getStateDb(params.matterName);
   const now = new Date().toISOString();
   const id = params.id || randomUUID();
+  if (params.parentId) {
+    if (params.parentId === id) {
+      throw new Error('Task cannot be its own parent');
+    }
+    if (!getTask(params.matterName, params.parentId)) {
+      throw new Error(`Parent task "${params.parentId}" was not found in matter "${params.matterName}"`);
+    }
+  }
+  if ((params.dependencies ?? []).includes(id)) {
+    throw new Error('Task cannot depend on itself');
+  }
 
   const node: TaskDagNode = {
     id,

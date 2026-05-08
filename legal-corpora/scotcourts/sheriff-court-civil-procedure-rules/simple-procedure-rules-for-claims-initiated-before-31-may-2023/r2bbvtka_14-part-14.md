@@ -1,0 +1,75 @@
+---
+corpus: scotcourts-corpus
+title: "R2bbvtka 14 Part 14"
+source_file: "r2bbvtka_14-part-14.doc"
+source_relative_path: "sheriff-court-civil-procedure-rules/simple-procedure-rules-for-claims-initiated-before-31-may-2023/r2bbvtka_14-part-14.doc"
+document_kind: rule
+court: sheriff_court
+category: "sheriff-court-civil-procedure-rules/simple-procedure-rules-for-claims-initiated-before-31-may-2023"
+conversion: atticus-markdown-normalization-v1
+---
+
+# R2bbvtka 14 Part 14
+
+Act of Sederunt (Simple Procedure) 2016 SSI 2016/200
+SCHEDULE 1
+
+The Simple Procedure Rules
+
+
+Part 14:	Expenses
+
+14.1	 What is this Part about?
+14.2	What orders about expenses can the sheriff make?
+14.3	When will the sheriff make an order about expenses?
+14.4	 What if the sheriff does not make an order about expenses when deciding the claim?
+14.5	 What is an expenses hearing?
+
+
+14.1	What is this Part about?
+
+(1)	This Part is about the expenses of a claim which the sheriff can order a party to pay for.
+
+
+14.2	What orders about expenses can the sheriff make?
+
+(1)	Once a claim has been resolved, the sheriff must make an order about expenses, such as:
+
+(a)	that no payments are to be made in respect of the expenses of any party,
+
+(b)	that a payment is to be made to a party or to a party’s solicitor.
+
+(2)	Expenses incurred by a party to do with a courtroom supporter may not be part of an order about expenses.
+
+
+14.3	When will the sheriff make an order about expenses?
+
+(1)	In a case where the expenses of a claim are capped, the sheriff must make an order about expenses when deciding the claim.
+
+(2)	In any other case, the sheriff must, if able to, make an order about expenses when deciding the claim.
+
+(3)	If not able to make an order about expenses when deciding the claim, the sheriff may make an order about expenses after deciding the claim.
+
+
+14.4	What if the sheriff does not make an order about expenses when deciding the claim?
+
+(1)	If the sheriff makes an order about expenses after deciding the claim, then the sheriff must not set out the final decision in a case in a Decision Form until the order about expenses is made.
+
+(2)	If the sheriff does not make an order about expenses when deciding the claim, the sheriff must give the parties written orders.
+
+(3)	Those orders must arrange an expenses hearing.
+
+(4)	Those orders may require a party to send an account of expenses to the court and to each other before the expenses hearing.
+
+(5)	Those orders may then require the sheriff clerk to assess the level of expenses (if any) that should be awarded to a party and to send notice of that assessment to the parties before the expenses hearing.
+
+
+14.5	What is an expenses hearing?
+
+(1)	The purpose of an expenses hearing is to assess the level of expenses (if any) that should be awarded to a party.
+
+(2)	At the expenses hearing, the sheriff must make an order about expenses, such as:
+
+(a)	that no payments are to be made in respect of the expenses of any party,
+
+(b)	that a payment is to be made to a party or to a party’s solicitor.

@@ -22,9 +22,11 @@ export default async function orchestrateHandler(
       await appendEvent({
         matterName,
         type: 'run.started',
+        runId: background.runId,
         source: 'tool',
         data: {
           background: true,
+          runId: background.runId,
           pid: background.pid,
           logPath: background.logPath,
           objective: options.objective,

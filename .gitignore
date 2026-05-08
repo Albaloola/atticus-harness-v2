@@ -8,3 +8,4 @@ matters/*
 .env
 tmp/
 .omx/
+.atticus/

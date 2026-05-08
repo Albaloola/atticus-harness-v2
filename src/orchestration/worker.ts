@@ -73,6 +73,9 @@ export class WorkerAgent {
         source: 'orchestration',
       });
 
+      await this.config.runtime?.applyControlCommands(this.run.id);
+      await this.config.runtime?.waitIfPaused(this.run.id);
+
       if (this.config.runtime?.isAborted()) {
         this.aborted = true;
         const result = this.makeBlockedResult('Aborted before worker execution');

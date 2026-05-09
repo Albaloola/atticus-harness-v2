@@ -4,7 +4,6 @@ import { deriveSnapshot } from '../state/snapshot.js';
 import type { MatterRuntimeSnapshot } from '../types/state.js';
 import { buildLegalBlockerSummary } from '../observability/legal-blockers.js';
 import { evaluateRunReadiness } from '../orchestration/run-readiness.js';
-import { evaluateRunReadiness } from '../orchestration/run-readiness.js';
 
 export default async function statusHandler(
   matterName: string,
@@ -32,7 +31,6 @@ export default async function statusHandler(
       };
     }
     const legalBlockers = await buildLegalBlockerSummary(matterName);
-    const runReadiness = await evaluateRunReadiness({ matterName });
     const runReadiness = await evaluateRunReadiness({ matterName, requireAcceptedArtifact: false });
 
     if (options.json) {
@@ -94,7 +92,6 @@ export default async function statusHandler(
       }
     }
     console.log(`  Blockers:   ${legalBlockers.total} legal`);
-    console.log(`  Readiness:  ${runReadiness.courtReadyStatus}`);
     console.log(`  Readiness:  ${chalk.bold(runReadiness.courtReadyStatus)} (${runReadiness.activityStatus} activity, ${runReadiness.legalStatus} legal)`);
     console.log('');
 

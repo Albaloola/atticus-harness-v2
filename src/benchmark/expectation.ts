@@ -56,4 +56,25 @@ export function normalizeExpectation(raw: Partial<BenchmarkExpectation> & { matt
     privacyPolicy: raw.privacyPolicy ?? 'local_only',
     scoringWeights: raw.scoringWeights ?? {},
   };
+  dimensions: BenchmarkDimensionScore[];
+  criticalFailures: string[];
+  warnings: string[];
+}
+
+export function normalizeWeights(weights?: Partial<ScoringWeights>): ScoringWeights {
+  const merged = { ...DEFAULT_SCORING_WEIGHTS, ...weights };
+  const total = Object.values(merged).reduce((sum, value) => sum + value, 0);
+  if (total <= 0) return DEFAULT_SCORING_WEIGHTS;
+  return {
+    posture: merged.posture / total,
+    jurisdiction: merged.jurisdiction / total,
+    sourceUniverse: merged.sourceUniverse / total,
+    productionSelection: merged.productionSelection / total,
+    legalOutcome: merged.legalOutcome / total,
+    requiredArtifacts: merged.requiredArtifacts / total,
+    citationReadiness: merged.citationReadiness / total,
+    telemetry: merged.telemetry / total,
+    toolErrorResilience: merged.toolErrorResilience / total,
+    falseCompletion: merged.falseCompletion / total,
+  };
 }

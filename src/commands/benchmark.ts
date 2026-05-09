@@ -19,3 +19,5 @@ export async function benchmarkScoreHandler(target?: string, options: { json?: b
     for (const detail of scorecard.details) console.log(`  - ${detail.dimension}: ${detail.score}`);
   }
 }
+
+export default benchmarkScoreHandler;

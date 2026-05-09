@@ -1,0 +1,13 @@
+{
+  "matterName": "napier-state-summary",
+  "expectedPosture": "live_matter",
+  "expectedJurisdictions": ["student accommodation dispute"],
+  "expectedTracks": ["live dispute", "candidate promotion", "artifact acceptance"],
+  "expectedSourceUniverse": { "minCount": 1 },
+  "expectedProductionUniverse": { "minCount": 1 },
+  "expectedOutcomeAssertions": ["acceptance and readiness telemetry must reconcile with promoted candidates and artifacts"],
+  "requiredArtifacts": ["accepted-artifact-readiness-summary"],
+  "notApplicableOutputs": [],
+  "knownReadinessBlockers": ["acceptance/readiness consistency"],
+  "privacyPolicy": { "level": "mixed", "allowExternalActions": false, "allowPrivateWebSearch": false }
+}

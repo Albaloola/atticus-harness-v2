@@ -1,0 +1,13 @@
+{
+  "matterName": "cherry-state-summary",
+  "expectedPosture": "retrospective_benchmark",
+  "expectedJurisdictions": ["UK constitutional appellate"],
+  "expectedTracks": ["public constitutional appellate benchmark"],
+  "expectedSourceUniverse": { "minCount": 1, "officialManifestRequired": true },
+  "expectedProductionUniverse": { "minCount": 1 },
+  "expectedOutcomeAssertions": ["partial or blocked repaired runs are not complete until required outputs are satisfied"],
+  "requiredArtifacts": ["retrospective-source-packet", "outcome-summary"],
+  "notApplicableOutputs": ["live filing", "service"],
+  "knownReadinessBlockers": ["partial phases", "blocked phases", "zero-findings retry outputs"],
+  "privacyPolicy": { "level": "public", "allowExternalActions": false, "allowPrivateWebSearch": false }
+}

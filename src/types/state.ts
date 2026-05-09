@@ -185,6 +185,11 @@ export interface MatterRuntimeSnapshot {
   storeTelemetry?: MatterStoreTelemetry;
   costs: RuntimeCosts;
   nextActions: string[];
+  storeTelemetry?: {
+    candidateSummary: { indexCount: number; jsonCount: number; transcriptCount: number; nonJsonCount: number };
+    artifactSummary: { indexCount: number; jsonCount: number; nonJsonCount: number };
+    reconciliation: { notes: string[] };
+  };
   leases?: Array<{ taskId: string; leaseId: string; owner?: string; role?: string; expiresAt?: string; stale: boolean }>;
   blockedReasons?: Array<{ taskId: string; reason: string }>;
   runReadiness?: RunReadiness;

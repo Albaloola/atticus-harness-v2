@@ -6,6 +6,7 @@ import { listTasks } from '../state/tasks.js';
 import { listEvents } from '../state/events.js';
 import { evaluateLegalReadiness, type LegalReadinessResult } from '../gates/legal-readiness.js';
 import type { PhaseResult } from './types.js';
+import type { PhaseDefinition } from '../legal/workflow.js';
 
 export interface RunReadinessBlocker {
   blockerType: string;
@@ -35,6 +36,8 @@ export async function evaluateRunReadiness(input: {
   matterName: string;
   phaseResults?: PhaseResult[];
   stoppedReason?: 'aborted' | 'budget_exceeded';
+  activityStatus?: RunReadiness['activityStatus'];
+  phases?: PhaseDefinition[];
   requireAcceptedArtifact?: boolean;
   requireExportSignoff?: boolean;
 }): Promise<RunReadiness> {
@@ -60,7 +63,7 @@ export async function evaluateRunReadiness(input: {
     missingOutputs: phase.status === 'completed' && phase.artifactIds.length === 0 ? [`${phase.phaseId}:accepted_artifact`] : [],
   }));
   const missingOutputs = phaseReadiness.flatMap((phase) => phase.missingOutputs);
-  const activityStatus = deriveActivityStatus(tasks, input.stoppedReason);
+  const activityStatus = input.activityStatus ?? deriveActivityStatus(tasks, input.stoppedReason);
   const legalReadinessResult = await evaluateLegalReadiness({
     matterName: input.matterName,
     requireAcceptedArtifact: input.requireAcceptedArtifact ?? true,

@@ -54,6 +54,7 @@ export default async function statusHandler(
         snapshotRunReadiness: snapshot.runReadiness,
         legalBlockers,
         runReadiness,
+        legalBlockers,
         model: index.config.model || 'deepseek/deepseek-v4-flash',
       };
       console.log(JSON.stringify(output, null, 2));

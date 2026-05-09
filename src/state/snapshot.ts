@@ -1,5 +1,4 @@
-import { readdir } from 'fs/promises';
-import { loadMatter, getMatterPath } from '../storage/matter.js';
+import { loadMatter } from '../storage/matter.js';
 import { listEvidence } from '../storage/evidence.js';
 import { listCandidates } from '../storage/candidate.js';
 import { listEvents, getEventCount } from './events.js';
@@ -125,7 +124,6 @@ export async function deriveSnapshot(
     storeTelemetry,
     costs,
     nextActions,
-    storeTelemetry,
     leases,
     blockedReasons,
     runReadiness,
@@ -197,36 +195,4 @@ function deriveNextActions(
   }
 
   return actions;
-}
-
-
-async function deriveStoreTelemetry(
-  matterName: string,
-  indexCandidateCount: number,
-  indexArtifactCount: number,
-  candidateJsonCount: number,
-): Promise<NonNullable<MatterRuntimeSnapshot['storeTelemetry']>> {
-  const candidateFiles = await readdir(getMatterPath(matterName, '_candidates')).catch(() => [] as string[]);
-  const artifactFiles = await readdir(getMatterPath(matterName, '_artifacts')).catch(() => [] as string[]);
-  const candidateJsonFiles = candidateFiles.filter((file) => file.endsWith('.json')).length;
-  const candidateTranscriptCount = candidateFiles.filter((file) => !file.endsWith('.json') && /transcript|agent-loop-log|\.md$/i.test(file)).length;
-  const artifactJsonFiles = artifactFiles.filter((file) => file.endsWith('.json')).length;
-  const notes: string[] = [];
-  if (indexCandidateCount !== candidateJsonCount) notes.push(`candidate index count ${indexCandidateCount} differs from JSON store ${candidateJsonCount}`);
-  if (candidateTranscriptCount > 0) notes.push(`${candidateTranscriptCount} candidate transcript file(s) are not counted as JSON candidates`);
-  if (indexArtifactCount !== artifactJsonFiles) notes.push(`artifact index count ${indexArtifactCount} differs from JSON store ${artifactJsonFiles}`);
-  return {
-    candidateSummary: {
-      indexCount: indexCandidateCount,
-      jsonCount: candidateJsonFiles,
-      transcriptCount: candidateTranscriptCount,
-      nonJsonCount: candidateFiles.length - candidateJsonFiles,
-    },
-    artifactSummary: {
-      indexCount: indexArtifactCount,
-      jsonCount: artifactJsonFiles,
-      nonJsonCount: artifactFiles.length - artifactJsonFiles,
-    },
-    reconciliation: { notes },
-  };
 }

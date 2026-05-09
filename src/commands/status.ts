@@ -50,6 +50,7 @@ export default async function statusHandler(
         candidates: snapshot.candidates,
         costs: snapshot.costs,
         nextActions: snapshot.nextActions,
+        runReadiness: snapshot.runReadiness,
         legalBlockers,
         runReadiness,
         model: index.config.model || 'deepseek/deepseek-v4-flash',

@@ -171,6 +171,7 @@ export async function handleControlPanelAgentPacket(
       legalBlockers: panel.legalBlockers,
       nextActions: panel.snapshot.nextActions,
       recommendedNextAction: panel.nextAction,
+      runReadiness: panel.snapshot.runReadiness,
       provider: panel.provider,
       search: panel.search,
     };

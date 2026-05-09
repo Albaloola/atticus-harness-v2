@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'fs';
 const codexSdkMock = vi.hoisted(() => ({
   startThread: vi.fn(),
   Codex: vi.fn(),
@@ -434,7 +435,7 @@ describe('CodexSdkClient', () => {
     vi.unstubAllGlobals();
   });
 
-  it('runs streamed SDK calls with native agent options and maps final response usage', async () => {
+  it('runs streamed SDK calls with read-only native options and maps final response usage', async () => {
     const runStreamed = mockCodexRun([
       { type: 'thread.started', thread_id: 'thread-1' },
       { type: 'turn.started' },
@@ -477,12 +478,12 @@ describe('CodexSdkClient', () => {
     });
     expect(codexSdkMock.startThread).toHaveBeenCalledWith({
       model: 'gpt-5.5',
-      sandboxMode: 'workspace-write',
+      sandboxMode: 'read-only',
       workingDirectory: '/tmp/harness-test',
       modelReasoningEffort: 'high',
-      networkAccessEnabled: true,
-      webSearchMode: 'live',
-      webSearchEnabled: true,
+      networkAccessEnabled: false,
+      webSearchMode: 'disabled',
+      webSearchEnabled: false,
       approvalPolicy: 'never',
       additionalDirectories: [],
     });
@@ -508,6 +509,7 @@ describe('CodexSdkClient', () => {
       workingDirectory: '/tmp/harness-test',
       matterName: 'case-1',
       harnessMcpServerPath: '/tmp/harness-mcp.js',
+      codexToolStrategy: 'mcp',
     });
 
     const response = await client.chatWithTools({
@@ -527,14 +529,137 @@ describe('CodexSdkClient', () => {
               ATTICUS_HARNESS_MCP: '1',
               ATTICUS_HARNESS_CWD: '/tmp/harness-test',
               ATTICUS_HARNESS_MATTER_NAME: 'case-1',
-              ATTICUS_HARNESS_MCP_TOOLS: '["search"]',
             }),
           },
         },
       },
     }));
+    const mcpEnv = codexSdkMock.Codex.mock.calls[0][0].config.mcp_servers.harness.env;
+    expect(mcpEnv.ATTICUS_HARNESS_MCP_TOOLS).toBeUndefined();
     expect(runStreamed.mock.calls[0][0]).toContain('HARNESS MCP TOOLS');
     expect(runStreamed.mock.calls[0][0]).toContain('"name": "search"');
+  });
+
+  it('uses Harness-owned JSON tool calls by default instead of configuring MCP', async () => {
+    const runStreamed = mockCodexRun([
+      {
+        type: 'item.completed',
+        item: {
+          id: 'msg-1',
+          type: 'agent_message',
+          text: '{"type":"tool_calls","toolCalls":[{"name":"matter_inventory","args":{"view":"manifest","limit":1}}]}',
+        },
+      },
+    ]);
+    const client = new CodexSdkClient({
+      workingDirectory: '/tmp/harness-test',
+      matterName: 'case-1',
+      harnessMcpServerPath: '/tmp/harness-mcp.js',
+    });
+
+    const response = await client.chatWithTools({
+      messages: [{ role: 'user', content: 'inspect the matter' }],
+      tools: [{ name: 'matter_inventory', description: 'Inventory', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    });
+
+    expect(response.content).toBe('');
+    expect(response.toolCalls).toEqual([{
+      id: 'codex_tool_1',
+      name: 'matter_inventory',
+      args: { view: 'manifest', limit: 1 },
+    }]);
+    expect(codexSdkMock.Codex).toHaveBeenCalledWith(expect.not.objectContaining({
+      config: expect.anything(),
+    }));
+    expect(codexSdkMock.startThread).toHaveBeenCalledWith(expect.objectContaining({
+      sandboxMode: 'read-only',
+      networkAccessEnabled: false,
+      webSearchMode: 'disabled',
+      webSearchEnabled: false,
+    }));
+    expect(runStreamed.mock.calls[0][0]).toContain('HARNESS-OWNED TOOL PROTOCOL');
+    expect(runStreamed.mock.calls[0][0]).not.toContain('HARNESS MCP TOOLS');
+    expect(runStreamed.mock.calls[0][1].outputSchema.properties.type.enum).toEqual(['tool_calls', 'final']);
+  });
+
+  it('unwraps Harness-owned final result objects for downstream structured parsing', async () => {
+    mockCodexRun([
+      {
+        type: 'item.completed',
+        item: {
+          id: 'msg-1',
+          type: 'agent_message',
+          text: '{"type":"final","result":{"status":"completed","summary":"done","findings":[],"risks":[],"proposedTasks":[],"artifactIds":[],"nextActions":[]}}',
+        },
+      },
+    ]);
+    const client = new CodexSdkClient();
+
+    const response = await client.chatWithTools({
+      messages: [{ role: 'user', content: 'finish' }],
+      tools: [{ name: 'evidence_search', description: 'Search', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    });
+
+    expect(JSON.parse(response.content)).toMatchObject({
+      status: 'completed',
+      summary: 'done',
+    });
+    expect(response.toolCalls).toBeUndefined();
+  });
+
+  it('rejects native Codex actions in Harness-owned tool mode', async () => {
+    mockCodexRun([
+      {
+        type: 'item.completed',
+        item: {
+          id: 'native-1',
+          type: 'command_execution',
+          command: 'harness status',
+          aggregated_output: '',
+          status: 'completed',
+        },
+      },
+      {
+        type: 'item.completed',
+        item: {
+          id: 'msg-1',
+          type: 'agent_message',
+          text: '{"type":"final","content":"done"}',
+        },
+      },
+    ]);
+    const client = new CodexSdkClient();
+
+    await expect(client.chatWithTools({
+      messages: [{ role: 'user', content: 'finish' }],
+      tools: [{ name: 'evidence_search', description: 'Search', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    })).rejects.toThrow('attempted native CLI action');
+  });
+
+  it('can wrap the Codex CLI with the bypass flag for native MCP exec mode', async () => {
+    mockCodexRun([
+      { type: 'item.completed', item: { id: 'msg-1', type: 'agent_message', text: 'used tools' } },
+    ]);
+    const client = new CodexSdkClient({
+      codexPathOverride: '/tmp/codex-real',
+      codexToolStrategy: 'mcp',
+      dangerouslyBypassApprovalsAndSandbox: true,
+    });
+
+    await client.chatWithTools({
+      messages: [{ role: 'user', content: 'use a tool' }],
+      tools: [{ name: 'matter_inventory', description: 'Inventory', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    });
+
+    const options = codexSdkMock.Codex.mock.calls[0][0];
+    expect(options.codexPathOverride).toContain('codex-dangerous-bypass-wrapper.sh');
+    const wrapper = readFileSync(options.codexPathOverride, 'utf8');
+    expect(wrapper).toContain('/tmp/codex-real');
+    expect(wrapper).toContain('--dangerously-bypass-approvals-and-sandbox');
   });
 
   it.each([

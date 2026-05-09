@@ -7,14 +7,14 @@ import { evaluateRunReadiness } from '../orchestration/run-readiness.js';
 
 export default async function statusHandler(
   matterName: string,
-  options: { json?: boolean },
+  options: { json?: boolean; recoverRuntime?: boolean },
 ): Promise<void> {
   try {
     const index = await loadMatter(matterName);
     let snapshot: MatterRuntimeSnapshot;
 
     try {
-      snapshot = await deriveSnapshot(matterName);
+      snapshot = await deriveSnapshot(matterName, { recoverRuntime: options.recoverRuntime === true });
     } catch {
       snapshot = {
         matterName,

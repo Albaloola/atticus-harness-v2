@@ -6,6 +6,8 @@ import type { SkillDefinition } from './types.js';
 import { buildCourtOfSessionRuleContext } from '../rules/court-session-rules.js';
 import { buildSheriffCourtRuleContext } from '../rules/sheriff-court-rules.js';
 import { buildScotCourtsCorpusContext } from '../rules/scotcourts-corpus.js';
+import { loadPluginSkillDefinitions } from '../plugins/loader.js';
+import { loadNativeSkillDefinitions, mergeSkillDefinitions } from './native.js';
 
 const DEFAULT_SKILL_LIMIT = 4;
 const DEFAULT_BODY_CHARS = 1800;
@@ -104,9 +106,22 @@ export function clearSkillCatalogCache(): void {
 export async function loadSkillCatalog(skillsDir = join(process.cwd(), 'skills')): Promise<SkillDefinition[]> {
   const cached = catalogCache.get(skillsDir);
   if (cached) return cached;
-  const promise = loadSkillsFromDir(skillsDir);
+  const promise = loadSkillsWithPlugins(skillsDir);
   catalogCache.set(skillsDir, promise);
   return promise;
+}
+
+async function loadSkillsWithPlugins(skillsDir: string): Promise<SkillDefinition[]> {
+  const localSkills = await loadSkillsFromDir(skillsDir);
+  const nativeSkills = loadNativeSkillDefinitions();
+  try {
+    const { loadGlobalConfig } = await import('../config/loader.js');
+    const { config } = await loadGlobalConfig();
+    const pluginSkills = await loadPluginSkillDefinitions(config.plugins);
+    return mergeSkillDefinitions([nativeSkills, localSkills, pluginSkills]);
+  } catch {
+    return mergeSkillDefinitions([nativeSkills, localSkills]);
+  }
 }
 
 function formatSkill(skill: SkillDefinition, score: number, maxBodyChars: number): string {
@@ -115,6 +130,7 @@ function formatSkill(skill: SkillDefinition, score: number, maxBodyChars: number
     `Skill: ${skill.skillId}`,
     `Score: ${score.toFixed(1)}`,
     `Description: ${manifest.description}`,
+    manifest.whenToUse ? `When to use: ${manifest.whenToUse}` : undefined,
     manifest.tags?.length ? `Tags: ${manifest.tags.join(', ')}` : undefined,
     manifest.jurisdictionFocus ? `Jurisdiction focus: ${manifest.jurisdictionFocus}` : undefined,
     manifest.requiresLiveSourceVerification ? 'Requires live/source verification: true' : undefined,

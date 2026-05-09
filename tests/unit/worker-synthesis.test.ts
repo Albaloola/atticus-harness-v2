@@ -232,4 +232,55 @@ describe('WorkerAgent structured synthesis', () => {
     expect(eventTypes).toContain('agent.run.blocked');
     expect(eventTypes).not.toContain('agent.run.completed');
   });
+
+  it('marks instruction-only timeout synthesis as needs-followup', async () => {
+    const synthesisClient = {
+      chat: vi.fn(async (_request: LLMRequest): Promise<LLMResponse> => ({
+        content: JSON.stringify({
+          status: 'completed',
+          summary: 'The transcript excerpt contains only task instructions and workflow constraints. It does not include any matter inventory output, evidence IDs, source IDs, dates, amounts, party statements, or substantive worker findings.',
+          findings: [],
+          risks: [],
+          proposedTasks: [],
+          artifactIds: [],
+          nextActions: [],
+        }),
+      })),
+    };
+
+    const worker = new WorkerAgent({
+      spawn: {
+        matterName,
+        parentRunId: 'master-1',
+        taskId: 'task-5',
+        role: 'worker',
+        title: 'Extract key facts from evidence',
+        objective: 'Extract key facts from evidence',
+        allowedTools: [],
+        phaseId: 'evidence_ingestion_and_fact_extraction',
+      },
+      model: 'deepseek/deepseek-v4-flash',
+      quietMode: true,
+      synthesisClient,
+      queryLoopFactory: (_config: QueryLoopConfig) => ({
+        run: async (): Promise<QueryLoopResult> => ({
+          turns: [],
+          finalContent: '',
+          status: 'completed',
+          history: [
+            { role: 'user', content: 'Extract key facts from evidence' },
+            { role: 'assistant', content: '' },
+          ],
+        }),
+      }),
+    });
+
+    const result = await worker.execute();
+    const eventTypes = listEvents(matterName).map((event) => event.type);
+
+    expect(result.status).toBe('needs_followup');
+    expect(result.summary).toContain('Extract key facts from evidence');
+    expect(eventTypes).toContain('agent.run.blocked');
+    expect(eventTypes).not.toContain('agent.run.completed');
+  });
 });

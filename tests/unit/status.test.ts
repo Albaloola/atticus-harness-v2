@@ -5,6 +5,8 @@ import { tmpdir } from 'os';
 import statusHandler from '../../src/commands/status.js';
 import { initMatter, deleteMatter } from '../../src/storage/matter.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
+import { createRun, getRun } from '../../src/state/runs.js';
+import { getStateDb } from '../../src/state/store.js';
 
 describe('status command telemetry and readiness', () => {
   let tmpDir: string;
@@ -65,5 +67,20 @@ describe('status command telemetry and readiness', () => {
     });
     expect(typeof output.candidateCount).toBe('number');
     expect(typeof output.artifactCount).toBe('number');
+  });
+
+  it('does not recover stale-looking runs during ordinary status inspection', async () => {
+    const matterName = 'status-readonly-runtime';
+    await initMatter(matterName);
+    const run = createRun({ matterName, model: 'gpt-5.5', role: 'worker' });
+    getStateDb(matterName)
+      .prepare('UPDATE agent_runs SET pid = ?, heartbeat_at = ? WHERE id = ? AND matter_name = ?')
+      .run(99999999, '2000-01-01T00:00:00.000Z', run.id, matterName);
+
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await statusHandler(matterName, { json: true });
+    log.mockRestore();
+
+    expect(getRun(matterName, run.id)?.status).toBe('running');
   });
 });

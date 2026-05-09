@@ -19,4 +19,11 @@ export interface SkillFrontmatter {
   jurisdictionFocus?: string;
   requiresLiveSourceVerification?: boolean;
   externalActionMode?: string;
+  whenToUse?: string;
+  argumentHint?: string;
+  arguments?: string[];
+  userInvocable?: boolean;
+  disableModelInvocation?: boolean;
+  context?: 'inline' | 'fork';
+  model?: string;
 }

@@ -96,7 +96,7 @@ describe('provider profiles and auth preflight', () => {
       const byName = Object.fromEntries(output.profiles.map((profile) => [profile.name, profile]));
       expect(byName['openrouter-deepseek']).toMatchObject({ providerKind: 'openai-compatible', toolSupport: 'tool-capable', reasoningControl: 'openrouter-reasoning' });
       expect(byName['anthropic-api-key']).toMatchObject({ providerKind: 'anthropic', toolSupport: 'tool-capable', reasoningControl: 'anthropic-thinking' });
-      expect(byName['codex-sdk']).toMatchObject({ providerKind: 'codex-sdk', toolSupport: 'agent (native MCP tools)', reasoningControl: 'codex-sdk' });
+      expect(byName['codex-sdk']).toMatchObject({ providerKind: 'codex-sdk', toolSupport: 'Harness-owned tools via Codex', reasoningControl: 'codex-sdk' });
     } finally {
       log.mockRestore();
     }

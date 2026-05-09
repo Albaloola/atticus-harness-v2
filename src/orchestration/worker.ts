@@ -249,9 +249,19 @@ export class WorkerAgent {
   private async executeQueryLoop(userMessage: string): Promise<QueryLoopResult> {
     const resolvedConfig = await resolveConfig({ matterName: this.spawn.matterName });
     const matterIndex = await loadMatter(this.spawn.matterName).catch(() => undefined);
+    const allowedTools = this.spawn.allowedTools
+      ? Array.from(new Set([...this.spawn.allowedTools, 'mcp__*']))
+      : undefined;
     const toolRegistry = new ToolRegistry({
-      allowedTools: this.spawn.allowedTools,
+      allowedTools,
       enforcePolicy: true,
+    });
+    await toolRegistry.registerConfiguredMcpTools({
+      mcp: resolvedConfig.mcp,
+      plugins: resolvedConfig.plugins,
+      log: (message) => {
+        if (this.config.verbose) console.warn(message);
+      },
     });
     const skillSelector = new SkillSelectionWorker();
     const skillContext = await skillSelector.buildContext({

@@ -98,12 +98,35 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions = {}): H
   };
 }
 
+export async function createConfiguredHarnessMcpServer(options: HarnessMcpServerOptions = {}): Promise<HarnessMcpServer> {
+  if (options.toolRegistry) return createHarnessMcpServer(options);
+  const registry = new ToolRegistry({
+    allowedTools: options.allowedTools,
+    enforcePolicy: Boolean(options.autonomy),
+  });
+  const log = options.log ?? ((message: string) => process.stderr.write(`${message}\n`));
+
+  try {
+    const { loadGlobalConfig } = await import('../config/loader.js');
+    const { config } = await loadGlobalConfig();
+    await registry.registerConfiguredMcpTools({
+      mcp: config.mcp,
+      plugins: config.plugins,
+      log,
+    });
+  } catch (error) {
+    log(`[mcp] unable to load configured MCP/plugin tools: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
+  return createHarnessMcpServer({ ...options, toolRegistry: registry });
+}
+
 export async function runHarnessMcpServer(options = optionsFromEnv()): Promise<void> {
   if (options.workingDirectory) {
     process.chdir(options.workingDirectory);
   }
 
-  const server = createHarnessMcpServer(options);
+  const server = await createConfiguredHarnessMcpServer(options);
   let buffer = '';
   let draining = false;
   process.stdin.setEncoding('utf8');

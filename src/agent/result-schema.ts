@@ -145,15 +145,61 @@ function normalizeFindings(findings: unknown): Finding[] {
   return findings.flatMap((finding): Finding[] => {
     if (typeof finding !== 'object' || finding === null) return [];
     const candidate = finding as Record<string, unknown>;
-    if (typeof candidate.claim !== 'string' || typeof candidate.support !== 'string') return [];
+    if (typeof candidate.claim !== 'string') return [];
+    const rawSupport = normalizeSupport(candidate.support);
     const confidence = typeof candidate.confidence === 'string' && VALID_CONFIDENCE.has(candidate.confidence as Finding['confidence'])
       ? candidate.confidence as Finding['confidence']
       : 'medium';
+    const inferredKind = inferFindingKind(candidate.claim, rawSupport ?? '');
     const kind = typeof candidate.kind === 'string' && VALID_FINDING_KIND.has(candidate.kind as FindingKind)
       ? candidate.kind as FindingKind
-      : inferFindingKind(candidate.claim, candidate.support);
-    return [{ claim: candidate.claim, support: candidate.support, confidence, kind }];
+      : inferredKind;
+    if ((rawSupport === null || rawSupport.length === 0) && !allowsEmptySupport(kind)) return [];
+    return [{ claim: candidate.claim, support: rawSupport ?? '', confidence, kind }];
   });
+}
+
+function normalizeSupport(support: unknown): string | null {
+  if (typeof support === 'string') return support;
+  if (!Array.isArray(support)) return null;
+
+  const parts = support.flatMap((entry): string[] => {
+    if (typeof entry === 'string') return [entry];
+    if (typeof entry !== 'object' || entry === null) return [];
+    const record = entry as Record<string, unknown>;
+    const sourceId = firstString(record.sourceId, record.source_id, record.evidenceId, record.evidence_id);
+    const chunkIndex = firstScalar(record.chunkIndex, record.chunk_index, record.chunk);
+    const supportText = firstString(record.supports, record.support, record.text, record.quote, record.proposition);
+    const locator = [
+      sourceId,
+      chunkIndex !== undefined ? `chunk ${String(chunkIndex)}` : undefined,
+    ].filter(Boolean).join(' ');
+    if (locator && supportText) return [`${locator}: ${supportText}`];
+    if (locator) return [locator];
+    if (supportText) return [supportText];
+    return [];
+  });
+
+  return parts.join('; ');
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return undefined;
+}
+
+function firstScalar(...values: unknown[]): string | number | undefined {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function allowsEmptySupport(kind: FindingKind): boolean {
+  return kind === 'gap' || kind === 'not_applicable' || kind === 'unsupported_inference';
 }
 
 function inferFindingKind(claim: string, support: string): FindingKind {

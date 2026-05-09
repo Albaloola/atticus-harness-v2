@@ -47,6 +47,53 @@ describe('deep read tools', () => {
     expect(second.data?.content).toBe('abcdefghij');
   });
 
+  it('reads the whole file by default instead of capping at the old small window', async () => {
+    const filePath = join(tmpDir, 'whole-document.txt');
+    const content = Array.from({ length: 6000 }, (_, index) => `line ${index + 1}: full document text`).join('\n');
+    writeFileSync(filePath, content, 'utf-8');
+
+    const tool = new ReadFileTool();
+    const result = await tool.call({ path: filePath }, makeContext());
+
+    expect(result.success).toBe(true);
+    expect(result.data?.content).toBe(content);
+    expect(result.data?.readMode).toBe('full');
+    expect(result.data?.totalLines).toBe(6000);
+    expect(result.output).toContain('line 6000: full document text');
+  });
+
+  it('lets agents jump to exact line ranges for focused rereads', async () => {
+    const filePath = join(tmpDir, 'line-ranges.txt');
+    writeFileSync(filePath, ['alpha', 'bravo', 'charlie', 'delta', 'echo'].join('\n'), 'utf-8');
+
+    const tool = new ReadFileTool();
+    const result = await tool.call({ file_path: filePath, offset: 3, limit: 2 }, makeContext());
+
+    expect(result.success).toBe(true);
+    expect(result.data?.content).toBe('charlie\ndelta');
+    expect(result.data?.readMode).toBe('line_range');
+    expect(result.data?.startLine).toBe(3);
+    expect(result.data?.nextStartLine).toBe(5);
+    expect(result.output).toContain('3\tcharlie');
+    expect(result.output).toContain('4\tdelta');
+  });
+
+  it('returns coordinates instead of content when a requested read exceeds the token budget', async () => {
+    const filePath = join(tmpDir, 'too-large.txt');
+    writeFileSync(filePath, Array.from({ length: 100 }, (_, index) => `line ${index + 1} ${'word '.repeat(20)}`).join('\n'), 'utf-8');
+
+    const tool = new ReadFileTool();
+    const result = await tool.call({ path: filePath, maxTokens: 20 }, makeContext());
+
+    expect(result.success).toBe(true);
+    expect(result.data?.type).toBe('too_large');
+    expect(result.data?.content).toBe('');
+    expect(result.data?.suggestedLineLimit).toBeGreaterThan(0);
+    expect(result.output).toContain('did not return document content');
+    expect(result.output).toContain('startLine');
+    expect(result.output).toContain('limit');
+  });
+
   it('keeps filesystem tools inside the current workspace', async () => {
     const readTool = new ReadFileTool();
     const writeTool = new WriteFileTool();
@@ -197,6 +244,82 @@ describe('deep read tools', () => {
 
     closeDb(matterName);
     await deleteMatter(matterName);
+  });
+
+  it('reads all remaining evidence chunks by default when they fit the token budget', async () => {
+    const matterName = 'deep-read-all-chunks';
+    await initMatter(matterName);
+    const db = getDb(matterName);
+    insertEvidence(db, {
+      id: 'DEE-SRC-ALL',
+      matterName,
+      originalPath: '/tmp/source.txt',
+      internalPath: '/tmp/internal.txt',
+      sha256: 'all-sha',
+      mimeType: 'text/plain',
+      format: 'text',
+      status: 'indexed',
+      ingested: new Date().toISOString(),
+      sizeBytes: 20,
+      metadata: {},
+    });
+    insertChunks(db, [
+      { evidenceId: 'DEE-SRC-ALL', chunkIndex: 0, content: 'first chunk', contentHash: 'h0', confidence: 0.9 },
+      { evidenceId: 'DEE-SRC-ALL', chunkIndex: 1, content: 'second chunk', contentHash: 'h1', confidence: 0.8 },
+      { evidenceId: 'DEE-SRC-ALL', chunkIndex: 2, content: 'third chunk', contentHash: 'h2', confidence: 0.7 },
+    ]);
+
+    try {
+      const tool = new EvidenceChunkReadTool();
+      const result = await tool.call({ evidenceId: 'DEE-SRC-ALL', chunkIndex: 0 }, makeContext(matterName));
+
+      expect(result.success).toBe(true);
+      expect(result.data?.chunks).toHaveLength(3);
+      expect(result.data?.nextChunkIndex).toBeUndefined();
+      expect(result.data?.endReached).toBe(true);
+      expect(result.output).toContain('DEE-SRC-ALL chunk 2');
+    } finally {
+      closeDb(matterName);
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('returns exact chunk-range guidance when all remaining chunks exceed maxTokens', async () => {
+    const matterName = 'deep-read-large-chunks';
+    await initMatter(matterName);
+    const db = getDb(matterName);
+    insertEvidence(db, {
+      id: 'DEE-SRC-LARGE',
+      matterName,
+      originalPath: '/tmp/source.txt',
+      internalPath: '/tmp/internal.txt',
+      sha256: 'large-sha',
+      mimeType: 'text/plain',
+      format: 'text',
+      status: 'indexed',
+      ingested: new Date().toISOString(),
+      sizeBytes: 20,
+      metadata: {},
+    });
+    insertChunks(db, [
+      { evidenceId: 'DEE-SRC-LARGE', chunkIndex: 0, content: 'word '.repeat(100), contentHash: 'h0', confidence: 0.9 },
+      { evidenceId: 'DEE-SRC-LARGE', chunkIndex: 1, content: 'word '.repeat(100), contentHash: 'h1', confidence: 0.8 },
+    ]);
+
+    try {
+      const tool = new EvidenceChunkReadTool();
+      const result = await tool.call({ evidenceId: 'DEE-SRC-LARGE', chunkIndex: 0, maxTokens: 20 }, makeContext(matterName));
+
+      expect(result.success).toBe(true);
+      expect(result.data?.tooLarge).toBe(true);
+      expect(result.data?.chunks).toHaveLength(0);
+      expect(result.data?.suggestedChunkCount).toBeGreaterThan(0);
+      expect(result.output).toContain('did not return chunk content');
+      expect(result.output).toContain('"count":');
+    } finally {
+      closeDb(matterName);
+      await deleteMatter(matterName);
+    }
   });
 
   it('returns chunk bounds when a worker reads past the indexed range', async () => {

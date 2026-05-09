@@ -26,6 +26,33 @@ class EchoTool implements Tool {
 }
 
 describe('Harness MCP server', () => {
+  it('exposes the full default Harness tool catalog over MCP', async () => {
+    const server = createHarnessMcpServer({
+      log: () => undefined,
+    });
+
+    const list = await server.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    const tools = (list?.result as { tools: Array<{ name: string }> }).tools;
+    const names = new Set(tools.map((tool) => tool.name));
+
+    for (const name of [
+      'read_file',
+      'write_file',
+      'edit_file',
+      'glob',
+      'grep',
+      'bash',
+      'todo_write',
+      'tool_search',
+      'sleep',
+      'notebook_edit',
+      'web_search',
+      'web_fetch',
+    ]) {
+      expect(names.has(name)).toBe(true);
+    }
+  });
+
   it('lists Harness tools and executes calls through the registry', async () => {
     const registry = new ToolRegistry({ registerDefaults: false });
     registry.register(new EchoTool());

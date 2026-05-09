@@ -37,6 +37,7 @@ program
 program.command('status <matter-name>')
   .description('Show matter state and next action')
   .option('--json', 'JSON output mode')
+  .option('--recover-runtime', 'Recover stale runs/tasks before reporting status')
   .action(async (matterName, options) => {
     const { default: handler } = await import('./commands/status.js');
     await handler(matterName, options);
@@ -462,6 +463,31 @@ program.command('skill')
       .action(async (name) => {
         const { default: handler } = await import('./commands/skill-use.js');
         await handler(name);
+      })
+  );
+
+program.command('plugin')
+  .description('Manage Harness plugins')
+  .addCommand(
+    new Command('list')
+      .description('List discovered plugins')
+      .option('--json', 'JSON output mode')
+      .action(async (options) => {
+        const { handlePluginList } = await import('./commands/plugin.js');
+        await handlePluginList(options);
+      })
+  );
+
+program.command('mcp')
+  .description('Manage configured MCP servers')
+  .addCommand(
+    new Command('list')
+      .description('List configured MCP servers')
+      .option('--tools', 'Connect and list exposed MCP tools')
+      .option('--json', 'JSON output mode')
+      .action(async (options) => {
+        const { handleMcpList } = await import('./commands/plugin.js');
+        await handleMcpList(options);
       })
   );
 

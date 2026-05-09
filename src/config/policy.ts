@@ -10,12 +10,20 @@ import type {
 const TOOL_TO_CATEGORY: Record<string, ToolCategory> = {
   read_file: 'read_only',
   search_files: 'read_only',
+  glob: 'read_only',
+  grep: 'read_only',
+  tool_search: 'read_only',
+  sleep: 'read_only',
   exec_sqlite: 'read_only',
   evidence_search: 'read_only',
   evidence_chunk_read: 'read_only',
   matter_inventory: 'read_only',
   llm_call: 'agent_spawn',
+  bash: 'external_action',
   write_file: 'matter_write',
+  edit_file: 'matter_write',
+  notebook_edit: 'matter_write',
+  todo_write: 'matter_write',
   draft: 'read_only',
   verify_citations: 'read_only',
   quality_gate: 'read_only',
@@ -26,6 +34,7 @@ const TOOL_TO_CATEGORY: Record<string, ToolCategory> = {
 };
 
 export function classifyToolCategory(toolName: string): ToolCategory {
+  if (toolName.startsWith('mcp__')) return 'network';
   return TOOL_TO_CATEGORY[toolName] ?? 'matter_write';
 }
 
@@ -55,6 +64,7 @@ export function evaluateAutonomyPolicy(
   _context?: { matterName?: string }
 ): ApprovalDecision {
   const category = classifyToolCategory(toolName);
+  const isShellTool = toolName === 'bash';
 
   if (autonomy.mode === 'full_local_autonomy') {
     return 'allow';
@@ -65,6 +75,7 @@ export function evaluateAutonomyPolicy(
     if (category === 'network') return autonomy.autoApproveWeb ? 'allow_with_audit' : 'ask';
     if (category === 'matter_write' && autonomy.autoApproveFileWrites) return 'allow';
     if (category === 'matter_write') return 'allow_with_audit';
+    if (category === 'external_action' && isShellTool && autonomy.autoApproveShell) return 'allow_with_audit';
     if (category === 'external_action') return 'ask';
     if (category === 'agent_spawn') return 'allow_with_audit';
     if (category === 'config_change') return 'ask';
@@ -76,6 +87,7 @@ export function evaluateAutonomyPolicy(
     if (category === 'network') return autonomy.autoApproveWeb ? 'allow_with_audit' : 'ask';
     if (category === 'matter_write' && autonomy.autoApproveFileWrites) return 'allow';
     if (category === 'matter_write') return 'allow_with_audit';
+    if (category === 'external_action' && isShellTool && autonomy.autoApproveShell) return 'allow_with_audit';
     if (category === 'external_action') return autonomy.allowExternalDispatch ? 'ask' : 'deny';
     if (category === 'agent_spawn') return 'allow_with_audit';
     if (category === 'config_change') return 'ask';
@@ -95,6 +107,8 @@ export function evaluateAutonomyPolicy(
     case 'network':
       return autonomy.autoApproveWeb ? 'allow_with_audit' : 'ask';
     case 'external_action':
+      if (isShellTool && autonomy.autoApproveShell) return 'allow_with_audit';
+      if (isShellTool) return 'ask';
       return autonomy.externalActionMode === 'operator_required_to_send'
         ? 'ask'
         : autonomy.externalActionMode === 'prepare_only' || autonomy.externalActionMode === 'prepare_bundle_only'

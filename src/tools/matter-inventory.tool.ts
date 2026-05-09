@@ -226,7 +226,7 @@ function buildInventory(matterName: string, db: ReturnType<typeof getDb>): Evide
         productionRank,
         recommendedForProduction,
         productionReason: productionReason(documentRole, sourceVariant, recommendedForProduction),
-        readHint: `evidence_chunk_read({"evidenceId":"${evidenceId}","chunkIndex":0,"count":3})`,
+        readHint: `evidence_chunk_read({"evidenceId":"${evidenceId}","chunkIndex":0})`,
       };
     })
     .sort((a, b) => a.evidenceId.localeCompare(b.evidenceId));

@@ -275,6 +275,8 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
     autonomy,
     toolPolicy,
     search: globalConfig.search,
+    mcp: globalConfig.mcp,
+    plugins: globalConfig.plugins,
     fromDisk,
     matterName,
   };
@@ -315,6 +317,8 @@ function redactConfig(config: ResolvedHarnessConfig): Record<string, unknown> {
     autonomy: config.autonomy,
     toolPolicy: config.toolPolicy,
     search: config.search,
+    mcp: config.mcp,
+    plugins: config.plugins,
     fromDisk: config.fromDisk,
     matterName: config.matterName,
   };

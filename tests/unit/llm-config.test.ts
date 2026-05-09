@@ -114,9 +114,9 @@ describe('OpenRouterClient config resolution', () => {
     });
 
     expect(client).toBeInstanceOf(CodexSdkClient);
-    expect(client.capabilities?.tools).toBe(false);
+    expect(client.capabilities?.tools).toBe(true);
     expect(client.capabilities?.agentMode).toBe(true);
-    expect(client.capabilities?.nativeMcpTools).toBe(true);
+    expect(client.capabilities?.nativeMcpTools).toBe(false);
   });
 
   it('constructs an AnthropicClient for anthropic provider configs', () => {

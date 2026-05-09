@@ -16,6 +16,8 @@ export interface ProviderConfig {
   delegatedAuthProvider?: import('../config/schema.js').DelegatedAuthProvider;
   reasoningControl?: import('../config/schema.js').ReasoningControl;
   agentCapable?: boolean;
+  codexToolStrategy?: import('../config/schema.js').CodexToolStrategy;
+  codexDangerouslyBypassApprovalsAndSandbox?: boolean;
   providerPolicy?: import('../config/schema.js').ProviderPolicy;
   providers?: import('../config/schema.js').ProvidersConfig;
 }
@@ -47,6 +49,8 @@ export async function loadConfigFromStore(): Promise<ProviderConfig> {
       providerName: resolved.providerName,
       reasoningControl: resolved.provider.reasoningControl ?? resolved.profile.reasoningControl,
       agentCapable: resolved.provider.agentCapable ?? resolved.profile.agentCapable,
+      codexToolStrategy: resolved.provider.codexToolStrategy ?? resolved.profile.codexToolStrategy,
+      codexDangerouslyBypassApprovalsAndSandbox: resolved.provider.codexDangerouslyBypassApprovalsAndSandbox,
       providerPolicy: resolved.providerPolicy,
       providers: { [resolved.providerName]: resolved.provider },
     };

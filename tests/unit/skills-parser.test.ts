@@ -27,6 +27,14 @@ allowed-tools:
   - Read
   - Grep
   - Search
+when_to_use: Use when citations need checking.
+argument-hint: "[candidate-id]"
+arguments:
+  - candidate_id
+user-invocable: false
+disable-model-invocation: true
+context: fork
+model: inherit
 ---
 
 ## Role
@@ -65,6 +73,13 @@ describe('parseSkillContent', () => {
     expect(skill.manifest.stage).toBe('S6');
     expect(skill.manifest.taskTypes).toEqual(['verify_citations', 'hostile_review']);
     expect(skill.manifest.allowedTools).toEqual(['Read', 'Grep', 'Search']);
+    expect(skill.manifest.whenToUse).toBe('Use when citations need checking.');
+    expect(skill.manifest.argumentHint).toBe('[candidate-id]');
+    expect(skill.manifest.arguments).toEqual(['candidate_id']);
+    expect(skill.manifest.userInvocable).toBe(false);
+    expect(skill.manifest.disableModelInvocation).toBe(true);
+    expect(skill.manifest.context).toBe('fork');
+    expect(skill.manifest.model).toBe('inherit');
   });
 
   it('parses refined Atticus metadata fields', () => {

@@ -13,14 +13,23 @@ export class AgentLoop {
   }
 
   async run(matterName: string, initialPrompt?: string): Promise<AgentResult> {
-    const { ToolRegistry } = await import('../tools/index.js');
-    const toolRegistry = new ToolRegistry({
-      registerDefaults: this.config.toolMode !== 'disabled',
-    });
     const resolvedConfig = await resolveConfig({
       matterName,
       providerName: this.config.providerName,
     });
+    const { ToolRegistry } = await import('../tools/index.js');
+    const toolRegistry = new ToolRegistry({
+      registerDefaults: this.config.toolMode !== 'disabled',
+    });
+    if (this.config.toolMode !== 'disabled') {
+      await toolRegistry.registerConfiguredMcpTools({
+        mcp: resolvedConfig.mcp,
+        plugins: resolvedConfig.plugins,
+        log: (message) => {
+          if (this.config.verbose) console.warn(message);
+        },
+      });
+    }
     const client = createLLMClient(resolvedConfig);
 
     let matterIndex;

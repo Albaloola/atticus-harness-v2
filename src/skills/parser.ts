@@ -48,7 +48,7 @@ export function parseSkillContent(content: string, sourcePath: string): SkillDef
       description: String(parsed.description || ''),
       stage: parsed.stage ? String(parsed.stage) : undefined,
       taskTypes: Array.isArray(parsed.task_types) ? parsed.task_types.map(String) : undefined,
-      allowedTools: Array.isArray(parsed['allowed-tools']) ? parsed['allowed-tools'].map(String) : undefined,
+      allowedTools: normalizeStringList(parsed['allowed-tools']),
       tags: normalizeTags(parsed.tags),
       atticusRefined: typeof parsed.atticus_refined === 'boolean' ? parsed.atticus_refined : undefined,
       jurisdictionFocus: parsed.jurisdiction_focus ? String(parsed.jurisdiction_focus) : undefined,
@@ -57,6 +57,13 @@ export function parseSkillContent(content: string, sourcePath: string): SkillDef
           ? parsed.requires_live_source_verification
           : undefined,
       externalActionMode: parsed.external_action_mode ? String(parsed.external_action_mode) : undefined,
+      whenToUse: parsed.when_to_use ? String(parsed.when_to_use) : undefined,
+      argumentHint: parsed['argument-hint'] ? String(parsed['argument-hint']) : undefined,
+      arguments: normalizeStringList(parsed.arguments),
+      userInvocable: normalizeBoolean(parsed['user-invocable']),
+      disableModelInvocation: normalizeBoolean(parsed['disable-model-invocation']),
+      context: normalizeContext(parsed.context),
+      model: parsed.model ? String(parsed.model) : undefined,
     };
   } catch (err) {
     throw new SkillParseError(
@@ -87,6 +94,32 @@ function normalizeTags(value: unknown): string[] | undefined {
     const tags = value.split(',').map((tag) => tag.trim()).filter(Boolean);
     return tags.length > 0 ? tags : undefined;
   }
+  return undefined;
+}
+
+function normalizeStringList(value: unknown): string[] | undefined {
+  if (Array.isArray(value)) {
+    const items = value.map(String).map((item) => item.trim()).filter(Boolean);
+    return items.length > 0 ? items : undefined;
+  }
+  if (typeof value === 'string') {
+    const items = value.split(/[\s,]+/).map((item) => item.trim()).filter(Boolean);
+    return items.length > 0 ? items : undefined;
+  }
+  return undefined;
+}
+
+function normalizeBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'true') return true;
+  if (normalized === 'false') return false;
+  return undefined;
+}
+
+function normalizeContext(value: unknown): 'inline' | 'fork' | undefined {
+  if (value === 'inline' || value === 'fork') return value;
   return undefined;
 }
 

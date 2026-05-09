@@ -10,7 +10,7 @@ import type { ToolRegistry } from '../tools/index.js';
 import { appendEvent } from '../state/events.js';
 import type { AutonomyPolicy } from '../config/schema.js';
 
-const MAX_TOOL_OUTPUT_CHARS = 5000;
+const DEFAULT_MAX_TOOL_OUTPUT_CHARS = 8_000_000;
 const DEFAULT_MAX_HISTORY_CHARS = 60000;
 
 export interface QueryLoopConfig {
@@ -31,6 +31,7 @@ export interface QueryLoopConfig {
   verbose?: boolean;
   autonomy?: AutonomyPolicy;
   maxHistoryChars?: number;
+  maxToolOutputChars?: number;
 }
 
 export interface QueryLoopResult {
@@ -62,7 +63,8 @@ export class QueryLoop {
 
     const maxTurns = this.config.maxTurns || 25;
 
-    for (let turnCount = 1; turnCount <= maxTurns; turnCount++) {
+    try {
+      for (let turnCount = 1; turnCount <= maxTurns; turnCount++) {
       if (this.config.verbose && !this.config.quietMode) {
         console.log(`\n[Turn ${turnCount}/${maxTurns}]`);
       }
@@ -189,7 +191,7 @@ export class QueryLoop {
 
         this.history.push({
           role: 'tool',
-          content: truncateText(resultContent, MAX_TOOL_OUTPUT_CHARS),
+          content: truncateText(resultContent, this.maxToolOutputChars()),
           toolCallId: toolCall.id,
           toolName: toolCall.name,
         });
@@ -209,15 +211,18 @@ export class QueryLoop {
       await this.emitTurnEvent(turnCount, response.content);
     }
 
-    const transcriptPath = await this.saveTranscript();
+      const transcriptPath = await this.saveTranscript();
 
-    return {
-      turns: this.turns,
-      history: this.history,
-      finalContent: '',
-      status: 'max_turns',
-      transcriptPath,
-    };
+      return {
+        turns: this.turns,
+        history: this.history,
+        finalContent: '',
+        status: 'max_turns',
+        transcriptPath,
+      };
+    } finally {
+      await this.toolRegistry.close();
+    }
   }
 
   private async emitTurnEvent(turnNumber: number, content: string): Promise<void> {
@@ -290,6 +295,12 @@ export class QueryLoop {
       },
       ...recent,
     ];
+  }
+
+  private maxToolOutputChars(): number {
+    const configured = this.config.maxToolOutputChars ?? Number(process.env.ATTICUS_MAX_TOOL_OUTPUT_CHARS);
+    if (!Number.isFinite(configured) || configured <= 0) return DEFAULT_MAX_TOOL_OUTPUT_CHARS;
+    return Math.trunc(configured);
   }
 }
 

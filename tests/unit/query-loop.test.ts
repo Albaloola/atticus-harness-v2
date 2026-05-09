@@ -226,6 +226,30 @@ describe('QueryLoop', () => {
       expect(toolMessage).toBeDefined();
       expect(toolMessage!.content).toContain('found results');
     });
+
+    it('does not clip ordinary large read outputs before the model can inspect them', async () => {
+      const largeOutput = `START\n${'x'.repeat(6500)}\nTAIL-MARKER`;
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(new FakeTool('large_read_tool', makeSuccessToolResult(largeOutput)));
+      const fakeClient = new FakeLLMClient([
+        makeToolCallResponse('large_read_tool'),
+        makeResponse({ content: 'Summary' }),
+      ]);
+
+      const loop = new QueryLoop(
+        { systemPrompt: 'Use tools.', tools: toolRegistry, quietMode: true },
+        fakeClient as unknown as FakeLLMClient & typeof fakeClient,
+      );
+
+      const result = await loop.run('Read the file');
+      const secondRequest = fakeClient.requests[1];
+      expect(secondRequest).toBeDefined();
+      const toolMessage = secondRequest!.messages.find((message) => message.role === 'tool');
+
+      expect(result.status).toBe('completed');
+      expect(toolMessage?.content).toContain('TAIL-MARKER');
+      expect(toolMessage?.content).not.toContain('... [truncated]');
+    });
   });
 
   describe('maxTurns', () => {

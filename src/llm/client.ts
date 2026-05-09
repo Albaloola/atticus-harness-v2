@@ -477,6 +477,8 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
       matterName: isResolvedConfig ? config.matterName : undefined,
       autonomy: isResolvedConfig ? config.autonomy : undefined,
       agentMode: providerMetadata.agentCapable ?? true,
+      codexToolStrategy: providerMetadata.codexToolStrategy ?? 'harness',
+      dangerouslyBypassApprovalsAndSandbox: providerMetadata.codexDangerouslyBypassApprovalsAndSandbox ?? false,
     });
   }
 

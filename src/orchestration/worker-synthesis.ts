@@ -159,7 +159,10 @@ export function applyWorkerQualityGate(
 function looksLikeWeakCompletion(summary: string): boolean {
   return [
     /\bprocess chatter\b/i,
+    /\btranscript (?:excerpt )?contains only (?:task instructions|process instructions|workflow constraints|process guidance)\b/i,
     /\btask\b.*\b(?:not addressed|not advanced|not executed)\b/i,
+    /\b(?:does not include|does not contain|provides no|contains no|includes no)\b.{0,120}\b(?:substantive|matter inventory|evidence IDs?|source IDs?|worker findings?|evidence content|event facts?|dates|amounts)\b/i,
+    /\bno (?:actual )?(?:evidence content|evidence IDs?|source IDs?|dates|amounts|matter inventory output|worker findings?|substantive event facts?)\b/i,
     /\bno substantive (?:analysis|findings|conclusions)\b/i,
     /\bdoes not contain any (?:actual|final|substantive)\b/i,
     /\bno findings can be extracted\b/i,

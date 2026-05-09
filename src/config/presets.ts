@@ -44,6 +44,7 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     baseUrl: 'codex://local',
     reasoningControl: 'codex-sdk',
     agentCapable: true,
+    codexToolStrategy: 'harness',
     models: {
       fast: 'gpt-5.5',
       reasoning: 'gpt-5.5',
@@ -288,6 +289,8 @@ function normalizeDiskProfile(name: string, diskProfile: ProviderProfile): Provi
     anthropicFormat: diskProfile.anthropicFormat ?? preset.anthropicFormat,
     reasoningControl: diskProfile.reasoningControl ?? preset.reasoningControl,
     agentCapable: diskProfile.agentCapable ?? preset.agentCapable,
+    codexToolStrategy: diskProfile.codexToolStrategy ?? preset.codexToolStrategy,
+    codexDangerouslyBypassApprovalsAndSandbox: diskProfile.codexDangerouslyBypassApprovalsAndSandbox ?? preset.codexDangerouslyBypassApprovalsAndSandbox,
     models: { ...preset.models, ...(diskProfile.models ?? {}) },
     fallbackModel: diskProfile.fallbackModel ?? preset.fallbackModel,
     isCustom: true,
@@ -311,6 +314,8 @@ export function profileToProviderConfig(profile: ProviderProfile, apiKey?: strin
     anthropicFormat: profile.anthropicFormat,
     reasoningControl: profile.reasoningControl,
     agentCapable: profile.agentCapable,
+    codexToolStrategy: profile.codexToolStrategy,
+    codexDangerouslyBypassApprovalsAndSandbox: profile.codexDangerouslyBypassApprovalsAndSandbox,
   };
 }
 

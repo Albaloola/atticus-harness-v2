@@ -27,6 +27,8 @@ export async function handleConfigShow(
         ? 'configured'
         : 'not set',
     });
+    printSection('MCP', output.mcp as unknown as JsonObject);
+    printSection('Plugins', output.plugins as unknown as JsonObject);
     printSection('Autonomy', output.autonomy as unknown as JsonObject);
     printSection('Tool Policy', output.toolPolicy as unknown as JsonObject);
     console.log(`  fromDisk:   ${output.fromDisk}`);

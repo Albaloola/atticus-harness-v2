@@ -275,7 +275,9 @@ function printProviderProfile(
 function toolSupportForProfile(profile: ProviderProfile): string {
   switch (profile.providerKind ?? 'openai-compatible') {
     case 'codex-sdk':
-      return 'agent (native MCP tools)';
+      return profile.codexToolStrategy === 'mcp'
+        ? 'agent (native MCP tools)'
+        : 'Harness-owned tools via Codex';
     case 'local':
       return 'tool-capable when the local server supports tool calls';
     case 'anthropic':

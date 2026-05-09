@@ -3,6 +3,8 @@
 // ---------------------------------------------------------------------------
 
 import type { ReasoningEffort } from '../types/llm.js';
+import type { McpConfig } from '../mcp/types.js';
+import type { PluginsConfig } from '../plugins/types.js';
 
 export type AutonomyMode =
   | 'operator_safe'
@@ -36,6 +38,7 @@ export type ProviderAuthType = 'api-key' | 'oauth' | 'none' | 'delegated';
 /** `codex` is retained only to reject stale on-disk OAuth configs. */
 export type OAuthProvider = 'codex' | 'claude-code';
 export type DelegatedAuthProvider = 'codex-cli';
+export type CodexToolStrategy = 'harness' | 'mcp';
 export type ReasoningControl =
   | 'none'
   | 'model-routing'
@@ -148,6 +151,10 @@ export interface ProviderConfig {
   reasoningControl?: ReasoningControl;
   /** Whether this provider can run a native agent loop instead of Harness-owned tool calls. */
   agentCapable?: boolean;
+  /** Tool execution strategy for the delegated Codex SDK transport. */
+  codexToolStrategy?: CodexToolStrategy;
+  /** Codex CLI exec workaround: required for native MCP tool calls while the CLI approval bug is present. */
+  codexDangerouslyBypassApprovalsAndSandbox?: boolean;
 }
 
 export interface ProvidersConfig {
@@ -182,6 +189,10 @@ export interface ProviderProfile {
   reasoningControl?: ReasoningControl;
   /** Whether this provider can run a native agent loop instead of Harness-owned tool calls. */
   agentCapable?: boolean;
+  /** Tool execution strategy for the delegated Codex SDK transport. */
+  codexToolStrategy?: CodexToolStrategy;
+  /** Codex CLI exec workaround: required for native MCP tool calls while the CLI approval bug is present. */
+  codexDangerouslyBypassApprovalsAndSandbox?: boolean;
   /** Model delegation per task role */
   models: ModelDelegation;
   /** Fallback model (optional) */
@@ -220,6 +231,10 @@ export interface GlobalHarnessConfig {
   /** Legacy flat provider config (for backward compat) */
   providers: ProvidersConfig;
   search: SearchConfig;
+  /** Direct Model Context Protocol servers exposed as Harness tools. */
+  mcp: McpConfig;
+  /** Codex/Claude-style plugin discovery and component loading. */
+  plugins: PluginsConfig;
   providerPolicy: ProviderPolicy;
   autonomy: AutonomyPolicy;
   toolPolicy: ToolPolicy;
@@ -248,6 +263,10 @@ export interface ResolvedHarnessConfig {
   toolPolicy: ToolPolicy;
   /** External legal web search configuration */
   search: SearchConfig;
+  /** Direct Model Context Protocol server configuration. */
+  mcp: McpConfig;
+  /** Plugin discovery and loading configuration. */
+  plugins: PluginsConfig;
   /** Whether config was loaded from disk vs defaults only */
   fromDisk: boolean;
   /** Matter name, if one was specified */
@@ -334,6 +353,18 @@ export const DEFAULTS: GlobalHarnessConfig = {
     endpoint: 'https://api.tavily.com/search',
     keyName: 'TAVILY_API_KEY',
     defaultMaxResults: 10,
+  },
+  mcp: {
+    enabled: true,
+    servers: {},
+    defaultTimeoutMs: 60_000,
+  },
+  plugins: {
+    enabled: true,
+    loadSkills: true,
+    loadMcpServers: true,
+    includeCodexCache: true,
+    directories: [],
   },
   providerPolicy: {
     defaultProvider: 'openrouter',

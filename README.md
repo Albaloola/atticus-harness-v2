@@ -169,6 +169,19 @@ tools exposed through an internal MCP server:
 `harness run <matter> --provider codex-sdk`. Use `--no-tools` only when you want
 a deliberately tool-free Codex run.
 
+Harness can also act as an MCP client. Configure stdio, Streamable HTTP, or SSE
+servers under `mcp.servers`; remote tools are registered as
+`mcp__<server>__<tool>` and remain governed by the normal tool policy. Codex and
+Claude-style plugins are discovered from configured plugin directories, project
+plugin folders, and the Codex plugin cache; plugin skills are namespaced as
+`<plugin>:<skill>`, and plugin MCP servers are exposed through the same MCP tool
+bridge. Inspect the loaded plugin and MCP surface with:
+
+```bash
+harness plugin list
+harness mcp list --tools
+```
+
 Hermes (Atticus) operators must follow the read-only/briefing runbook in
 [`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
 
@@ -397,6 +410,7 @@ npm run dev          # Watch mode
 - ✅ Reducer packets and canonical writer boundary for accepted artifacts
 - ✅ Task and scheduler leases with fencing tokens, heartbeat/expiry tracking, and blocked reasons
 - ✅ Fail-closed provider policy with explicit allow/deny model routing and no silent fallback
+- ✅ MCP client tools and Codex/Claude-style plugin discovery
 - ✅ State migration registry and read-only control-panel/monitor snapshots
 
 ## What it doesn't do
@@ -404,4 +418,4 @@ npm run dev          # Watch mode
 - No web UI — operator supervision remains CLI-first through status, watch, control-panel, and monitor commands
 - No external legal dispatch — all outputs are prepare-only
 - No cloud bridge, no remote sessions
-- No MCP or plugin marketplace
+- No plugin marketplace install UI

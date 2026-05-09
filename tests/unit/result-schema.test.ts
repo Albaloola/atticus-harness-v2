@@ -69,6 +69,53 @@ describe('parseStructuredResult', () => {
     expect(result?.findings[1]).toMatchObject({ kind: 'party_argument' });
   });
 
+  it('normalizes source-object support emitted by native Codex workers', () => {
+    const result = parseStructuredResult(JSON.stringify({
+      status: 'completed',
+      summary: 'Checked matter inventory and evidence chunks.',
+      findings: [
+        {
+          claim: 'The tenancy identifies Anfal as tenant and Edinburgh Napier as landlord.',
+          support: [
+            {
+              sourceId: 'ANF-SRC-0050',
+              chunkIndex: 0,
+              supports: 'Tenancy identifies the landlord and tenant.',
+            },
+            {
+              sourceId: 'ANF-SRC-0057',
+              chunkIndex: 1,
+              supports: 'Notice to Quit states the arrears amount.',
+            },
+          ],
+          confidence: 'high',
+          kind: 'evidence_fact',
+        },
+        {
+          claim: 'No filed court proceeding was identified for this bounded intake task.',
+          support: [],
+          confidence: 'medium',
+          kind: 'not_applicable',
+        },
+      ],
+      risks: [],
+      proposedTasks: [],
+      artifactIds: [],
+      nextActions: [],
+    }));
+
+    expect(result?.findings).toHaveLength(2);
+    expect(result?.findings[0]).toMatchObject({
+      support: 'ANF-SRC-0050 chunk 0: Tenancy identifies the landlord and tenant.; ANF-SRC-0057 chunk 1: Notice to Quit states the arrears amount.',
+      confidence: 'high',
+      kind: 'evidence_fact',
+    });
+    expect(result?.findings[1]).toMatchObject({
+      support: '',
+      kind: 'not_applicable',
+    });
+  });
+
   it('rejects unknown statuses', () => {
     const result = parseStructuredResult(JSON.stringify({
       status: 'almost_done',

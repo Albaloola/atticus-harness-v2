@@ -2,6 +2,14 @@ import type { Tool, ToolResult, ToolDefinition, ToolUseContext } from '../types/
 import { ReadFileTool } from './read-file.tool.js';
 import { WriteFileTool } from './write-file.tool.js';
 import { SearchFilesTool } from './search-files.tool.js';
+import { EditFileTool } from './edit-file.tool.js';
+import { GlobTool } from './glob.tool.js';
+import { GrepTool } from './grep.tool.js';
+import { BashTool } from './bash.tool.js';
+import { TodoWriteTool } from './todo-write.tool.js';
+import { SleepTool } from './sleep.tool.js';
+import { NotebookEditTool } from './notebook-edit.tool.js';
+import { ToolSearchTool } from './tool-search.tool.js';
 import { ExecSqliteTool } from './exec-sqlite.tool.js';
 import { LlmCallTool } from './llm-call.tool.js';
 import { EvidenceSearchTool } from './evidence-search.tool.js';
@@ -15,6 +23,10 @@ import { QualityGateTool } from './quality-gate.tool.js';
 import { WebSearchTool } from '../research/web-search.tool.js';
 import { WebFetchTool } from '../research/web-fetch.tool.js';
 import type { AutonomyPolicy } from '../config/schema.js';
+import { McpToolManager } from '../mcp/client.js';
+import type { McpConfig } from '../mcp/types.js';
+import { buildPluginMcpConfig } from '../plugins/loader.js';
+import type { PluginsConfig } from '../plugins/types.js';
 
 export interface ToolRegistryOptions {
   allowedTools?: string[];
@@ -28,13 +40,14 @@ export class ToolRegistry {
   private allowedTools?: Set<string>;
   private enforcePolicy: boolean;
   private includeResearchTools: boolean;
+  private mcpManagers: McpToolManager[] = [];
 
   constructor(options: ToolRegistryOptions = {}) {
     this.allowedTools = options.allowedTools ? new Set(options.allowedTools) : undefined;
     this.enforcePolicy = options.enforcePolicy ?? false;
     this.includeResearchTools =
       options.includeResearchTools ??
-      Boolean(options.allowedTools?.some((tool) => tool === 'web_search' || tool === 'web_fetch'));
+      true;
     if (options.registerDefaults ?? true) {
       this.registerDefaults();
     }
@@ -44,6 +57,13 @@ export class ToolRegistry {
     this.register(new ReadFileTool());
     this.register(new WriteFileTool());
     this.register(new SearchFilesTool());
+    this.register(new EditFileTool());
+    this.register(new GlobTool());
+    this.register(new GrepTool());
+    this.register(new BashTool());
+    this.register(new TodoWriteTool());
+    this.register(new SleepTool());
+    this.register(new NotebookEditTool());
     this.register(new ExecSqliteTool());
     this.register(new LlmCallTool());
     this.register(new EvidenceSearchTool());
@@ -58,6 +78,7 @@ export class ToolRegistry {
       this.register(new WebSearchTool());
       this.register(new WebFetchTool());
     }
+    this.register(new ToolSearchTool(() => this.getAllDefinitions()));
   }
 
   register(tool: Tool<any, unknown>): void {
@@ -71,7 +92,7 @@ export class ToolRegistry {
   getAll(): Tool<any, unknown>[] {
     const tools = Array.from(this.tools.values());
     if (!this.allowedTools) return tools;
-    return tools.filter((tool) => this.allowedTools?.has(tool.name));
+    return tools.filter((tool) => this.isAllowed(tool.name));
   }
 
   getAllDefinitions(): ToolDefinition[] {
@@ -86,7 +107,7 @@ export class ToolRegistry {
     const started = Date.now();
     let result: ToolResult;
 
-    if (this.allowedTools && !this.allowedTools.has(name)) {
+    if (this.allowedTools && !this.isAllowed(name)) {
       result = {
         success: false,
         error: `Tool "${name}" is not allowed in this agent context`,
@@ -130,6 +151,51 @@ export class ToolRegistry {
       await this.emitToolEvent(name, args, result, context, started, decision);
       return result;
     }
+  }
+
+  async registerConfiguredMcpTools(input: {
+    mcp?: McpConfig;
+    plugins?: PluginsConfig;
+    log?: (message: string) => void;
+  }): Promise<void> {
+    const directServers = input.mcp?.enabled === false ? {} : (input.mcp?.servers ?? {});
+    const pluginMcp = await buildPluginMcpConfig(input.plugins);
+    const servers = {
+      ...directServers,
+      ...pluginMcp.servers,
+    };
+    if (Object.keys(servers).length === 0) return;
+
+    const defaultTimeoutMs = input.mcp?.defaultTimeoutMs ?? pluginMcp.defaultTimeoutMs ?? 60_000;
+    const manager = new McpToolManager(defaultTimeoutMs);
+    const registrations = await manager.connectConfigured(
+      { enabled: true, servers, defaultTimeoutMs },
+      input.log,
+    );
+    if (registrations.length === 0) {
+      await manager.close();
+      return;
+    }
+
+    this.mcpManagers.push(manager);
+    for (const registration of registrations) {
+      this.register(registration.tool);
+    }
+  }
+
+  async close(): Promise<void> {
+    const managers = this.mcpManagers;
+    this.mcpManagers = [];
+    await Promise.all(managers.map((manager) => manager.close().catch(() => undefined)));
+  }
+
+  private isAllowed(name: string): boolean {
+    if (!this.allowedTools) return true;
+    if (this.allowedTools.has(name)) return true;
+    for (const allowed of this.allowedTools) {
+      if (allowed.endsWith('*') && name.startsWith(allowed.slice(0, -1))) return true;
+    }
+    return false;
   }
 
   private async policyDecision(name: string, context: ToolUseContext): Promise<string> {

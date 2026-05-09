@@ -1,4 +1,4 @@
-export type EvidenceFormat = 'pdf' | 'docx' | 'doc' | 'image' | 'text' | 'html' | 'unknown';
+export type EvidenceFormat = 'pdf' | 'docx' | 'doc' | 'msg' | 'image' | 'text' | 'html' | 'unknown';
 export type EvidenceStatus =
   | 'pending'
   | 'discovered'

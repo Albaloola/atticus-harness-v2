@@ -7,6 +7,7 @@ const EXTENSION_MAP: Record<string, EvidenceFormat> = {
   '.dotx': 'docx',
   '.doc': 'doc',
   '.dot': 'doc',
+  '.msg': 'msg',
   '.jpg': 'image',
   '.jpeg': 'image',
   '.png': 'image',
@@ -19,6 +20,8 @@ const EXTENSION_MAP: Record<string, EvidenceFormat> = {
   '.csv': 'text',
   '.json': 'text',
   '.xml': 'text',
+  '.eml': 'text',
+  '.vtt': 'text',
   '.html': 'html',
   '.htm': 'html',
   '.rtf': 'text',
@@ -47,8 +50,11 @@ export async function detectFormatByMagic(filePath: string): Promise<EvidenceFor
     // JPEG: FF D8 FF
     if (buffer.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return 'image';
 
-    // DOCX/ZIP: PK\x03\x04
-    if (buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) return 'docx';
+    // DOCX files are ZIP containers, but generic ZIP/XLSX/ODS archives should
+    // not be approved as empty Word documents.
+    if (buffer.subarray(0, 4).equals(Buffer.from([0x50, 0x4b, 0x03, 0x04]))) {
+      return detectFormatByExtension(filePath) === 'docx' ? 'docx' : 'unknown';
+    }
 
     // HTML: <html or <!DOCTYPE
     const start = buffer.subarray(0, 6).toString().toLowerCase();
@@ -65,6 +71,7 @@ export function getMimeType(format: EvidenceFormat): string {
     pdf: 'application/pdf',
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     doc: 'application/msword',
+    msg: 'application/vnd.ms-outlook',
     image: 'image/jpeg',
     text: 'text/plain',
     html: 'text/html',

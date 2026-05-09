@@ -9,7 +9,7 @@ import { createLLMClient } from '../llm/client.js';
 import { selectModelForTask } from '../config/model-routing.js';
 import { loadMatter } from '../storage/matter.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
-import { synthesizeWorkerOutput, type WorkerSynthesisClient } from './worker-synthesis.js';
+import { applyWorkerQualityGate, synthesizeWorkerOutput, type WorkerSynthesisClient } from './worker-synthesis.js';
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
 import type { QueryLoopConfig, QueryLoopResult } from '../agent/query-loop.js';
 import type { AgentRun } from '../types/state.js';
@@ -122,28 +122,30 @@ export class WorkerAgent {
       const parsed = parseStructuredResult(loopResult.finalContent);
 
       if (parsed) {
+        const gated = applyWorkerQualityGate(parsed, this.spawn, loopResult);
+
         updateRun(this.spawn.matterName, this.run.id, {
-          status: this.mapStatus(parsed.status),
+          status: this.mapStatus(gated.status),
           turns: loopResult.turns.length,
-          summary: parsed.summary,
+          summary: gated.summary,
         });
 
         await appendEvent({
           matterName: this.spawn.matterName,
-          type: this.eventTypeForStatus(parsed.status),
+          type: this.eventTypeForStatus(gated.status),
           runId: this.run.id,
           taskId: this.spawn.taskId,
           data: {
-            status: parsed.status,
-            summary: parsed.summary,
-            findingCount: parsed.findings.length,
-            riskCount: parsed.risks.length,
+            status: gated.status,
+            summary: gated.summary,
+            findingCount: gated.findings.length,
+            riskCount: gated.risks.length,
             depth: this.spawn.depth,
           },
           source: 'orchestration',
         });
 
-        return parsed;
+        return gated;
       }
 
       const resolvedConfig = await resolveConfig({ matterName: this.spawn.matterName });

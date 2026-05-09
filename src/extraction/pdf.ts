@@ -8,6 +8,10 @@ import { normalizeExtractedText } from './normalize.js';
 import type { ExtractedText, PageExtraction, ExtractionMethod } from './types.js';
 
 const exec = promisify(execFile);
+const SEARCHABLE_TEXT_CHARS = 40;
+const MEANINGFUL_LINE_CHARS = 4;
+const MIN_TEXT_DENSITY = 0.15;
+const PDF_TEXT_MAX_BUFFER_BYTES = 128 * 1024 * 1024;
 
 export async function extractPdfText(filePath: string, sourceId?: string): Promise<ExtractedText> {
   const pageCount = await getPageCount(filePath);
@@ -21,10 +25,8 @@ export async function extractPdfText(filePath: string, sourceId?: string): Promi
   try {
     for (let i = 0; i < pageCount; i++) {
       const pageText = normalizeExtractedText(pages[i] || '');
-      const lines = pageText.split('\n').filter(l => l.trim().length > 0);
-      const density = lines.length > 0 ? lines.filter(l => l.trim().length > 3).length / Math.max(lines.length, 1) : 0;
 
-      if (lines.length < 5 || density < 0.15) {
+      if (shouldOcrPdfPage(pageText)) {
         needsOcr = true;
         const pageNum = i + 1;
         const { pngPath, imageHash } = await renderPageToPng(filePath, pageNum, tmpDir);
@@ -64,6 +66,20 @@ export async function extractPdfText(filePath: string, sourceId?: string): Promi
   };
 }
 
+export function shouldOcrPdfPage(pageText: string): boolean {
+  const normalized = normalizeExtractedText(pageText).trim();
+  if (!normalized) return true;
+
+  const searchableChars = normalized.replace(/\s+/g, '').length;
+  if (searchableChars >= SEARCHABLE_TEXT_CHARS) return false;
+
+  const lines = normalized.split('\n').map((line) => line.trim()).filter(Boolean);
+  const meaningfulLines = lines.filter((line) => line.replace(/\s+/g, '').length >= MEANINGFUL_LINE_CHARS).length;
+  const density = lines.length > 0 ? meaningfulLines / lines.length : 0;
+
+  return meaningfulLines < 2 || density < MIN_TEXT_DENSITY;
+}
+
 async function getPageCount(filePath: string): Promise<number> {
   const { stdout } = await exec('pdfinfo', [filePath]);
   const match = stdout.match(/Pages:\s+(\d+)/);
@@ -71,7 +87,9 @@ async function getPageCount(filePath: string): Promise<number> {
 }
 
 async function runPdftotext(filePath: string): Promise<string> {
-  const { stdout } = await exec('pdftotext', ['-layout', '-enc', 'UTF-8', filePath, '-']);
+  const { stdout } = await exec('pdftotext', ['-layout', '-enc', 'UTF-8', filePath, '-'], {
+    maxBuffer: PDF_TEXT_MAX_BUFFER_BYTES,
+  });
   return stdout;
 }
 

@@ -1,5 +1,5 @@
-export type ExtractionMethod = 'pdftotext' | 'tesseract_ocr' | 'docx_parse' | 'libreoffice' | 'pandoc' | 'plain_text' | 'html_to_text' | 'visual_ocr_pipeline';
-export type EvidenceFormat = 'pdf' | 'docx' | 'doc' | 'image' | 'text' | 'html' | 'unknown';
+export type ExtractionMethod = 'pdftotext' | 'tesseract_ocr' | 'docx_parse' | 'libreoffice' | 'pandoc' | 'plain_text' | 'html_to_text' | 'visual_ocr_pipeline' | 'msg_strings';
+export type EvidenceFormat = 'pdf' | 'docx' | 'doc' | 'msg' | 'image' | 'text' | 'html' | 'unknown';
 
 export interface ExtractedText {
   sourceId: string;

@@ -60,9 +60,9 @@ export async function synthesizeWorkerOutput(params: {
     });
 
     const parsed = parseStructuredResult(response.content);
-    return parsed ?? deterministic;
+    return applyWorkerQualityGate(parsed ?? deterministic, params.spawn, params.loopResult);
   } catch {
-    return deterministic;
+    return applyWorkerQualityGate(deterministic, params.spawn, params.loopResult);
   }
 }
 
@@ -117,6 +117,54 @@ function makeDeterministicResult(
     artifactIds: [],
     nextActions: loopResult.status === 'completed' ? [] : ['Review synthesized worker transcript before relying on it'],
   };
+}
+
+export function applyWorkerQualityGate(
+  result: AgentStructuredResult,
+  spawn: AgentSpawnInput,
+  loopResult: QueryLoopResult,
+): AgentStructuredResult {
+  if (result.status !== 'completed' || loopResult.status !== 'completed') return result;
+
+  const hasReducerOutput = result.findings.length > 0 ||
+    result.risks.length > 0 ||
+    result.proposedTasks.length > 0 ||
+    result.artifactIds.length > 0 ||
+    result.nextActions.length > 0;
+  const weakSummary = looksLikeWeakCompletion(result.summary);
+
+  if (hasReducerOutput && !weakSummary) return result;
+
+  return {
+    ...result,
+    status: 'needs_followup',
+    summary: `Worker output needs follow-up for "${spawn.title}": ${result.summary}`,
+    risks: [
+      ...result.risks,
+      {
+        risk: hasReducerOutput
+          ? 'Worker result says the task was not substantively completed.'
+          : 'Worker completed without reducer-usable findings, risks, artifacts, proposed tasks, or next actions.',
+        severity: 'medium',
+        mitigation: 'Rerun a focused worker or convert the transcript into a concrete gap/not-applicable finding before relying on the phase.',
+      },
+    ],
+    nextActions: [
+      ...result.nextActions,
+      `Rerun or manually review worker task: ${spawn.title}`,
+    ],
+  };
+}
+
+function looksLikeWeakCompletion(summary: string): boolean {
+  return [
+    /\bprocess chatter\b/i,
+    /\btask\b.*\b(?:not addressed|not advanced|not executed)\b/i,
+    /\bno substantive (?:analysis|findings|conclusions)\b/i,
+    /\bdoes not contain any (?:actual|final|substantive)\b/i,
+    /\bno findings can be extracted\b/i,
+    /\bonly (?:records|shows|contains) (?:tool calls|process|data retrieval|evidence retrieval)\b/i,
+  ].some((pattern) => pattern.test(summary));
 }
 
 function summarizeText(text: string, maxChars: number): string {

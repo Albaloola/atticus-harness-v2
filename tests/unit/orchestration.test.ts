@@ -19,15 +19,15 @@ vi.mock('../../src/llm/client.js', () => ({
       content: JSON.stringify({
         status: 'completed',
         summary: 'Fake worker completed.',
-        findings: [],
+        findings: [{ claim: 'Fake worker completed reducer-usable work.', support: 'TEST-SRC-0001', confidence: 'medium' }],
         risks: [],
         proposedTasks: [],
         artifactIds: [],
-        nextActions: [],
+        nextActions: ['Use fake worker output'],
       }),
       toolCalls: undefined,
     }),
-    chat: vi.fn().mockResolvedValue({ content: '{"status":"completed","summary":"Fake synthesis completed.","findings":[],"risks":[],"proposedTasks":[],"artifactIds":[],"nextActions":[]}' }),
+    chat: vi.fn().mockResolvedValue({ content: '{"status":"completed","summary":"Fake synthesis completed.","findings":[{"claim":"Fake synthesis completed reducer-usable work.","support":"TEST-SRC-0001","confidence":"medium"}],"risks":[],"proposedTasks":[],"artifactIds":[],"nextActions":["Use fake synthesis output"]}' }),
     healthCheck: vi.fn().mockResolvedValue(true),
   })),
   createLLMClient: vi.fn(() => ({
@@ -35,15 +35,15 @@ vi.mock('../../src/llm/client.js', () => ({
       content: JSON.stringify({
         status: 'completed',
         summary: 'Fake worker completed.',
-        findings: [],
+        findings: [{ claim: 'Fake worker completed reducer-usable work.', support: 'TEST-SRC-0001', confidence: 'medium' }],
         risks: [],
         proposedTasks: [],
         artifactIds: [],
-        nextActions: [],
+        nextActions: ['Use fake worker output'],
       }),
       toolCalls: undefined,
     }),
-    chat: vi.fn().mockResolvedValue({ content: '{"status":"completed","summary":"Fake synthesis completed.","findings":[],"risks":[],"proposedTasks":[],"artifactIds":[],"nextActions":[]}' }),
+    chat: vi.fn().mockResolvedValue({ content: '{"status":"completed","summary":"Fake synthesis completed.","findings":[{"claim":"Fake synthesis completed reducer-usable work.","support":"TEST-SRC-0001","confidence":"medium"}],"risks":[],"proposedTasks":[],"artifactIds":[],"nextActions":["Use fake synthesis output"]}' }),
     healthCheck: vi.fn().mockResolvedValue(true),
   })),
 }));
@@ -121,11 +121,11 @@ describe('phase tool contracts', () => {
               finalContent: JSON.stringify({
                 status: 'completed',
                 summary: 'Done',
-                findings: [],
+                findings: [{ claim: 'Context guidance was present.', support: 'TEST-SRC-0001', confidence: 'medium' }],
                 risks: [],
                 proposedTasks: [],
                 artifactIds: [],
-                nextActions: [],
+                nextActions: ['Use captured prompt'],
               }),
               status: 'completed',
             };
@@ -156,11 +156,13 @@ function mockWorkerStatus(status: 'completed' | 'blocked' | 'needs_followup' | '
       content: JSON.stringify({
         status,
         summary: `Fake worker ${status}.`,
-        findings: [],
+        findings: status === 'completed'
+          ? [{ claim: 'Fake worker completed reducer-usable work.', support: 'TEST-SRC-0001', confidence: 'medium' }]
+          : [],
         risks: [],
         proposedTasks: [],
         artifactIds: [],
-        nextActions: [],
+        nextActions: status === 'completed' ? ['Use fake worker output'] : [],
       }),
       toolCalls: undefined,
     }),
@@ -168,11 +170,13 @@ function mockWorkerStatus(status: 'completed' | 'blocked' | 'needs_followup' | '
       content: JSON.stringify({
         status,
         summary: `Fake worker ${status}.`,
-        findings: [],
+        findings: status === 'completed'
+          ? [{ claim: 'Fake worker completed reducer-usable work.', support: 'TEST-SRC-0001', confidence: 'medium' }]
+          : [],
         risks: [],
         proposedTasks: [],
         artifactIds: [],
-        nextActions: [],
+        nextActions: status === 'completed' ? ['Use fake worker output'] : [],
       }),
     }),
     healthCheck: vi.fn().mockResolvedValue(true),

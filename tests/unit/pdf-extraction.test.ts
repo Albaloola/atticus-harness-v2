@@ -33,7 +33,9 @@ describe('extractPdfText', () => {
   it('finds rendered PNGs with non-padded pdftoppm suffixes and cleans up', async () => {
     const densePage = ['alpha', 'bravo', 'charlie', 'delta', 'echo'].join('\n');
 
-    execFileMock.mockImplementation((cmd: string, args: string[], callback: (err: Error | null, result?: { stdout: string }) => void) => {
+    execFileMock.mockImplementation((cmd: string, args: string[], optionsOrCallback: unknown, maybeCallback?: (err: Error | null, result?: { stdout: string }) => void) => {
+      const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
+      if (!callback) throw new Error('missing execFile callback');
       if (cmd === 'pdfinfo') {
         callback(null, { stdout: 'Pages: 4\n' });
         return;
@@ -71,7 +73,9 @@ describe('extractPdfText', () => {
   });
 
   it('reports a clear render error and still cleans up when no PNG exists', async () => {
-    execFileMock.mockImplementation((cmd: string, _args: string[], callback: (err: Error | null, result?: { stdout: string }) => void) => {
+    execFileMock.mockImplementation((cmd: string, _args: string[], optionsOrCallback: unknown, maybeCallback?: (err: Error | null, result?: { stdout: string }) => void) => {
+      const callback = typeof optionsOrCallback === 'function' ? optionsOrCallback : maybeCallback;
+      if (!callback) throw new Error('missing execFile callback');
       if (cmd === 'pdfinfo') callback(null, { stdout: 'Pages: 1\n' });
       else if (cmd === 'pdftotext') callback(null, { stdout: '' });
       else if (cmd === 'pdftoppm') callback(null, { stdout: '' });

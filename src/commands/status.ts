@@ -51,7 +51,7 @@ export default async function statusHandler(
         storeTelemetry: snapshot.storeTelemetry,
         costs: snapshot.costs,
         nextActions: snapshot.nextActions,
-        runReadiness: snapshot.runReadiness,
+        snapshotRunReadiness: snapshot.runReadiness,
         legalBlockers,
         runReadiness,
         model: index.config.model || 'deepseek/deepseek-v4-flash',

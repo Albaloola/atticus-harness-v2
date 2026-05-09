@@ -1,5 +1,6 @@
 import type { MatterStatus } from './matter.js';
 import type { MatterStoreTelemetry } from '../observability/store-telemetry.js';
+import type { RunReadiness } from '../orchestration/contracts.js';
 
 // ── Event types ──────────────────────────────────────────────
 

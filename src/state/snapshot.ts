@@ -196,3 +196,7 @@ function deriveNextActions(
 
   return actions;
 }
+
+function mergeNextActions(...actionSets: string[][]): string[] {
+  return [...new Set(actionSets.flat())];
+}

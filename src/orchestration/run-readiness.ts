@@ -1,140 +1,92 @@
 import { readdir } from 'fs/promises';
-import { extname } from 'path';
-import type { LegalArtifactType } from '../legal/artifact-types.js';
-import type { PhaseDefinition } from '../legal/workflow.js';
-import { getDefaultPhases } from '../legal/workflow.js';
-import { requiredOutputsForPhase, type RequiredOutput } from '../legal/phase-contracts.js';
-import { evaluateLegalReadiness, type LegalReadinessResult } from '../gates/legal-readiness.js';
+import { getMatterPath, loadMatter } from '../storage/matter.js';
 import { listCandidates } from '../storage/candidate.js';
 import { listArtifacts } from '../storage/artifact.js';
-import { loadMatter, getMatterPath } from '../storage/matter.js';
+import { listTasks } from '../state/tasks.js';
+import { listEvents } from '../state/events.js';
+import { evaluateLegalReadiness, type LegalReadinessResult } from '../gates/legal-readiness.js';
 import type { PhaseResult } from './types.js';
 
-export type ActivityStatus = 'completed' | 'partial' | 'failed' | 'aborted' | 'budget_exceeded';
-export type ReadinessStatus = 'ready' | 'blocked' | 'not_evaluated';
-export type ExportReadinessStatus = 'ready' | 'blocked' | 'not_required' | 'not_evaluated';
-export type CourtReadyStatus = 'ready' | 'needs_followup' | 'not_applicable' | 'failed';
-
-export interface PhaseReadiness {
-  phaseId: string;
-  phaseName: string;
-  activityStatus: PhaseResult['status'] | 'not_run';
-  requiredOutputs: RequiredOutput[];
-  satisfiedOutputs: LegalArtifactType[];
-  missingOutputs: MissingRequiredOutput[];
-  courtReadyBlocked: boolean;
-}
-
-export interface MissingRequiredOutput {
-  phaseId: string;
-  outputType: LegalArtifactType;
-  requiredFor: RequiredOutput['requiredFor'];
-  minCount: number;
-  acceptedArtifactRequired: boolean;
-  severity: RequiredOutput['readinessBlockerSeverity'];
+export interface RunReadinessBlocker {
+  blockerType: string;
+  objectId: string;
   reason: string;
-}
-
-export interface StoreSummary {
-  indexCount: number;
-  jsonCount: number;
-  filesystemCount: number;
-  nonJsonCount: number;
-  ids: string[];
-}
-
-export interface TelemetryReconciliation {
-  candidateDrift: number;
-  artifactDrift: number;
-  candidateNonJsonFiles: number;
-  artifactNonJsonFiles: number;
-  notes: string[];
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
 }
 
 export interface RunReadiness {
-  activityStatus: ActivityStatus;
-  legalStatus: ReadinessStatus;
-  exportStatus: ExportReadinessStatus;
-  courtReadyStatus: CourtReadyStatus;
-  phaseReadiness: PhaseReadiness[];
-  missingOutputs: MissingRequiredOutput[];
+  matterName: string;
+  activityStatus: 'completed' | 'partial' | 'failed' | 'aborted' | 'budget_exceeded';
+  legalStatus: 'ready' | 'blocked' | 'not_evaluated';
+  exportStatus: 'ready' | 'blocked' | 'not_required' | 'not_evaluated';
+  courtReadyStatus: 'ready' | 'needs_followup' | 'not_applicable' | 'failed';
+  phaseReadiness: Array<{ phaseId: string; status: 'satisfied' | 'missing_outputs' | 'blocked' | 'not_applicable'; missingOutputs: string[] }>;
+  missingOutputs: string[];
   notApplicableFindings: string[];
   legalReadinessResult?: LegalReadinessResult;
-  candidateSummary: StoreSummary;
-  artifactSummary: StoreSummary;
-  telemetryReconciliation: TelemetryReconciliation;
-  blockers: string[];
+  candidateSummary: { indexCount: number; jsonCount: number; transcriptCount: number; drift: number };
+  artifactSummary: { indexCount: number; jsonCount: number; drift: number };
+  telemetryReconciliation: Array<{ surface: string; expected: number; actual: number; status: 'match' | 'drift' }>;
+  blockers: RunReadinessBlocker[];
   checkedAt: string;
 }
 
 export async function evaluateRunReadiness(input: {
   matterName: string;
-  phases?: PhaseDefinition[];
   phaseResults?: PhaseResult[];
-  activityStatus?: ActivityStatus;
+  stoppedReason?: 'aborted' | 'budget_exceeded';
   requireAcceptedArtifact?: boolean;
   requireExportSignoff?: boolean;
 }): Promise<RunReadiness> {
-  const phases = input.phases ?? getDefaultPhases();
-  const phaseResults = input.phaseResults ?? [];
+  const index = await loadMatter(input.matterName);
+  const tasks = listTasks(input.matterName);
   const candidates = await listCandidates(input.matterName);
   const artifacts = await listArtifacts(input.matterName);
-  const candidateSummary = await summarizeStore(input.matterName, '_candidates', await safeIndexCount(input.matterName, 'candidateCount'), candidates.map((c) => c.id));
-  const artifactSummary = await summarizeStore(input.matterName, '_artifacts', await safeIndexCount(input.matterName, 'artifactCount'), artifacts.map((a) => a.id));
+  const transcriptCount = await countCandidateTranscripts(input.matterName);
+  const candidateSummary = {
+    indexCount: index.candidateCount,
+    jsonCount: candidates.length,
+    transcriptCount,
+    drift: Math.abs(index.candidateCount - candidates.length) + transcriptCount,
+  };
+  const artifactSummary = {
+    indexCount: index.artifactCount,
+    jsonCount: artifacts.length,
+    drift: Math.abs(index.artifactCount - artifacts.length),
+  };
+  const phaseReadiness = (input.phaseResults ?? []).map((phase) => ({
+    phaseId: phase.phaseId,
+    status: phase.status === 'completed' && phase.artifactIds.length > 0 ? 'satisfied' as const : phase.status === 'completed' ? 'missing_outputs' as const : 'blocked' as const,
+    missingOutputs: phase.status === 'completed' && phase.artifactIds.length === 0 ? [`${phase.phaseId}:accepted_artifact`] : [],
+  }));
+  const missingOutputs = phaseReadiness.flatMap((phase) => phase.missingOutputs);
+  const activityStatus = deriveActivityStatus(tasks, input.stoppedReason);
   const legalReadinessResult = await evaluateLegalReadiness({
     matterName: input.matterName,
     requireAcceptedArtifact: input.requireAcceptedArtifact ?? true,
     requireExportSignoff: input.requireExportSignoff ?? false,
-  });
+  }).catch(() => undefined);
+  const blockers: RunReadinessBlocker[] = [];
 
-  const phaseReadiness = phases.map((phase) => {
-    const result = phaseResults.find((candidate) => candidate.phaseId === phase.id);
-    const requiredOutputs = requiredOutputsForPhase(phase);
-    const satisfiedOutputs = requiredOutputs
-      .filter((output) => countMatchingAcceptedArtifacts(artifacts, output.outputType) >= output.minCount)
-      .map((output) => output.outputType);
-    const missingOutputs = requiredOutputs
-      .filter((output) => output.acceptedArtifactRequired)
-      .filter((output) => countMatchingAcceptedArtifacts(artifacts, output.outputType) < output.minCount)
-      .map((output) => ({
-        phaseId: phase.id,
-        outputType: output.outputType,
-        requiredFor: output.requiredFor,
-        minCount: output.minCount,
-        acceptedArtifactRequired: output.acceptedArtifactRequired,
-        severity: output.readinessBlockerSeverity,
-        reason: `Required accepted ${output.outputType} artifact is missing`,
-      } satisfies MissingRequiredOutput));
-    return {
-      phaseId: phase.id,
-      phaseName: phase.name,
-      activityStatus: result?.status ?? 'not_run',
-      requiredOutputs,
-      satisfiedOutputs,
-      missingOutputs,
-      courtReadyBlocked: missingOutputs.length > 0,
-    } satisfies PhaseReadiness;
-  });
+  for (const missing of missingOutputs) {
+    blockers.push({ blockerType: 'required_output', objectId: missing, reason: 'Required phase output has no accepted artifact id', severity: 'critical' });
+  }
+  if (candidateSummary.drift > 0) {
+    blockers.push({ blockerType: 'telemetry', objectId: 'candidate_summary', reason: 'Candidate index count differs from candidate store or transcript files exist outside JSON candidates', severity: 'medium' });
+  }
+  if (artifactSummary.drift > 0) {
+    blockers.push({ blockerType: 'telemetry', objectId: 'artifact_summary', reason: 'Artifact index count differs from canonical artifact store', severity: 'high' });
+  }
+  for (const blocker of legalReadinessResult?.blockers ?? []) {
+    blockers.push({ blockerType: blocker.blockerType, objectId: blocker.objectId, reason: blocker.reason, severity: blocker.severity });
+  }
 
-  const missingOutputs = phaseReadiness.flatMap((phase) => phase.missingOutputs);
-  const activityStatus = input.activityStatus ?? inferActivityStatus(phaseReadiness);
-  const telemetryReconciliation = reconcileTelemetry(candidateSummary, artifactSummary);
-  const blockers = [
-    ...missingOutputs.map((output) => `${output.phaseId}: ${output.reason}`),
-    ...legalReadinessResult.blockers.map((blocker) => `${blocker.objectId}: ${blocker.reason}`),
-    ...telemetryReconciliation.notes,
-  ];
-  const legalStatus: ReadinessStatus = legalReadinessResult.ready && missingOutputs.length === 0 ? 'ready' : 'blocked';
-  const exportStatus: ExportReadinessStatus = input.requireExportSignoff
-    ? legalReadinessResult.blockers.some((blocker) => blocker.blockerType === 'export_id') ? 'blocked' : 'ready'
-    : 'not_required';
-  const courtReadyStatus: CourtReadyStatus = activityStatus === 'failed'
-    ? 'failed'
-    : legalStatus === 'ready' && (exportStatus === 'ready' || exportStatus === 'not_required')
-      ? 'ready'
-      : 'needs_followup';
+  const legalStatus = legalReadinessResult ? legalReadinessResult.ready && missingOutputs.length === 0 ? 'ready' : 'blocked' : 'not_evaluated';
+  const exportStatus = input.requireExportSignoff ? legalStatus === 'ready' ? 'ready' : 'blocked' : 'not_required';
+  const courtReadyStatus = activityStatus === 'failed' ? 'failed' : legalStatus === 'ready' && exportStatus !== 'blocked' && blockers.length === 0 ? 'ready' : 'needs_followup';
 
   return {
+    matterName: input.matterName,
     activityStatus,
     legalStatus,
     exportStatus,
@@ -145,64 +97,28 @@ export async function evaluateRunReadiness(input: {
     legalReadinessResult,
     candidateSummary,
     artifactSummary,
-    telemetryReconciliation,
+    telemetryReconciliation: [
+      { surface: 'candidates', expected: index.candidateCount, actual: candidates.length, status: index.candidateCount === candidates.length && transcriptCount === 0 ? 'match' : 'drift' },
+      { surface: 'artifacts', expected: index.artifactCount, actual: artifacts.length, status: index.artifactCount === artifacts.length ? 'match' : 'drift' },
+      { surface: 'events', expected: 0, actual: listEvents(input.matterName, { tail: 1 }).length, status: 'match' },
+    ],
     blockers,
     checkedAt: new Date().toISOString(),
   };
 }
 
-function countMatchingAcceptedArtifacts(artifacts: Array<{ title: string; type: string; content?: string }>, outputType: LegalArtifactType): number {
-  const token = outputType.replace(/_/g, ' ');
-  return artifacts.filter((artifact) =>
-    artifact.type === outputType ||
-    artifact.title.toLowerCase().includes(outputType) ||
-    artifact.title.toLowerCase().includes(token) ||
-    (artifact.content ?? '').toLowerCase().includes(`artifact_type: ${outputType}`)
-  ).length;
-}
-
-function inferActivityStatus(phaseReadiness: PhaseReadiness[]): ActivityStatus {
-  if (phaseReadiness.some((phase) => phase.activityStatus === 'failed')) return 'failed';
-  if (phaseReadiness.length === 0 || phaseReadiness.some((phase) => phase.activityStatus === 'not_run' || phase.activityStatus === 'blocked')) return 'partial';
+function deriveActivityStatus(tasks: ReturnType<typeof listTasks>, stoppedReason?: 'aborted' | 'budget_exceeded'): RunReadiness['activityStatus'] {
+  if (stoppedReason) return stoppedReason;
+  if (tasks.some((task) => task.status === 'failed')) return 'failed';
+  if (tasks.some((task) => task.status === 'blocked' || task.status === 'pending' || task.status === 'in_progress')) return 'partial';
   return 'completed';
 }
 
-async function safeIndexCount(matterName: string, key: 'candidateCount' | 'artifactCount'): Promise<number> {
+async function countCandidateTranscripts(matterName: string): Promise<number> {
   try {
-    const index = await loadMatter(matterName);
-    return index[key];
+    const files = await readdir(getMatterPath(matterName, '_candidates'));
+    return files.filter((file) => !file.endsWith('.json') && /transcript|agent-loop-log|\.md$/i.test(file)).length;
   } catch {
     return 0;
   }
-}
-
-async function summarizeStore(matterName: string, store: '_candidates' | '_artifacts', indexCount: number, ids: string[]): Promise<StoreSummary> {
-  let filesystemCount = 0;
-  let nonJsonCount = 0;
-  try {
-    const entries = await readdir(getMatterPath(matterName, store), { withFileTypes: true });
-    filesystemCount = entries.filter((entry) => entry.isFile()).length;
-    nonJsonCount = entries.filter((entry) => entry.isFile() && extname(entry.name) !== '.json').length;
-  } catch {
-    filesystemCount = 0;
-    nonJsonCount = 0;
-  }
-  return { indexCount, jsonCount: ids.length, filesystemCount, nonJsonCount, ids };
-}
-
-function reconcileTelemetry(candidateSummary: StoreSummary, artifactSummary: StoreSummary): TelemetryReconciliation {
-  const notes: string[] = [];
-  const candidateDrift = candidateSummary.indexCount - candidateSummary.jsonCount;
-  const artifactDrift = artifactSummary.indexCount - artifactSummary.jsonCount;
-  if (candidateDrift !== 0) notes.push(`candidate index/json drift: ${candidateDrift}`);
-  if (artifactDrift !== 0) notes.push(`artifact index/json drift: ${artifactDrift}`);
-  if (candidateSummary.nonJsonCount > 0) notes.push(`${candidateSummary.nonJsonCount} non-JSON candidate files are not counted as candidates`);
-  if (artifactSummary.nonJsonCount > 0) notes.push(`${artifactSummary.nonJsonCount} non-JSON artifact files are not counted as artifacts`);
-  return {
-    candidateDrift,
-    artifactDrift,
-    candidateNonJsonFiles: candidateSummary.nonJsonCount,
-    artifactNonJsonFiles: artifactSummary.nonJsonCount,
-    notes,
-  };
 }

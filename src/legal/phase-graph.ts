@@ -1,6 +1,7 @@
 import type { PhaseDefinition } from './workflow.js';
 import { getDefaultPhases } from './workflow.js';
 import type { MatterPosture } from './matter-posture.js';
+import { classifyMatterPosture } from './matter-posture.js';
 import { requiredOutputsForPhase, type RequiredOutput } from './phase-contracts.js';
 
 export interface PhaseGraphNode {
@@ -14,61 +15,43 @@ export interface PhaseGraphNode {
   readinessPolicy: 'activity_only' | 'legal_readiness' | 'export_readiness' | 'not_applicable';
 }
 
-export interface PhaseGraphEdge {
-  from: string;
-  to: string;
-  dependencyType: 'sequential' | 'readiness_gate';
-}
-
 export interface PhaseGraph {
   graphId: string;
   matterName: string;
   posture: MatterPosture;
   nodes: PhaseGraphNode[];
-  edges: PhaseGraphEdge[];
+  edges: Array<{ from: string; to: string; dependencyType: 'sequential' | 'readiness' }>;
   globalRequiredOutputs: RequiredOutput[];
-  notApplicablePolicy: string;
+  notApplicablePolicy: string[];
   createdAt: string;
 }
 
-const LIVE_OUTPUT_PHASES = new Set(['document_production', 'bundle_and_war_room_assembly']);
-
-export function buildPhaseGraph(input: {
-  matterName: string;
-  posture: MatterPosture;
-  phases?: PhaseDefinition[];
-}): PhaseGraph {
+export async function buildPhaseGraph(input: { matterName: string; objective?: string; phases?: PhaseDefinition[]; posture?: MatterPosture }): Promise<PhaseGraph> {
   const phases = input.phases ?? getDefaultPhases();
-  const retrospectiveNoLiveWork = input.posture.primaryMode === 'retrospective_benchmark'
-    && input.posture.liveObligations.includes('none');
-  const nodes: PhaseGraphNode[] = phases.map((phase, index) => {
-    const disabled = retrospectiveNoLiveWork && LIVE_OUTPUT_PHASES.has(phase.id);
-    const requiredOutputs = disabled ? [] : requiredOutputsForPhase(phase);
+  const posture = input.posture ?? await classifyMatterPosture({ matterName: input.matterName, objective: input.objective });
+  const nodes = phases.map((phase, index): PhaseGraphNode => {
+    const requiredOutputs = requiredOutputsForPhase(phase);
+    const liveOnly = phase.id === 'procedural_route_planning' || phase.id === 'document_production';
+    const enabled = !(posture.primaryMode === 'retrospective_benchmark' && liveOnly && posture.liveObligations.includes('none'));
     return {
       phaseId: phase.id,
       phaseName: phase.name,
-      enabled: !disabled,
-      skipReason: disabled ? 'retrospective matter with no live filing obligation' : undefined,
+      enabled,
+      skipReason: enabled ? undefined : 'retrospective_no_live_obligation',
       requiredOutputs,
-      workerTasks: disabled ? [] : [phase.description],
+      workerTasks: [],
       dependencies: index === 0 ? [] : [phases[index - 1]!.id],
-      readinessPolicy: disabled
-        ? 'not_applicable'
-        : phase.id === 'operator_handoff'
-          ? 'export_readiness'
-          : requiredOutputs.some((output) => output.acceptedArtifactRequired)
-            ? 'legal_readiness'
-            : 'activity_only',
+      readinessPolicy: enabled ? (requiredOutputs.some((output) => output.acceptedArtifactRequired) ? 'legal_readiness' : 'activity_only') : 'not_applicable',
     };
   });
   return {
     graphId: `${input.matterName}-${Date.now()}`,
     matterName: input.matterName,
-    posture: input.posture,
+    posture,
     nodes,
-    edges: phases.slice(1).map((phase, index) => ({ from: phases[index]!.id, to: phase.id, dependencyType: 'sequential' })),
-    globalRequiredOutputs: nodes.flatMap((node) => node.requiredOutputs),
-    notApplicablePolicy: 'disabled phases must carry skipReason and produce notApplicableFindings rather than false completion',
+    edges: nodes.slice(1).map((node, index) => ({ from: nodes[index]!.phaseId, to: node.phaseId, dependencyType: 'sequential' })),
+    globalRequiredOutputs: nodes.flatMap((node) => node.enabled ? node.requiredOutputs.filter((output) => output.requiredFor !== 'activity_completion') : []),
+    notApplicablePolicy: ['retrospective_no_live_obligation', 'outside_matter_scope', 'operator_declined_export'],
     createdAt: new Date().toISOString(),
   };
 }

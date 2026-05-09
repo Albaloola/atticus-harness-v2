@@ -4,6 +4,7 @@ import { deriveSnapshot } from '../state/snapshot.js';
 import type { MatterRuntimeSnapshot } from '../types/state.js';
 import { buildLegalBlockerSummary } from '../observability/legal-blockers.js';
 import { evaluateRunReadiness } from '../orchestration/run-readiness.js';
+import { evaluateRunReadiness } from '../orchestration/run-readiness.js';
 
 export default async function statusHandler(
   matterName: string,
@@ -31,6 +32,7 @@ export default async function statusHandler(
       };
     }
     const legalBlockers = await buildLegalBlockerSummary(matterName);
+    const runReadiness = await evaluateRunReadiness({ matterName });
     const runReadiness = await evaluateRunReadiness({ matterName, requireAcceptedArtifact: false });
 
     if (options.json) {
@@ -48,6 +50,7 @@ export default async function statusHandler(
         latestFindings: snapshot.latestFindings,
         latestRisks: snapshot.latestRisks,
         candidates: snapshot.candidates,
+        storeTelemetry: snapshot.storeTelemetry,
         costs: snapshot.costs,
         nextActions: snapshot.nextActions,
         runReadiness: snapshot.runReadiness,
@@ -81,7 +84,17 @@ export default async function statusHandler(
     console.log(`  Evidence:   ${chalk.bold(String(index.evidenceCount))} files`);
     console.log(`  Candidates: ${chalk.bold(String(index.candidateCount))} outputs`);
     console.log(`  Artifacts:  ${chalk.bold(String(index.artifactCount))} accepted`);
+    if (snapshot.storeTelemetry) {
+      const candidateSummary = snapshot.storeTelemetry.candidateSummary;
+      const artifactSummary = snapshot.storeTelemetry.artifactSummary;
+      console.log(`  Candidate store: ${chalk.bold(String(candidateSummary.jsonCount))} JSON, ${chalk.bold(String(candidateSummary.transcriptCount))} transcripts, ${chalk.bold(String(candidateSummary.nonJsonCount))} non-JSON`);
+      console.log(`  Artifact store:  ${chalk.bold(String(artifactSummary.jsonCount))} JSON, ${chalk.bold(String(artifactSummary.nonJsonCount))} non-JSON`);
+      for (const note of snapshot.storeTelemetry.reconciliation.notes.slice(0, 3)) {
+        console.log(`    ${chalk.yellow('!')} ${note}`);
+      }
+    }
     console.log(`  Blockers:   ${legalBlockers.total} legal`);
+    console.log(`  Readiness:  ${runReadiness.courtReadyStatus}`);
     console.log(`  Readiness:  ${chalk.bold(runReadiness.courtReadyStatus)} (${runReadiness.activityStatus} activity, ${runReadiness.legalStatus} legal)`);
     console.log('');
 

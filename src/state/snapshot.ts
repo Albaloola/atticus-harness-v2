@@ -4,6 +4,7 @@ import { listCandidates } from '../storage/candidate.js';
 import { listEvents, getEventCount } from './events.js';
 import { listTasks } from './tasks.js';
 import { isRunLive, listRuns } from './runs.js';
+import { buildMatterStoreTelemetry } from '../observability/store-telemetry.js';
 import { recoverStaleRuntimeState } from './runtime-recovery.js';
 import type { MatterRuntimeSnapshot, TaskCounts, RuntimeCosts } from '../types/state.js';
 import { evaluateRunReadiness } from '../orchestration/contracts.js';
@@ -16,6 +17,7 @@ export async function deriveSnapshot(
   const index = await loadMatter(matterName);
   const evidence = await listEvidence(matterName).catch(() => []);
   const candidates = await listCandidates(matterName).catch(() => []);
+  const storeTelemetry = await buildMatterStoreTelemetry(matterName).catch(() => undefined);
   if (options.recoverRuntime !== false) {
     await recoverStaleRuntimeState(matterName);
   }
@@ -118,6 +120,7 @@ export async function deriveSnapshot(
     latestFindings: findings,
     latestRisks: risks,
     candidates: candidateIds,
+    storeTelemetry,
     costs,
     nextActions,
     leases,

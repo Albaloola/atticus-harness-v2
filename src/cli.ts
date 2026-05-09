@@ -33,6 +33,16 @@ program
     await handler(matterName, options);
   });
 
+
+program.command('benchmark <benchmark-dir>')
+  .description('Score a matter against a benchmark expectation')
+  .option('--matter <matter-name>', 'Matter name override')
+  .option('--json', 'JSON output mode')
+  .action(async (benchmarkDir, options) => {
+    const { default: handler } = await import('./commands/benchmark.js');
+    await handler(benchmarkDir, options);
+  });
+
 // Status
 program.command('status <matter-name>')
   .description('Show matter state and next action')
@@ -40,6 +50,15 @@ program.command('status <matter-name>')
   .action(async (matterName, options) => {
     const { default: handler } = await import('./commands/status.js');
     await handler(matterName, options);
+  });
+
+// Benchmark comparator
+program.command('benchmark [path]')
+  .description('Score benchmark matter readiness and false-completion risk')
+  .option('--json', 'JSON output mode')
+  .action(async (path, options) => {
+    const { benchmarkScoreHandler } = await import('./commands/benchmark.js');
+    await benchmarkScoreHandler(path, options);
   });
 
 // Events

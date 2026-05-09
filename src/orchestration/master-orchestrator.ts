@@ -10,6 +10,7 @@ import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
 import { loadMatter, saveMatterIndex } from '../storage/matter.js';
 import { evaluateRunReadiness } from './run-readiness.js';
 import type { OrchestratorConfig, OrchestratorResult, AgentStructuredResult } from './types.js';
+import { evaluateRunReadiness } from './run-readiness.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
 

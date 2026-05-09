@@ -1,5 +1,5 @@
 import type { MatterStatus } from './matter.js';
-import type { RunReadiness } from '../orchestration/contracts.js';
+import type { MatterStoreTelemetry } from '../observability/store-telemetry.js';
 
 // ── Event types ──────────────────────────────────────────────
 
@@ -182,6 +182,7 @@ export interface MatterRuntimeSnapshot {
   latestFindings: string[];
   latestRisks: string[];
   candidates: string[];
+  storeTelemetry?: MatterStoreTelemetry;
   costs: RuntimeCosts;
   nextActions: string[];
   leases?: Array<{ taskId: string; leaseId: string; owner?: string; role?: string; expiresAt?: string; stale: boolean }>;

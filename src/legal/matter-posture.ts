@@ -3,6 +3,7 @@ import { listEvidence } from '../storage/evidence.js';
 export type MatterPrimaryMode = 'live_matter' | 'retrospective_benchmark' | 'archive_analysis';
 export type MatterTrack = 'ordinary_action' | 'judicial_review' | 'appellate' | 'university_ftp' | 'senate_appeal' | 'regulatory_slcc' | 'sar_data' | 'student_union' | 'settlement' | 'unknown';
 export type LiveObligation = 'filing' | 'service' | 'deadline' | 'permission' | 'appeal' | 'response' | 'none';
+export type PrivateDataPolicy = 'local_only' | 'public_sources_only' | 'unrestricted_public';
 
 export interface MatterPostureJurisdiction {
   system: string;
@@ -22,7 +23,7 @@ export interface MatterPosture {
   retrospectiveOutcomeKnown: boolean;
   requiresCourtReadyArtifacts: boolean;
   requiresExternalResearch: boolean;
-  privateDataPolicy: 'local_only' | 'public_sources_only' | 'unrestricted_public';
+  privateDataPolicy: PrivateDataPolicy;
   confidence: number;
   reasons: string[];
 }
@@ -31,7 +32,7 @@ export async function classifyMatterPosture(input: { matterName: string; objecti
   const objective = input.objective ?? '';
   const text = `${objective} ${JSON.stringify(input.metadata ?? {})}`.toLowerCase();
   const evidence = await listEvidence(input.matterName).catch(() => []);
-  const sourceProfile = buildSourceProfile(evidence.map((record) => `${record.originalPath ?? ''} ${record.originalFilename ?? ''} ${record.format ?? ''}`));
+  const sourceProfile = buildSourceProfile(evidence.map((record) => `${record.originalPath ?? ''} ${String(record.metadata?.originalFilename ?? record.metadata?.canonicalFilename ?? '')} ${record.format ?? ''}`));
   const reasons: string[] = [];
 
   const retrospective = /retrospective|benchmark|concluded|known outcome|judgment|uksc|appeal/i.test(text);

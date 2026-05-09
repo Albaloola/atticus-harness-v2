@@ -1,9 +1,9 @@
-import { readdir } from 'fs/promises';
-import { getMatterPath, loadMatter } from '../storage/matter.js';
+import { loadMatter } from '../storage/matter.js';
 import { listCandidates } from '../storage/candidate.js';
 import { listArtifacts } from '../storage/artifact.js';
 import { listTasks } from '../state/tasks.js';
 import { listEvents } from '../state/events.js';
+import { buildMatterStoreTelemetry, type StoreFileSummary } from '../observability/store-telemetry.js';
 import { evaluateLegalReadiness, type LegalReadinessResult } from '../gates/legal-readiness.js';
 import type { PhaseResult } from './types.js';
 import type { PhaseDefinition } from '../legal/workflow.js';
@@ -25,9 +25,9 @@ export interface RunReadiness {
   missingOutputs: string[];
   notApplicableFindings: string[];
   legalReadinessResult?: LegalReadinessResult;
-  candidateSummary: { indexCount: number; jsonCount: number; transcriptCount: number; drift: number };
-  artifactSummary: { indexCount: number; jsonCount: number; drift: number };
-  telemetryReconciliation: Array<{ surface: string; expected: number; actual: number; status: 'match' | 'drift' }>;
+  candidateSummary: StoreFileSummary & { drift: number };
+  artifactSummary: StoreFileSummary & { drift: number };
+  telemetryReconciliation: { surface: string; expected: number; actual: number; status: 'match' | 'drift' }[] & { notes: string[] };
   blockers: RunReadinessBlocker[];
   checkedAt: string;
 }
@@ -45,16 +45,13 @@ export async function evaluateRunReadiness(input: {
   const tasks = listTasks(input.matterName);
   const candidates = await listCandidates(input.matterName);
   const artifacts = await listArtifacts(input.matterName);
-  const transcriptCount = await countCandidateTranscripts(input.matterName);
+  const storeTelemetry = await buildMatterStoreTelemetry(input.matterName);
   const candidateSummary = {
-    indexCount: index.candidateCount,
-    jsonCount: candidates.length,
-    transcriptCount,
-    drift: Math.abs(index.candidateCount - candidates.length) + transcriptCount,
+    ...storeTelemetry.candidateSummary,
+    drift: Math.abs(index.candidateCount - candidates.length) + storeTelemetry.candidateSummary.transcriptCount,
   };
   const artifactSummary = {
-    indexCount: index.artifactCount,
-    jsonCount: artifacts.length,
+    ...storeTelemetry.artifactSummary,
     drift: Math.abs(index.artifactCount - artifacts.length),
   };
   const phaseReadiness = (input.phaseResults ?? []).map((phase) => ({
@@ -100,11 +97,11 @@ export async function evaluateRunReadiness(input: {
     legalReadinessResult,
     candidateSummary,
     artifactSummary,
-    telemetryReconciliation: [
-      { surface: 'candidates', expected: index.candidateCount, actual: candidates.length, status: index.candidateCount === candidates.length && transcriptCount === 0 ? 'match' : 'drift' },
+    telemetryReconciliation: withTelemetryNotes([
+      { surface: 'candidates', expected: index.candidateCount, actual: candidates.length, status: index.candidateCount === candidates.length && candidateSummary.transcriptCount === 0 ? 'match' : 'drift' },
       { surface: 'artifacts', expected: index.artifactCount, actual: artifacts.length, status: index.artifactCount === artifacts.length ? 'match' : 'drift' },
       { surface: 'events', expected: 0, actual: listEvents(input.matterName, { tail: 1 }).length, status: 'match' },
-    ],
+    ], storeTelemetry.reconciliation.notes),
     blockers,
     checkedAt: new Date().toISOString(),
   };
@@ -117,11 +114,6 @@ function deriveActivityStatus(tasks: ReturnType<typeof listTasks>, stoppedReason
   return 'completed';
 }
 
-async function countCandidateTranscripts(matterName: string): Promise<number> {
-  try {
-    const files = await readdir(getMatterPath(matterName, '_candidates'));
-    return files.filter((file) => !file.endsWith('.json') && /transcript|agent-loop-log|\.md$/i.test(file)).length;
-  } catch {
-    return 0;
-  }
+function withTelemetryNotes<T extends { surface: string; expected: number; actual: number; status: 'match' | 'drift' }>(items: T[], notes: string[]): T[] & { notes: string[] } {
+  return Object.assign(items, { notes });
 }

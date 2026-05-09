@@ -3,7 +3,6 @@ import type { PhaseDefinition } from '../legal/workflow.js';
 import type { AutonomyPolicy, ProviderPolicy } from '../config/schema.js';
 import type { OrchestrationRuntime } from './runtime.js';
 import type { RunReadiness } from './run-readiness.js';
-import type { RunReadiness } from './run-readiness.js';
 
 export interface OrchestratorConfig {
   matterName: string;

@@ -58,7 +58,15 @@ export async function classifyMatterPosture(input: {
   const text = `${input.matterName} ${input.objective ?? ''} ${JSON.stringify(input.metadata ?? {})}`.toLowerCase();
   const evidence = await listEvidence(input.matterName).catch(() => []);
   const sourceProfile = evidence.reduce<MatterSourceProfile>((profile, record) => {
-    const haystack = `${record.filename} ${record.mimeType ?? ''} ${record.tags?.join(' ') ?? ''}`.toLowerCase();
+    const haystack = [
+      record.originalPath,
+      record.internalPath,
+      record.mimeType,
+      record.format,
+      record.status,
+      String(record.metadata.originalFilename ?? ''),
+      String(record.metadata.canonicalFilename ?? ''),
+    ].join(' ').toLowerCase();
     if (/judgment|order|written case|statement of facts|petition|claim|pleading/.test(haystack)) profile.primaryDocuments += 1;
     if (/pleading|petition|claim|defence|answer/.test(haystack)) profile.pleadings += 1;
     if (/draft|working/.test(haystack)) profile.drafts += 1;

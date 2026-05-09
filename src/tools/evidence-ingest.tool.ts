@@ -6,6 +6,7 @@ import { extractText, hashFile } from '../extraction/index.js';
 import { detectFormatByMagic, getMimeType } from '../extraction/detect.js';
 import { appendEvent } from '../state/events.js';
 import { registerCopiedEvidenceV2, persistExtractionV2 } from '../ingestion/register-evidence.js';
+import { resolveWorkspacePath } from './path-safety.js';
 
 export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: string }, unknown> {
   readonly name = 'evidence_ingest';
@@ -14,7 +15,7 @@ export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: 
     type: 'object',
     properties: {
       matterName: { type: 'string', description: 'Matter name' },
-      filePath: { type: 'string', description: 'Path to the source document' },
+      filePath: { type: 'string', description: 'Workspace-relative source document path, or absolute path inside the current workspace' },
     },
     required: ['matterName', 'filePath'],
   };
@@ -22,29 +23,43 @@ export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: 
   isEnabled(): boolean { return true; }
 
   async call(args: { matterName: string; filePath: string }, context: ToolUseContext): Promise<ToolResult<unknown>> {
+    if (context.matterName && context.matterName !== args.matterName) {
+      return {
+        success: false,
+        error: `Matter context mismatch: tool is scoped to ${context.matterName}, not ${args.matterName}`,
+      };
+    }
+
+    let filePath: string;
+    try {
+      filePath = resolveWorkspacePath(args.filePath);
+    } catch (err: unknown) {
+      return { success: false, error: `File not available for ingestion: ${(err as Error).message}` };
+    }
+
     let fileStat;
     try {
-      fileStat = await stat(args.filePath);
+      fileStat = await stat(filePath);
     } catch {
       return { success: false, error: `File not found: ${args.filePath}` };
     }
 
     const evidenceDir = join('matters', args.matterName, '_evidence');
     const extractionDir = join('matters', args.matterName, '_extractions');
-    const fileName = basename(args.filePath);
+    const fileName = basename(filePath);
 
-    const sha256 = await hashFile(args.filePath);
-    const format = await detectFormatByMagic(args.filePath);
+    const sha256 = await hashFile(filePath);
+    const format = await detectFormatByMagic(filePath);
     const evidenceId = `${args.matterName.substring(0, 3).toUpperCase()}-SRC-${Date.now().toString(36)}`;
 
     await mkdir(evidenceDir, { recursive: true });
     const internalPath = join(evidenceDir, `${evidenceId}_${fileName}`);
-    await copyFile(args.filePath, internalPath);
+    await copyFile(filePath, internalPath);
 
     const record: EvidenceRecord = {
       id: evidenceId,
       matterName: args.matterName,
-      originalPath: args.filePath,
+      originalPath: filePath,
       internalPath,
       sha256,
       mimeType: getMimeType(format),
@@ -77,7 +92,7 @@ export class EvidenceIngestTool implements Tool<{ matterName: string; filePath: 
 
     let extracted;
     try {
-      extracted = await extractText(args.filePath, { sourceId: evidenceId });
+      extracted = await extractText(filePath, { sourceId: evidenceId });
     } catch (err: unknown) {
       try {
         const { getDb } = await import('../storage/sqlite/index.js');

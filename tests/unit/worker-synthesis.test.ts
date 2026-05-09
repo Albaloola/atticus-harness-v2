@@ -67,6 +67,7 @@ describe('WorkerAgent structured synthesis fallback', () => {
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0].support).toBe('NAP-SRC-0001');
     expect(synthesisClient.chat).toHaveBeenCalledOnce();
+    expect(synthesisClient.chat.mock.calls[0]?.[0].messages[0]?.content).toContain('Write every JSON string value in English');
     expect(listEvents(matterName).map((event) => event.type)).toContain('agent.output.synthesized');
   });
 

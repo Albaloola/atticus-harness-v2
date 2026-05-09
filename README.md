@@ -61,19 +61,21 @@ profiles reject incompatible model ids instead of silently sending them to the
 wrong API; use `openrouter-custom` when the intent is to route a mixed-provider
 model id through OpenRouter.
 
-Reasoning is also provider-profile driven. A single matter-level
+Reasoning is also provider-profile driven. A single global or matter-level
 `reasoningEffort` override (`none`, `minimal`, `low`, `medium`, `high`, or
 `xhigh`) is translated into the selected provider's native control: OpenAI Chat
 Completions get `reasoning_effort`, OpenRouter gets nested `reasoning`,
 DeepSeek direct gets `thinking` plus DeepSeek's `reasoning_effort`, Anthropic
 gets `thinking` budgets or adaptive thinking where required, Codex SDK gets
 `modelReasoningEffort`, and local/model-routing profiles do not receive an
-invented provider parameter.
+invented provider parameter. Configure the global setting with
+`harness control-panel reasoning set <effort>` or reset to provider defaults
+with `harness control-panel reasoning reset`.
 
-DeepSeek model ids are a hard exception: every DeepSeek model is forced to
-maximum reasoning. OpenRouter DeepSeek ids use `reasoning.effort = "xhigh"`;
-direct DeepSeek ids enable `thinking` and send DeepSeek's maximum
-`reasoning_effort`.
+DeepSeek is configurable rather than forced to maximum. OpenRouter DeepSeek ids
+receive the requested `reasoning.effort` value. Direct DeepSeek maps Harness
+levels to DeepSeek's native `high`/`max` controls (`xhigh` becomes `max`; lower
+thinking efforts become `high`), and `none` disables direct DeepSeek thinking.
 
 ### Configure autonomy and policies
 
@@ -126,7 +128,7 @@ harness run my-case --background                 # Run asynchronously
 
 ```bash
 harness orchestrate my-case --objective "Analyze housing disrepair claim"
-harness orchestrate my-case --objective "..." --max-depth 3 --concurrency 4
+harness orchestrate my-case --objective "..." --max-depth 3 --concurrency 15
 harness orchestrate my-case --background --json
 ```
 
@@ -161,12 +163,11 @@ directly to `_artifacts`.
 
 Codex/ChatGPT-authenticated local runs use the `codex-sdk` provider. Authenticate
 outside the harness with `codex login`; do not paste `CODEX_TOKEN` or Codex cache
-contents into Harness secrets. The Codex SDK profile is deliberately tool-free:
-the Codex command template is
-`harness run <matter> --provider codex-sdk --no-tools`. Use a tool-capable
-provider profile, such as OpenRouter, OpenAI-compatible/custom, direct DeepSeek,
-Anthropic, or a local server that supports tool calls, for the full Harness tool
-loop.
+contents into Harness secrets. The Codex SDK profile runs as a native Codex
+agent with workspace-write sandboxing, network/web search enabled, and Harness
+tools exposed through an internal MCP server:
+`harness run <matter> --provider codex-sdk`. Use `--no-tools` only when you want
+a deliberately tool-free Codex run.
 
 Hermes (Atticus) operators must follow the read-only/briefing runbook in
 [`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
@@ -192,13 +193,35 @@ harness reject my-case draft-1234567890 --reason "needs more citations"
 
 ```bash
 harness source search my-case "Housing Act 1988 section 21"   # Search web sources
+harness source search my-case "prorogation UKSC 41" --include-domain caselaw.nationalarchives.gov.uk --json
 harness source fetch my-case https://example.com/statute      # Fetch and snapshot a URL
 harness source list my-case                                    # List stored sources
 ```
 
-`source search` uses `SEARCH_API_KEY` and an optional `SEARCH_ENDPOINT`; `source fetch`
-stores hashed snapshots under the matter so later verification works from saved text,
-not bare URLs.
+`source search` uses the control-panel search provider. Tavily is the default
+legal web search backend; Brave Search can be selected as a fallback or generic
+endpoint provider. `source fetch` stores hashed snapshots under the matter so
+later verification works from saved text, not bare URLs.
+
+Beginner setup:
+
+```bash
+harness control-panel search auth <tavily-key>
+harness control-panel search enable
+harness control-panel search --json
+```
+
+To use Brave Search instead:
+
+```bash
+harness control-panel search auth --provider brave <brave-key>
+harness control-panel search use brave
+harness control-panel search enable
+```
+
+Environment-variable equivalents are `TAVILY_API_KEY`,
+`BRAVE_SEARCH_API_KEY`, `SEARCH_PROVIDER=brave`, and
+`SEARCH_ENDPOINT=https://api.search.brave.com/res/v1/web/search`.
 
 ### Scotland court corpora
 
@@ -285,6 +308,7 @@ harness config set defaultModel deepseek/deepseek-v4-pro
 harness secrets set OPENROUTER_API_KEY sk-or-v1-...
 harness policy show --json
 harness policy set autonomy.maxAgentDepth 5
+harness policy set autonomy.gateFeedback.maxWorkerRetries 5
 ```
 
 ### Skills

@@ -18,4 +18,4 @@ export type { SearchQuery, SearchResult, FtsMatch } from './search.js';
 export type { CitationSupportStatus, CitationCheck, CitationResult } from './citation.js';
 export type { GateSeverity, GateStatus, QualityGate, GateContext, GateCheckResult, GateResult } from './gate.js';
 export type { ReviewSeverity, ReviewFindingType, HostileReview, ReviewFinding } from './review.js';
-export type { GlobalHarnessConfig, ResolvedHarnessConfig, AutonomyPolicy, ToolPolicy, ApprovalDecision, ToolCategory, AutonomyMode, ExternalActionMode } from '../config/schema.js';
+export type { GlobalHarnessConfig, ResolvedHarnessConfig, AutonomyPolicy, AutonomyPolicyOverride, GateFeedbackConfig, ToolPolicy, ApprovalDecision, ToolCategory, AutonomyMode, ExternalActionMode } from '../config/schema.js';

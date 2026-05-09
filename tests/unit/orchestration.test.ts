@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { writeFile } from 'fs/promises';
 import { initMatter, deleteMatter } from '../../src/storage/matter.js';
 import { loadMatter } from '../../src/storage/matter.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
 import { listRuns } from '../../src/state/runs.js';
 import { listTasks } from '../../src/state/tasks.js';
+import { listEvents } from '../../src/state/events.js';
 import { deriveSnapshot } from '../../src/state/snapshot.js';
+import { getMatterConfigPath } from '../../src/config/paths.js';
 import { getDefaultPhases } from '../../src/legal/workflow.js';
+import { allowedToolsForPhase } from '../../src/orchestration/phase-tools.js';
+import { DEFAULT_MAX_CONCURRENCY } from '../../src/orchestration/limits.js';
+import { ToolRegistry } from '../../src/tools/index.js';
 
 vi.mock('../../src/llm/client.js', () => ({
   OpenRouterClient: vi.fn().mockImplementation(() => ({
@@ -45,6 +51,104 @@ vi.mock('../../src/llm/client.js', () => ({
 import { OpenRouterClient, createLLMClient } from '../../src/llm/client.js';
 import type { OrchestratorConfig } from '../../src/orchestration/master-orchestrator.js';
 import { MasterOrchestrator } from '../../src/orchestration/master-orchestrator.js';
+import { WorkerAgent } from '../../src/orchestration/worker.js';
+
+describe('phase tool contracts', () => {
+  it('keeps evidence search follow-up tools available to every worker phase', () => {
+    for (const phase of getDefaultPhases()) {
+      const tools = allowedToolsForPhase(phase.id);
+      expect(tools).toContain('evidence_search');
+      expect(tools).toContain('evidence_chunk_read');
+      expect(tools).toContain('matter_inventory');
+      expect(new Set(tools).size).toBe(tools.length);
+    }
+  });
+
+  it('defaults orchestration concurrency to fifteen worker lanes', () => {
+    expect(DEFAULT_MAX_CONCURRENCY).toBe(15);
+  });
+
+  it('exposes stage-specific tools needed by the stage contract', () => {
+    expect(allowedToolsForPhase('evidence_ingestion_and_fact_extraction')).toEqual(expect.arrayContaining([
+      'evidence_ingest',
+      'evidence_chunk_read',
+    ]));
+    expect(allowedToolsForPhase('law_and_policy_research')).toEqual(expect.arrayContaining([
+      'web_search',
+      'web_fetch',
+    ]));
+    expect(allowedToolsForPhase('verification_and_hostile_review')).toEqual(expect.arrayContaining([
+      'hostile_review',
+      'quality_gate',
+      'verify_citations',
+    ]));
+  });
+
+  it('only exposes registered tools in every phase contract', () => {
+    for (const phase of getDefaultPhases()) {
+      const allowedTools = allowedToolsForPhase(phase.id);
+      const registry = new ToolRegistry({ allowedTools });
+      const registeredNames = new Set(registry.getAll().map((tool) => tool.name));
+
+      expect(registeredNames).toEqual(new Set(allowedTools));
+    }
+  });
+
+  it('passes phase context and inventory guidance into worker user messages', async () => {
+    const matterName = 'worker-context-pack-test';
+    await initMatter(matterName);
+    let capturedMessage = '';
+    let capturedSystemPrompt = '';
+
+    try {
+      const worker = new WorkerAgent({
+        spawn: {
+          matterName,
+          title: 'Create retrospective bundle index',
+          objective: 'Create retrospective bundle index',
+          role: 'worker',
+          allowedTools: [],
+          contextPack: 'Retrospective appellate context marker.',
+        },
+        model: 'test-model',
+        queryLoopFactory: (config) => ({
+          run: async (userMessage) => {
+            capturedMessage = userMessage;
+            capturedSystemPrompt = config.systemPrompt;
+            return {
+              turns: [],
+              history: [],
+              finalContent: JSON.stringify({
+                status: 'completed',
+                summary: 'Done',
+                findings: [],
+                risks: [],
+                proposedTasks: [],
+                artifactIds: [],
+                nextActions: [],
+              }),
+              status: 'completed',
+            };
+          },
+        }),
+      });
+
+      await worker.execute();
+
+      expect(capturedMessage).toContain('Retrospective appellate context marker.');
+      expect(capturedMessage).toContain('Use matter_inventory before exec_sqlite');
+      expect(capturedMessage).toContain('keep paging evidence_chunk_read/read_file');
+      expect(capturedMessage).toContain('write_file mode "append" and expectedContentHash');
+      expect(capturedMessage).toContain('Each finding should include kind');
+      expect(capturedMessage).toContain('Write the summary, findings, risks, proposed tasks, and next actions in English');
+      expect(capturedSystemPrompt).toContain('write_file append mode and expectedContentHash');
+      expect(capturedSystemPrompt).toContain('Write all operator-facing prose and structured JSON string values in English');
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+});
 
 function mockWorkerStatus(status: 'completed' | 'blocked' | 'needs_followup' | 'failed'): void {
   const fakeClient = {
@@ -178,6 +282,32 @@ describe('MasterOrchestrator', () => {
     }
   }, 30000);
 
+  it('honors configured phase subsets for staged repair runs', async () => {
+    const phases = getDefaultPhases().slice(0, 2);
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Subset phase test',
+      maxDepth: 1,
+      maxConcurrency: 1,
+      phases,
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe('completed');
+    expect(result.phaseResults.map((phase) => phase.phaseId)).toEqual(phases.map((phase) => phase.id));
+    expect(listRuns(matterName).filter((run) => run.role === 'mini_orchestrator')).toHaveLength(2);
+    expect(listTasks(matterName).filter((task) => task.kind === 'mini_orchestrator')).toHaveLength(2);
+
+    const masterRun = listRuns(matterName).find((run) => run.role === 'master')!;
+    const masterEvents = listEvents(matterName).filter((event) => event.runId === masterRun.id);
+    expect(masterEvents.some((event) =>
+      event.type === 'run.completed' &&
+      event.data.completedPhases === 2 &&
+      event.data.totalPhases === 2
+    )).toBe(true);
+  }, 30000);
+
   it('does not mark an aborted orchestration as completed', async () => {
     const orchestrator = new MasterOrchestrator({
       matterName,
@@ -194,41 +324,105 @@ describe('MasterOrchestrator', () => {
     expect(result.phaseResults).toHaveLength(0);
     expect((await loadMatter(matterName)).status).toBe('analyzing');
     expect(orchestrator.getActiveRunCount()).toBe(0);
+    const masterRun = listRuns(matterName).find((run) => run.role === 'master')!;
+    const events = listEvents(matterName);
+    expect(events.some((event) => event.type === 'run.completed')).toBe(false);
+    const masterEvents = events.filter((event) => event.runId === masterRun.id);
+    expect(masterEvents.some((event) =>
+      event.type === 'run.partial' &&
+      event.data.status === 'aborted' &&
+      event.data.completedPhases === 0 &&
+      event.data.totalPhases === 10
+    )).toBe(true);
   }, 30000);
 
   it('surfaces blocked phase work as needs-followup instead of completed', async () => {
     mockWorkerStatus('blocked');
+    const phases = getDefaultPhases().slice(0, 2);
     const orchestrator = new MasterOrchestrator({
       matterName,
       objective: 'Blocked worker test',
       maxDepth: 2,
       maxConcurrency: 2,
+      phases,
     });
 
     const result = await orchestrator.run();
 
     expect(result.status).toBe('needs_followup');
+    expect(result.phaseResults).toHaveLength(phases.length);
     expect(result.phaseResults.every((phase) => phase.status === 'blocked')).toBe(true);
     expect(listTasks(matterName, { status: 'blocked' }).length).toBeGreaterThan(0);
+    const retryTasks = listTasks(matterName).filter((task) => task.kind === 'worker_retry');
+    expect(retryTasks.length).toBeGreaterThan(0);
+    expect(retryTasks[0].data).toMatchObject({
+      recoveryOutcome: 'spawn_replacement',
+      maxRecoveryRetries: 3,
+    });
+    const masterRun = listRuns(matterName).find((run) => run.role === 'master')!;
+    const masterEvents = listEvents(matterName).filter((event) => event.runId === masterRun.id);
+    expect(masterEvents.some((event) => event.type === 'run.completed')).toBe(false);
+    expect(masterEvents.some((event) =>
+      event.type === 'run.partial' &&
+      event.data.status === 'needs_followup' &&
+      event.data.completedPhases === 0 &&
+      event.data.totalPhases === phases.length
+    )).toBe(true);
     expect((await loadMatter(matterName)).status).toBe('analyzing');
     expect(orchestrator.getActiveRunCount()).toBe(0);
   }, 30000);
 
   it('surfaces needs-followup worker results as blocked phase work', async () => {
     mockWorkerStatus('needs_followup');
+    const phases = getDefaultPhases().slice(0, 2);
     const orchestrator = new MasterOrchestrator({
       matterName,
       objective: 'Follow-up worker test',
       maxDepth: 2,
       maxConcurrency: 2,
+      phases,
     });
 
     const result = await orchestrator.run();
 
     expect(result.status).toBe('needs_followup');
+    expect(result.phaseResults).toHaveLength(phases.length);
     expect(result.phaseResults.every((phase) => phase.status === 'blocked')).toBe(true);
     expect(listTasks(matterName, { status: 'blocked' }).length).toBeGreaterThan(0);
+    const retryTasks = listTasks(matterName).filter((task) => task.kind === 'worker_retry');
+    expect(retryTasks.length).toBeGreaterThan(0);
+    expect(retryTasks[0].data.retryOf).toEqual(expect.any(String));
+    expect(retryTasks[0].data.retryReason).toContain('needs_followup');
     expect((await loadMatter(matterName)).status).toBe('analyzing');
+  }, 30000);
+
+  it('uses configured gate-feedback worker retry limits in recovery tasks', async () => {
+    mockWorkerStatus('needs_followup');
+    await writeFile(
+      getMatterConfigPath(matterName),
+      JSON.stringify({ autonomy: { gateFeedback: { maxWorkerRetries: 5 } } }),
+      'utf-8',
+    );
+
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Configured recovery retry test',
+      maxDepth: 2,
+      maxConcurrency: 2,
+      phases: getDefaultPhases().slice(0, 1),
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe('needs_followup');
+    const retryTasks = listTasks(matterName).filter((task) => task.kind === 'worker_retry');
+    expect(retryTasks.length).toBeGreaterThan(0);
+    expect(retryTasks[0].data).toMatchObject({
+      recoveryOutcome: 'spawn_replacement',
+      maxRecoveryRetries: 5,
+    });
+    const blockedWorkers = listTasks(matterName, { status: 'blocked' }).filter((task) => task.kind === 'worker');
+    expect(blockedWorkers[0].data.maxRecoveryRetries).toBe(5);
   }, 30000);
 
   it('normalizes invalid concurrency instead of stalling the batch loop', async () => {
@@ -244,6 +438,30 @@ describe('MasterOrchestrator', () => {
     expect(result.phaseResults).toHaveLength(10);
     expect(result.status).toBe('completed');
     expect(orchestrator.getActiveRunCount()).toBe(0);
+  }, 30000);
+
+  it('uses retrospective appellate production and bundle tasks for concluded case trials', async () => {
+    const phases = getDefaultPhases().filter((phase) =>
+      phase.id === 'document_production' || phase.id === 'bundle_and_war_room_assembly'
+    );
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Retrospective concluded UKSC Cherry prorogation case trial with known outcome and downloaded court documents',
+      maxDepth: 2,
+      maxConcurrency: 3,
+      phases,
+    });
+
+    const result = await orchestrator.run();
+    const workerTitles = listTasks(matterName)
+      .filter((task) => task.kind === 'worker')
+      .map((task) => task.title);
+
+    expect(result.status).toBe('completed');
+    expect(workerTitles).toContain('Select a compact production set using matter_inventory production candidates, distinguishing holdings from submissions');
+    expect(workerTitles).toContain('Create retrospective appellate bundle index from matter_inventory production candidates');
+    expect(workerTitles).not.toContain('Draft key documents');
+    expect(workerTitles).not.toContain('Create master bundle index');
   }, 30000);
 });
 

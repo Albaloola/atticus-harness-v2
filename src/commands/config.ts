@@ -21,6 +21,7 @@ export async function handleConfigShow(
     printSection('Provider', {
       name: output.providerName,
       model: output.model,
+      reasoningEffort: output.reasoningEffort ?? 'provider default',
       baseUrl: (output.provider as JsonObject).baseUrl,
       apiKey: (output.provider as JsonObject).apiKey
         ? 'configured'

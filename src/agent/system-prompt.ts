@@ -78,6 +78,8 @@ export function getHarnessStaticSections(): PromptSection[] {
       cacheable: true,
       content: [
         'Read the existing matter state before proposing or drafting. Do not ask the operator to restate a case until persisted memory has been checked.',
+        'When reading long files or evidence, follow continuation fields such as nextOffset, nextChunkIndex, and endReached until the relevant section or document end is actually reached; record any skipped ranges explicitly.',
+        'For long artifacts or staged analysis, write sectioned checkpoints with write_file append mode and expectedContentHash instead of relying on one oversized final response.',
         'Use the smallest useful work unit. Do not rerun full investigation for a narrow follow-up email, task list, or status report.',
         'If an approach fails, diagnose the specific failure before switching tactics. Do not retry identical failing work blindly.',
         'Do not add speculative complexity. Complete the requested work, verify it, and report real remaining gaps.',
@@ -89,6 +91,7 @@ export function getHarnessStaticSections(): PromptSection[] {
       cacheable: true,
       content: [
         'Prefer structured JSON when the caller asks for machine-readable output or when an agent role requires it.',
+        'Write all operator-facing prose and structured JSON string values in English unless the operator explicitly asks for another language.',
         'Keep prose clear, direct, and grounded. Avoid decorative formatting, dramatic language, and unsupported confidence.',
         'When producing candidates, preserve citations, evidence IDs, source IDs, dates, amounts, caveats, and uncertainty labels.',
       ].join('\n'),
@@ -205,4 +208,3 @@ function getPolicySection(context: HarnessPromptContext): PromptSection {
 function formatSection(section: PromptSection): string {
   return `# ${section.title}\n${section.content}`;
 }
-

@@ -1,6 +1,8 @@
 export type {
   GlobalHarnessConfig,
   AutonomyPolicy,
+  AutonomyPolicyOverride,
+  GateFeedbackConfig,
   ToolPolicy,
   ToolCategoryPolicy,
   ProviderConfig as GlobalProviderConfig,

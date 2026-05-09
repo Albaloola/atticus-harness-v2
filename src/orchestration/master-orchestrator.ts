@@ -15,6 +15,7 @@ export { OrchestratorConfig, OrchestratorResult } from './types.js';
 export class MasterOrchestrator {
   private config: OrchestratorConfig;
   private runtime: OrchestrationRuntime;
+  private activeMasterRunId?: string;
 
   constructor(config: OrchestratorConfig) {
     this.config = config;
@@ -30,7 +31,7 @@ export class MasterOrchestrator {
     const { matterName, objective, maxDepth, maxConcurrency } = this.config;
     const phaseMaxDepth = remainingDepth(maxDepth, DEFAULT_MAX_DEPTH);
     const phaseMaxConcurrency = normalizePositiveInteger(maxConcurrency, DEFAULT_MAX_CONCURRENCY);
-    const phases = getDefaultPhases();
+    const phases = this.config.phases ?? getDefaultPhases();
     await recoverStaleRuntimeState(matterName);
     const resolvedConfig = await resolveConfig({ matterName });
     const masterModel = this.config.model ?? selectModelForTask({
@@ -49,6 +50,7 @@ export class MasterOrchestrator {
     });
 
     this.runtime.trackRun(masterRun.id);
+    this.activeMasterRunId = masterRun.id;
     const removeShutdownCleanup = this.installShutdownCleanup(masterRun.id);
 
     try {
@@ -94,6 +96,7 @@ export class MasterOrchestrator {
           maxConcurrency: phaseMaxConcurrency,
           parentRunId: masterRun.id,
           providerPolicy: resolvedConfig.providerPolicy,
+          autonomy: resolvedConfig.autonomy,
           phaseTaskId: task.id,
           runtime: this.runtime,
         });
@@ -118,14 +121,13 @@ export class MasterOrchestrator {
         }
       }
 
-      await this.runtime.emitRunCompleted(
-        masterRun.id,
-        stoppedReason
-          ? `Stopped because ${stoppedReason}; completed ${phaseResults.length - failedPhases.length - blockedPhases.length}/${phaseResults.length} phases`
-          : `Completed ${phaseResults.length - failedPhases.length - blockedPhases.length}/${phaseResults.length} phases`
-      );
-
       const result = this.synthesize(matterName, objective, phaseResults, failedPhases, blockedPhases, stoppedReason);
+      const terminalStatus = stoppedReason ?? result.status;
+      await this.runtime.emitRunCompleted(masterRun.id, result.summary, {
+        status: terminalStatus,
+        completedPhases: phaseResults.length - failedPhases.length - blockedPhases.length,
+        totalPhases: phases.length,
+      });
       updateRun(matterName, masterRun.id, {
         status: result.status === 'failed' ? 'error' : result.status === 'needs_followup' ? 'blocked' : 'completed',
         summary: result.summary,
@@ -144,7 +146,11 @@ export class MasterOrchestrator {
         phaseResults: [],
       };
 
-      await this.runtime.emitRunCompleted(masterRun.id, result.summary);
+      await this.runtime.emitRunCompleted(masterRun.id, result.summary, {
+        status: 'failed',
+        completedPhases: 0,
+        totalPhases: phases.length,
+      });
       updateRun(matterName, masterRun.id, {
         status: 'error',
         summary: result.summary,
@@ -161,6 +167,7 @@ export class MasterOrchestrator {
     } finally {
       removeShutdownCleanup();
       this.runtime.untrackRun(masterRun.id);
+      this.activeMasterRunId = undefined;
     }
   }
 
@@ -169,7 +176,7 @@ export class MasterOrchestrator {
   }
 
   abort(): void {
-    this.runtime.abort();
+    this.runtime.abort('aborted', this.activeMasterRunId);
   }
 
   private installShutdownCleanup(masterRunId: string): () => void {
@@ -177,7 +184,7 @@ export class MasterOrchestrator {
     const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGUSR1'];
     const handler = (signal: NodeJS.Signals): void => {
       const message = `Orchestration interrupted by ${signal}`;
-      this.runtime.abort();
+      this.runtime.abort(message, masterRunId);
       updateRun(matterName, masterRunId, {
         status: 'error',
         summary: message,

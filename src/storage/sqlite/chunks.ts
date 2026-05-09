@@ -17,6 +17,12 @@ export interface StoredChunk extends ChunkData {
   id: number;
 }
 
+export interface ChunkBounds {
+  count: number;
+  minChunkIndex?: number;
+  maxChunkIndex?: number;
+}
+
 export function insertChunks(db: Database.Database, chunks: ChunkData[]): void {
   const stmt = db.prepare(`
     INSERT INTO extraction_chunks (evidence_id, chunk_index, content, content_hash, confidence)
@@ -113,6 +119,25 @@ export function listChunks(
   `).all(evidenceId, startIndex, count) as Record<string, unknown>[];
 
   return rows.map(rowToChunk);
+}
+
+export function getChunkBounds(matterName: string, evidenceId: string): ChunkBounds {
+  const db = getDb(matterName);
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS count,
+      MIN(chunk_index) AS min_chunk_index,
+      MAX(chunk_index) AS max_chunk_index
+    FROM extraction_chunks
+    WHERE evidence_id = ?
+  `).get(evidenceId) as Record<string, unknown> | undefined;
+
+  const count = Number(row?.count ?? 0);
+  return {
+    count,
+    minChunkIndex: count > 0 ? Number(row?.min_chunk_index) : undefined,
+    maxChunkIndex: count > 0 ? Number(row?.max_chunk_index) : undefined,
+  };
 }
 
 function createChunk(evidenceId: string, chunkIndex: number, content: string, confidence: number): ChunkData {

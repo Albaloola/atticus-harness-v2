@@ -1,5 +1,6 @@
 import { readFile } from 'fs/promises';
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
+import { resolveWorkspacePath } from './path-safety.js';
 
 const DEFAULT_READ_LENGTH = 5000;
 const MAX_READ_LENGTH = 20000;
@@ -25,7 +26,7 @@ export class ReadFileTool implements Tool<ReadFileArgs, ReadFileResult> {
   readonly inputSchema = {
     type: 'object',
     properties: {
-      path: { type: 'string', description: 'Absolute path to the file to read' },
+      path: { type: 'string', description: 'Workspace-relative path, or absolute path inside the current workspace' },
       offset: { type: 'number', description: 'Character offset to start reading from (default: 0)' },
       length: { type: 'number', description: `Characters to read, max ${MAX_READ_LENGTH} (default: ${DEFAULT_READ_LENGTH})` },
     },
@@ -34,7 +35,8 @@ export class ReadFileTool implements Tool<ReadFileArgs, ReadFileResult> {
 
   async call(args: ReadFileArgs, _context: ToolUseContext): Promise<ToolResult<ReadFileResult>> {
     try {
-      const content = await readFile(args.path, 'utf-8');
+      const filePath = resolveWorkspacePath(args.path);
+      const content = await readFile(filePath, 'utf-8');
       const offset = Math.max(0, Math.trunc(args.offset ?? 0));
       const requestedLength = Math.max(1, Math.trunc(args.length ?? DEFAULT_READ_LENGTH));
       const length = Math.min(requestedLength, MAX_READ_LENGTH);

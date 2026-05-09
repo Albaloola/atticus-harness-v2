@@ -15,6 +15,7 @@ export interface ProviderConfig {
   authType?: import('../config/schema.js').ProviderAuthType;
   delegatedAuthProvider?: import('../config/schema.js').DelegatedAuthProvider;
   reasoningControl?: import('../config/schema.js').ReasoningControl;
+  agentCapable?: boolean;
   providerPolicy?: import('../config/schema.js').ProviderPolicy;
   providers?: import('../config/schema.js').ProvidersConfig;
 }
@@ -45,6 +46,7 @@ export async function loadConfigFromStore(): Promise<ProviderConfig> {
       maxRetries: resolved.provider.maxRetries ?? 3,
       providerName: resolved.providerName,
       reasoningControl: resolved.provider.reasoningControl ?? resolved.profile.reasoningControl,
+      agentCapable: resolved.provider.agentCapable ?? resolved.profile.agentCapable,
       providerPolicy: resolved.providerPolicy,
       providers: { [resolved.providerName]: resolved.provider },
     };

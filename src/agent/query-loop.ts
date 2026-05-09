@@ -70,7 +70,10 @@ export class QueryLoop {
       const tools = this.config.toolMode === 'disabled'
         ? []
         : this.toolRegistry.getAllDefinitions();
-      if (tools.length > 0 && this.client.capabilities?.tools === false) {
+      const usesNativeToolLoop = Boolean(
+        this.client.capabilities?.agentMode && this.client.capabilities?.nativeMcpTools,
+      );
+      if (tools.length > 0 && this.client.capabilities?.tools === false && !usesNativeToolLoop) {
         const providerName = this.config.providerName ?? 'selected provider';
         const message = `Provider ${providerName} does not support Harness-owned tool calls in this profile; run with --no-tools or select a tool-capable provider profile.`;
         if (!this.config.quietMode) {

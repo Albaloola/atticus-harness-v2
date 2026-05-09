@@ -6,6 +6,7 @@ import { ExecSqliteTool } from './exec-sqlite.tool.js';
 import { LlmCallTool } from './llm-call.tool.js';
 import { EvidenceSearchTool } from './evidence-search.tool.js';
 import { EvidenceChunkReadTool } from './evidence-chunk-read.tool.js';
+import { MatterInventoryTool } from './matter-inventory.tool.js';
 import { DraftTool } from './draft.tool.js';
 import { VerifyCitationsTool } from './verify-citations.tool.js';
 import { EvidenceIngestTool } from './evidence-ingest.tool.js';
@@ -47,6 +48,7 @@ export class ToolRegistry {
     this.register(new LlmCallTool());
     this.register(new EvidenceSearchTool());
     this.register(new EvidenceChunkReadTool());
+    this.register(new MatterInventoryTool());
     this.register(new DraftTool());
     this.register(new VerifyCitationsTool());
     this.register(new EvidenceIngestTool());
@@ -73,7 +75,7 @@ export class ToolRegistry {
   }
 
   getAllDefinitions(): ToolDefinition[] {
-    return this.getAll().map(t => ({
+    return this.getAll().filter(t => t.isEnabled()).map(t => ({
       name: t.name,
       description: t.description,
       inputSchema: t.inputSchema,

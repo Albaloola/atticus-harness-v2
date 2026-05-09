@@ -1,12 +1,13 @@
 import chalk from 'chalk';
+import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH } from '../orchestration/limits.js';
 
 export default async function orchestrateHandler(
   matterName: string,
   options: { objective?: string; background?: boolean; json?: boolean; maxDepth?: string; concurrency?: string }
 ): Promise<void> {
   try {
-    const maxDepth = parsePositiveIntegerOption('max depth', options.maxDepth, 3);
-    const concurrency = parsePositiveIntegerOption('concurrency', options.concurrency, 4);
+    const maxDepth = parsePositiveIntegerOption('max depth', options.maxDepth, DEFAULT_MAX_DEPTH);
+    const concurrency = parsePositiveIntegerOption('concurrency', options.concurrency, DEFAULT_MAX_CONCURRENCY);
 
     console.log(chalk.cyan(`Orchestrating ${matterName}...`));
     if (options.objective) console.log(chalk.gray(`  Objective: ${options.objective}`));

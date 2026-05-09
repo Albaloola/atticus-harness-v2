@@ -1,6 +1,7 @@
 import { readdir, stat } from 'fs/promises';
 import { join } from 'path';
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
+import { resolveWorkspacePath } from './path-safety.js';
 
 function matchGlob(name: string, pattern: string): boolean {
   const regexStr = pattern
@@ -17,7 +18,7 @@ export class SearchFilesTool implements Tool<{ pattern: string; path?: string },
     type: 'object',
     properties: {
       pattern: { type: 'string', description: 'Glob pattern (e.g., "**/*.pdf")' },
-      path: { type: 'string', description: 'Directory to search (default: current)' },
+      path: { type: 'string', description: 'Workspace-relative directory, or absolute directory inside the current workspace (default: current)' },
     },
     required: ['pattern'],
   };
@@ -26,7 +27,7 @@ export class SearchFilesTool implements Tool<{ pattern: string; path?: string },
 
   async call(args: { pattern: string; path?: string }, _context: ToolUseContext): Promise<ToolResult<string[]>> {
     try {
-      const basePath = args.path || '.';
+      const basePath = resolveWorkspacePath(args.path || '.');
       const results: string[] = [];
 
       await walkDir(basePath, '', results, args.pattern, 3);

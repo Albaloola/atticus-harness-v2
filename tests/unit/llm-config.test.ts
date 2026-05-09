@@ -6,6 +6,7 @@ import { AnthropicClient, CodexSdkClient, OpenRouterClient, createLLMClient } fr
 import { resolveConfig } from '../../src/config/loader.ts';
 import { evaluateProviderPolicy } from '../../src/config/provider-policy.ts';
 import { DEFAULTS } from '../../src/config/schema.ts';
+import { getMatterConfigPath } from '../../src/config/paths.ts';
 import { initMatter, deleteMatter } from '../../src/storage/matter.ts';
 import { closeAllStateDbs } from '../../src/state/store.ts';
 
@@ -67,6 +68,11 @@ describe('OpenRouterClient config resolution', () => {
     expect(decision.reason).toContain('allow-list');
   });
 
+  it('defaults harness and provider concurrency to fifteen lanes for heavy case intake', () => {
+    expect(DEFAULTS.autonomy.maxConcurrentAgents).toBe(15);
+    expect(DEFAULTS.providerPolicy.concurrentRequests).toBe(15);
+  });
+
   it('denies explicit fallback unless policy allows fallback', () => {
     const decision = evaluateProviderPolicy({
       policy: DEFAULTS.providerPolicy,
@@ -109,6 +115,8 @@ describe('OpenRouterClient config resolution', () => {
 
     expect(client).toBeInstanceOf(CodexSdkClient);
     expect(client.capabilities?.tools).toBe(false);
+    expect(client.capabilities?.agentMode).toBe(true);
+    expect(client.capabilities?.nativeMcpTools).toBe(true);
   });
 
   it('constructs an AnthropicClient for anthropic provider configs', () => {
@@ -153,6 +161,28 @@ describe('OpenRouterClient config resolution', () => {
       expect(config.providerName).toBe('codex-sdk');
       expect(config.model).toBe('gpt-5.5');
       expect(config.model).not.toContain('deepseek/');
+    } finally {
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('deep-merges per-matter gate-feedback autonomy overrides', async () => {
+    const matterName = `gate-feedback-config-${Date.now()}`;
+    await initMatter(matterName);
+
+    try {
+      writeFileSync(
+        getMatterConfigPath(matterName),
+        JSON.stringify({ autonomy: { gateFeedback: { maxWorkerRetries: 7 } } }),
+        'utf-8',
+      );
+
+      const config = await resolveConfig({ matterName });
+
+      expect(config.autonomy.gateFeedback.maxWorkerRetries).toBe(7);
+      expect(config.autonomy.gateFeedback.enabled).toBe(DEFAULTS.autonomy.gateFeedback.enabled);
+      expect(config.autonomy.gateFeedback.maxMiniOrchestratorRetries).toBe(DEFAULTS.autonomy.gateFeedback.maxMiniOrchestratorRetries);
+      expect(config.autonomy.requireQualityGateForAcceptance).toBe(DEFAULTS.autonomy.requireQualityGateForAcceptance);
     } finally {
       await deleteMatter(matterName);
     }

@@ -29,10 +29,20 @@ export interface LLMResponse {
   content: string;
   /** Provider-specific reasoning transcript, retained for protocols that require replay. */
   reasoningContent?: string;
+  /** Provider-native actions executed outside the Harness-owned function-calling loop. */
+  nativeActions?: LLMNativeAction[];
   toolCalls?: ToolCall[];
   usage?: LLMUsage;
   provider?: string;
   model?: string;
+}
+
+export interface LLMNativeAction {
+  id?: string;
+  type: string;
+  status?: string;
+  label?: string;
+  data?: Record<string, unknown>;
 }
 
 export interface LLMUsage {

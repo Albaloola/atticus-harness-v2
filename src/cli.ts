@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { getActionMatterName, getActionProviderName, requiresLlmPrecheck } from './config/llm-preflight.js';
+import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH } from './orchestration/limits.js';
 
 const program = new Command();
 
@@ -408,6 +409,30 @@ program.command('reject <matter-name>')
     await handler(matterName, candidateId, options);
   });
 
+program.command('exceptions')
+  .description('List or inspect quality-gate exception records')
+  .addCommand(
+    new Command('list')
+      .description('List append-only gate exceptions')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName: string, options: { json?: boolean }) => {
+        const { handleExceptionList } = await import('./commands/exceptions.js');
+        await handleExceptionList(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('show')
+      .description('Show one gate exception')
+      .argument('<matter-name>', 'Matter name')
+      .argument('<exception-id>', 'Exception ID')
+      .option('--json', 'JSON output')
+      .action(async (matterName: string, exceptionId: string, options: { json?: boolean }) => {
+        const { handleExceptionShow } = await import('./commands/exceptions.js');
+        await handleExceptionShow(matterName, exceptionId, options);
+      })
+  );
+
 // Skills
 program.command('skill')
   .description('Manage skills')
@@ -722,6 +747,36 @@ program
       })
   )
   .addCommand(
+    new Command('reasoning')
+      .description('Show or configure global reasoning effort')
+      .addCommand(
+        new Command('show')
+          .description('Show current reasoning effort')
+          .option('--json', 'JSON output')
+          .action(async (options) => {
+            const { handleProviderReasoningShow } = await import('./commands/provider.js');
+            await handleProviderReasoningShow(options);
+          })
+      )
+      .addCommand(
+        new Command('set')
+          .description('Set global reasoning effort')
+          .argument('<effort>', 'none, minimal, low, medium, high, xhigh, or default')
+          .action(async (effort) => {
+            const { handleProviderReasoningSet } = await import('./commands/provider.js');
+            await handleProviderReasoningSet(effort);
+          })
+      )
+      .addCommand(
+        new Command('reset')
+          .description('Reset reasoning effort to provider default')
+          .action(async () => {
+            const { handleProviderReasoningReset } = await import('./commands/provider.js');
+            await handleProviderReasoningReset();
+          })
+      )
+  )
+  .addCommand(
     new Command('reset')
       .description('Restore default provider profiles while preserving secrets')
       .action(async () => {
@@ -771,8 +826,8 @@ program
   .option('-o, --objective <text>', 'High-level objective')
   .option('--background', 'Run in background mode')
   .option('--json', 'JSON output')
-  .option('--max-depth <n>', 'Maximum agent depth', '3')
-  .option('--concurrency <n>', 'Maximum concurrent agents', '4')
+  .option('--max-depth <n>', 'Maximum agent depth', String(DEFAULT_MAX_DEPTH))
+  .option('--concurrency <n>', 'Maximum concurrent agents', String(DEFAULT_MAX_CONCURRENCY))
   .action(async (matterName, options) => {
     const { default: handler } = await import('./commands/orchestrate.js');
     await handler(matterName, options);
@@ -932,6 +987,78 @@ const controlPanelModelCommand = new Command('model')
       })
   );
 
+const controlPanelReasoningCommand = new Command('reasoning')
+  .description('Show or edit global reasoning effort')
+  .addCommand(
+    new Command('show')
+      .description('Show current reasoning effort')
+      .option('--json', 'JSON output')
+      .action(async (options) => {
+        const { handleProviderReasoningShow } = await import('./commands/provider.js');
+        await handleProviderReasoningShow(options);
+      })
+  )
+  .addCommand(
+    new Command('set')
+      .description('Set global reasoning effort')
+      .argument('<effort>', 'none, minimal, low, medium, high, xhigh, or default')
+      .action(async (effort) => {
+        const { handleProviderReasoningSet } = await import('./commands/provider.js');
+        await handleProviderReasoningSet(effort);
+      })
+  )
+  .addCommand(
+    new Command('reset')
+      .description('Reset reasoning effort to provider default')
+      .action(async () => {
+        const { handleProviderReasoningReset } = await import('./commands/provider.js');
+        await handleProviderReasoningReset();
+      })
+  );
+
+const controlPanelSearchCommand = new Command('search')
+  .description('Show or configure Tavily-backed legal web search')
+  .option('--json', 'JSON output')
+  .action(async (options) => {
+    const { handleSearchPanelShow } = await import('./commands/source.js');
+    await handleSearchPanelShow(options);
+  })
+  .addCommand(
+    new Command('auth')
+      .description('Show or set search provider auth')
+      .argument('[key]', 'Search API key')
+      .option('--provider <name>', 'Search provider: tavily or brave', 'tavily')
+      .action(async (key, options) => {
+        const { handleSearchAuth } = await import('./commands/source.js');
+        await handleSearchAuth(key, options);
+      })
+  )
+  .addCommand(
+    new Command('use')
+      .description('Choose search provider: tavily, brave, or generic')
+      .argument('<provider>', 'Search provider name')
+      .action(async (provider) => {
+        const { handleSearchUse } = await import('./commands/source.js');
+        await handleSearchUse(provider);
+      })
+  )
+  .addCommand(
+    new Command('enable')
+      .description('Allow Harness agent loops to call web_search/web_fetch')
+      .action(async () => {
+        const { handleSearchEnable } = await import('./commands/source.js');
+        await handleSearchEnable();
+      })
+  )
+  .addCommand(
+    new Command('disable')
+      .description('Block automatic Harness web_search/web_fetch calls')
+      .action(async () => {
+        const { handleSearchDisable } = await import('./commands/source.js');
+        await handleSearchDisable();
+      })
+  );
+
 program
   .command('control-panel')
   .alias('panel')
@@ -948,6 +1075,8 @@ program
   )
   .addCommand(controlPanelProviderCommand)
   .addCommand(controlPanelModelCommand)
+  .addCommand(controlPanelReasoningCommand)
+  .addCommand(controlPanelSearchCommand)
   .addCommand(
     new Command('reset')
       .description('Reset provider settings to factory defaults while preserving secrets')
@@ -1055,6 +1184,15 @@ program
       .description('Search for web sources for a matter')
       .argument('<matter-name>', 'Matter name')
       .argument('<query>', 'Search query')
+      .option('-n, --max-results <n>', 'Maximum results', '10')
+      .option('--source-type <type>', 'Source type label to store, e.g. case_law, statute, guidance')
+      .option('--jurisdiction <name>', 'Jurisdiction hint, e.g. Scotland, UK, United States')
+      .option('--include-domain <domain>', 'Restrict search to a domain', collect, [])
+      .option('--exclude-domain <domain>', 'Exclude a domain', collect, [])
+      .option('--search-depth <depth>', 'Tavily depth: basic, advanced, fast, ultra-fast', 'advanced')
+      .option('--raw-content', 'Ask Tavily for cleaned markdown content in results')
+      .option('--topic <topic>', 'Tavily topic: general, news, finance', 'general')
+      .option('--time-range <range>', 'Recency filter: day, week, month, year, d, w, m, y')
       .option('--json', 'JSON output')
       .action(async (matterName, query, options) => {
         const { handleSourceSearch } = await import('./commands/source.js');

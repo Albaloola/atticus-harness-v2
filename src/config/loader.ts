@@ -29,6 +29,7 @@ import {
   profileToProviderConfig,
 } from './presets.js';
 import { assertProviderReady } from './auth.js';
+import { normalizeReasoningEffort } from './reasoning.js';
 
 function deepMerge<T extends Record<string, unknown>>(
   base: T,
@@ -174,7 +175,7 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
   let toolPolicy: ToolPolicy = { ...globalConfig.toolPolicy };
   let temperature: number | undefined;
   let maxTokens: number | undefined;
-  let reasoningEffort: MatterConfigOverride['reasoningEffort'];
+  let reasoningEffort = normalizeReasoningEffort(globalConfig.reasoningEffort, 'global reasoningEffort');
   const selectedProviderName = providerName ?? globalConfig.activeProvider;
   if (isLegacyCodexOAuthProfileName(selectedProviderName)) {
     throw new Error(legacyCodexOAuthMigrationMessage(selectedProviderName));
@@ -211,8 +212,18 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
       }
       if (matterOverride.temperature !== undefined) temperature = matterOverride.temperature;
       if (matterOverride.maxTokens !== undefined) maxTokens = matterOverride.maxTokens;
-      if (matterOverride.reasoningEffort !== undefined) reasoningEffort = matterOverride.reasoningEffort;
-      if (matterOverride.autonomy) autonomy = { ...autonomy, ...matterOverride.autonomy };
+      if (matterOverride.reasoningEffort !== undefined) {
+        reasoningEffort = normalizeReasoningEffort(
+          matterOverride.reasoningEffort,
+          `matter ${matterName} reasoningEffort`,
+        );
+      }
+      if (matterOverride.autonomy) {
+        autonomy = deepMerge(
+          autonomy as unknown as Record<string, unknown>,
+          matterOverride.autonomy as unknown as Partial<Record<string, unknown>>
+        ) as unknown as AutonomyPolicy;
+      }
     }
     const matterPolicy = await loadMatterPolicyOverride(matterName);
     if (matterPolicy) {
@@ -263,6 +274,7 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
     reasoningEffort,
     autonomy,
     toolPolicy,
+    search: globalConfig.search,
     fromDisk,
     matterName,
   };
@@ -302,6 +314,7 @@ function redactConfig(config: ResolvedHarnessConfig): Record<string, unknown> {
     reasoningEffort: config.reasoningEffort,
     autonomy: config.autonomy,
     toolPolicy: config.toolPolicy,
+    search: config.search,
     fromDisk: config.fromDisk,
     matterName: config.matterName,
   };

@@ -1,4 +1,4 @@
-import type { AgentStructuredResult as BaseAgentStructuredResult } from '../agent/result-schema.js';
+import type { AgentStructuredResult as BaseAgentStructuredResult, FindingKind } from '../agent/result-schema.js';
 import type { PhaseDefinition } from '../legal/workflow.js';
 import type { AutonomyPolicy, ProviderPolicy } from '../config/schema.js';
 import type { OrchestrationRuntime } from './runtime.js';
@@ -45,6 +45,7 @@ export interface MiniOrchestratorInput {
   phaseTaskId?: string;
   runtime?: OrchestrationRuntime;
   providerPolicy?: ProviderPolicy;
+  autonomy?: AutonomyPolicy;
 }
 
 export interface AgentStructuredResult
@@ -67,7 +68,7 @@ export interface OrchestrationRunConfig {
 export interface OrchestratorResult {
   matterName: string;
   summary: string;
-  status: string;
+  status: 'completed' | 'needs_followup' | 'failed';
   artifacts: string[];
   findings: Array<{ claim: string; confidence: number }>;
   risks: Array<{ risk: string; severity: string }>;
@@ -79,7 +80,7 @@ export interface PhaseResult {
   phaseName: string;
   status: 'completed' | 'failed' | 'blocked';
   summary: string;
-  findings: Array<{ claim: string; support: string; confidence: 'high' | 'medium' | 'low' }>;
+  findings: Array<{ claim: string; support: string; confidence: 'high' | 'medium' | 'low'; kind?: FindingKind }>;
   risks: Array<{ risk: string; severity: 'critical' | 'high' | 'medium' | 'low'; mitigation: string }>;
   artifactIds: string[];
   workerResults: AgentStructuredResult[];

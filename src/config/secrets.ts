@@ -114,6 +114,20 @@ export async function getSearchApiKey(): Promise<string | undefined> {
   return getSecret('SEARCH_API_KEY');
 }
 
+export async function getTavilyApiKey(): Promise<string | undefined> {
+  if (process.env.TAVILY_API_KEY) {
+    return process.env.TAVILY_API_KEY;
+  }
+  return getSecret('TAVILY_API_KEY');
+}
+
+export async function getBraveSearchApiKey(): Promise<string | undefined> {
+  if (process.env.BRAVE_SEARCH_API_KEY) {
+    return process.env.BRAVE_SEARCH_API_KEY;
+  }
+  return getSecret('BRAVE_SEARCH_API_KEY');
+}
+
 
 async function readTokenFile(filePath: string, keys: string[]): Promise<string | undefined> {
   try {

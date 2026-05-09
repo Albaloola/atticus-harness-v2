@@ -10,16 +10,18 @@ import { initMatter, deleteMatter } from '../../src/storage/matter.ts';
 import { closeAllStateDbs } from '../../src/state/store.ts';
 
 class FakeLLMClient {
-  capabilities?: { tools: boolean; jsonSchema?: boolean };
+  capabilities?: { tools: boolean; jsonSchema?: boolean; agentMode?: boolean; nativeMcpTools?: boolean };
+  requests: LLMRequest[] = [];
   private responses: LLMResponse[];
   private index = 0;
 
-  constructor(responses: LLMResponse[], capabilities?: { tools: boolean; jsonSchema?: boolean }) {
+  constructor(responses: LLMResponse[], capabilities?: { tools: boolean; jsonSchema?: boolean; agentMode?: boolean; nativeMcpTools?: boolean }) {
     this.responses = responses;
     this.capabilities = capabilities;
   }
 
-  async chatWithTools(_request: LLMRequest): Promise<LLMResponse> {
+  async chatWithTools(request: LLMRequest): Promise<LLMResponse> {
+    this.requests.push(request);
     const r = this.responses[this.index];
     if (r === undefined) throw new Error('No more fake responses');
     this.index++;
@@ -157,6 +159,27 @@ describe('QueryLoop', () => {
       expect(result.error).toContain('tool-capable provider profile');
       expect(result.error).not.toContain('OpenAI-compatible');
       expect(result.turns).toHaveLength(0);
+    });
+
+    it('allows native-agent providers to receive tool definitions without Harness-owned execution', async () => {
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(new FakeTool('search_tool', makeSuccessToolResult('found results')));
+      const fakeClient = new FakeLLMClient(
+        [makeResponse({ content: 'Native agent handled it' })],
+        { tools: false, jsonSchema: true, agentMode: true, nativeMcpTools: true },
+      );
+
+      const loop = new QueryLoop(
+        { systemPrompt: 'Use tools.', tools: toolRegistry, providerName: 'codex-sdk', quietMode: true },
+        fakeClient,
+      );
+
+      const result = await loop.run('Find data');
+
+      expect(result.status).toBe('completed');
+      expect(result.finalContent).toBe('Native agent handled it');
+      expect(result.turns).toHaveLength(0);
+      expect(fakeClient.requests[0].tools?.some((tool) => tool.name === 'search_tool')).toBe(true);
     });
 
     it('executes tool calls and continues the loop', async () => {

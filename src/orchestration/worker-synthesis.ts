@@ -31,6 +31,7 @@ export async function synthesizeWorkerOutput(params: {
             'You are a legal reducer. Convert raw worker transcript content into one strict JSON object.',
             'Preserve evidence IDs, source IDs, dates, amounts, legal uncertainty, blockers, and next actions.',
             'Do not invent findings. If the transcript contains only process chatter, return empty findings and explain that in the summary.',
+            'Write every JSON string value in English unless the operator explicitly asked for another language.',
           ].join('\n'),
         },
         {

@@ -14,7 +14,14 @@ import { loadGlobalConfig, resolveConfig } from '../../src/config/loader.ts';
 import { resolveProviderAuth, assertProviderReady } from '../../src/config/auth.ts';
 import { PROVIDER_PRESETS } from '../../src/config/presets.ts';
 import { DEFAULTS, type ProviderProfile } from '../../src/config/schema.ts';
-import { handleProviderList, handleProviderModelSet, handleProviderSelect } from '../../src/commands/provider.ts';
+import {
+  handleProviderList,
+  handleProviderModelSet,
+  handleProviderReasoningReset,
+  handleProviderReasoningSet,
+  handleProviderReasoningShow,
+  handleProviderSelect,
+} from '../../src/commands/provider.ts';
 
 const ENV_KEYS = ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'DEEPSEEK_API_KEY', 'CODEX_TOKEN', 'ANTHROPIC_AUTH_TOKEN'] as const;
 
@@ -57,6 +64,7 @@ describe('provider profiles and auth preflight', () => {
     expect(config.activeProvider).toBe('openrouter-deepseek');
     expect(Object.keys(config.profiles).sort()).toEqual(Object.keys(PROVIDER_PRESETS).sort());
     expect(config.profiles['codex-sdk'].authType).toBe('delegated');
+    expect(config.profiles['codex-sdk'].agentCapable).toBe(true);
     expect(config.profiles['openai-codex-oauth']).toBeUndefined();
     expect(config.profiles['openrouter-deepseek'].providerKind).toBe('openai-compatible');
     expect(config.profiles['openrouter-deepseek'].reasoningControl).toBe('openrouter-reasoning');
@@ -77,12 +85,64 @@ describe('provider profiles and auth preflight', () => {
       await handleProviderList({ json: true });
 
       const output = JSON.parse(String(log.mock.calls[0][0])) as {
+        reasoning: { source: string; display: string; control: string };
         profiles: Array<{ name: string; providerKind: string; toolSupport: string; reasoningControl: string }>;
       };
+      expect(output.reasoning).toMatchObject({
+        source: 'provider-default',
+        display: 'provider default',
+        control: 'openrouter-reasoning',
+      });
       const byName = Object.fromEntries(output.profiles.map((profile) => [profile.name, profile]));
       expect(byName['openrouter-deepseek']).toMatchObject({ providerKind: 'openai-compatible', toolSupport: 'tool-capable', reasoningControl: 'openrouter-reasoning' });
       expect(byName['anthropic-api-key']).toMatchObject({ providerKind: 'anthropic', toolSupport: 'tool-capable', reasoningControl: 'anthropic-thinking' });
-      expect(byName['codex-sdk']).toMatchObject({ providerKind: 'codex-sdk', toolSupport: 'tool-free; use --no-tools', reasoningControl: 'codex-sdk' });
+      expect(byName['codex-sdk']).toMatchObject({ providerKind: 'codex-sdk', toolSupport: 'agent (native MCP tools)', reasoningControl: 'codex-sdk' });
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('configures global reasoning effort through the provider panel', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await handleProviderReasoningShow({ json: true });
+      let output = JSON.parse(String(log.mock.calls[0][0])) as {
+        reasoning: { effort?: string; source: string; display: string; validEfforts: string[] };
+      };
+      expect(output.reasoning.effort).toBeUndefined();
+      expect(output.reasoning.source).toBe('provider-default');
+      expect(output.reasoning.validEfforts).toContain('xhigh');
+
+      log.mockClear();
+      await handleProviderReasoningSet('HIGH');
+      let config = await resolveConfig();
+      expect(config.reasoningEffort).toBe('high');
+
+      log.mockClear();
+      await handleProviderReasoningShow({ json: true });
+      output = JSON.parse(String(log.mock.calls[0][0]));
+      expect(output.reasoning).toMatchObject({
+        effort: 'high',
+        source: 'global',
+        display: 'high',
+      });
+
+      await handleProviderReasoningReset();
+      config = await resolveConfig();
+      expect(config.reasoningEffort).toBeUndefined();
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it('rejects invalid reasoning effort values before saving them', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await expect(handleProviderReasoningSet('turbo')).rejects.toThrow('Invalid reasoning effort');
+      const config = await resolveConfig();
+      expect(config.reasoningEffort).toBeUndefined();
     } finally {
       log.mockRestore();
     }

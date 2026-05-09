@@ -9,3 +9,4 @@ matters/*
 tmp/
 .omx/
 .atticus/
+benchmarks/**/raw/

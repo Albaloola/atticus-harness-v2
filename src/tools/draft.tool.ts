@@ -80,7 +80,7 @@ Instructions:
         },
       });
 
-      return { success: true, data: response.content, output: `Draft generated (${response.content.length} chars). Call the write_file tool to save it.` };
+      return { success: true, data: response.content, output: `Draft generated (${response.content.length} chars). Include the draft text or a precise summary in the final structured result unless a save/write tool is explicitly available.` };
     } catch (err: unknown) {
       return { success: false, error: `Draft failed: ${(err as Error).message}` };
     }

@@ -6,6 +6,7 @@ import { createTask, updateTask, getTask, listTasks } from '../../src/state/task
 import { acquireTaskLease, completeTaskLease, expireTaskLeases } from '../../src/state/leases.js';
 import { createRun, updateRun, getRun, listRuns } from '../../src/state/runs.js';
 import { deriveSnapshot } from '../../src/state/snapshot.js';
+import { recoverStaleRuntimeState } from '../../src/state/runtime-recovery.js';
 import { listRunnableTasks } from '../../src/orchestration/task-graph.js';
 import { appendInboxMessage, listInboxMessages } from '../../src/state/inbox.js';
 import { initMatter, deleteMatter, getMatterPath } from '../../src/storage/matter.js';
@@ -660,7 +661,66 @@ describe('Snapshot', () => {
 
     expect(snapshot.activeAgents).toHaveLength(0);
     expect(getRun(matterName, run.id)?.status).toBe('error');
-    expect(getTask(matterName, task.id)?.status).toBe('failed');
+    const recoveredTask = getTask(matterName, task.id);
+    expect(recoveredTask?.status).toBe('failed');
+    expect(recoveredTask?.data.runtimeRecovery).toMatchObject({
+      recoveryOutcome: 'spawn_replacement',
+      runId: run.id,
+      taskId: task.id,
+      caseMemoryVersionBefore: 'unknown',
+      caseMemoryVersionAfter: 'unknown',
+      decisionReason: expect.stringContaining('went stale'),
+    });
+    expect(listEvents(matterName, { type: 'agent.run.error' }).some((event) =>
+      event.taskId === task.id &&
+      event.data.recoveryOutcome === 'spawn_replacement' &&
+      event.data.recovery === 'stale_task'
+    )).toBe(true);
+    expect(listEvents(matterName, { type: 'agent.run.error' }).some((event) =>
+      event.runId === run.id &&
+      event.data.recoveryOutcome === 'morning_review_queue' &&
+      event.data.reviewQueueId === `review-${run.id}`
+    )).toBe(true);
+  });
+
+  it('records recovery outcome decisions from stale task context', async () => {
+    const run = listRuns(matterName, { status: 'running' })[0];
+    const task = createTask({
+      matterName,
+      type: 'stale',
+      title: 'Recoverable task',
+      runId: run.id,
+      data: {
+        artifactIds: ['artifact-1'],
+        retryCount: 1,
+        maxRecoveryRetries: 3,
+        priorAttemptIds: ['attempt-0'],
+        caseMemoryVersion: 'memory-v1',
+      },
+    });
+    updateTask(matterName, task.id, { status: 'in_progress' });
+    const db = getStateDb(matterName);
+    db.prepare('UPDATE agent_runs SET pid = ?, heartbeat_at = ? WHERE id = ? AND matter_name = ?')
+      .run(99999999, '2000-01-01T00:00:00.000Z', run.id, matterName);
+
+    const result = await recoverStaleRuntimeState(matterName);
+    const decision = result.recoveryDecisions.find((entry) => entry.taskId === task.id);
+
+    expect(decision).toMatchObject({
+      recoveryOutcome: 'retry_same_worker',
+      runId: run.id,
+      taskId: task.id,
+      priorAttemptIds: ['attempt-0'],
+      outputArtifactIds: ['artifact-1'],
+      caseMemoryVersionBefore: 'memory-v1',
+      caseMemoryVersionAfter: 'memory-v1',
+      decisionReason: expect.stringContaining('retry the same worker'),
+    });
+    expect(getTask(matterName, task.id)?.data.runtimeRecovery).toMatchObject({
+      recoveryOutcome: 'retry_same_worker',
+      caseMemoryVersionBefore: 'memory-v1',
+      caseMemoryVersionAfter: 'memory-v1',
+    });
   });
 
   it('recovers orphaned in-progress tasks even while an unrelated run is live', async () => {

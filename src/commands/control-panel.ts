@@ -7,6 +7,7 @@ import { getDaemonStatus } from '../daemon/daemon.js';
 import type { ReducerPacket } from '../reducer/canonical-writer.js';
 import { buildProviderPanelState, printProviderPanel, type ProviderPanelState } from './provider.js';
 import { buildLegalBlockerSummary, type LegalBlockerSummary } from '../observability/legal-blockers.js';
+import { buildSearchPanelState, printSearchPanel, type SearchPanelState } from './source.js';
 
 interface ControlPanelPacket {
   matterName: string;
@@ -18,6 +19,7 @@ interface ControlPanelPacket {
   legalBlockers: LegalBlockerSummary;
   nextAction: string;
   provider: ProviderPanelState;
+  search: SearchPanelState;
   readOnly: true;
 }
 
@@ -32,7 +34,8 @@ async function buildPacket(matterName: string): Promise<ControlPanelPacket> {
     ? `${legalBlockers.topBlockers[0].objectId}: ${legalBlockers.topBlockers[0].remediation}`
     : snapshot.nextActions[0]
     ?? (snapshot.blockedReasons && snapshot.blockedReasons.length > 0 ? 'Inspect blocked tasks and provide operator input' : 'No immediate action');
-  const provider = await buildProviderPanelState();
+  const provider = await buildProviderPanelState(matterName);
+  const search = await buildSearchPanelState();
 
   return {
     matterName,
@@ -44,6 +47,7 @@ async function buildPacket(matterName: string): Promise<ControlPanelPacket> {
     legalBlockers,
     nextAction,
     provider,
+    search,
     readOnly: true,
   };
 }
@@ -75,11 +79,14 @@ export async function handleControlPanelStatus(
   try {
     if (!matterName) {
       const provider = await buildProviderPanelState();
+      const search = await buildSearchPanelState();
       if (options.json) {
-        console.log(JSON.stringify(provider, null, 2));
+        console.log(JSON.stringify({ provider, search }, null, 2));
         return;
       }
       printProviderPanel(provider);
+      console.log(chalk.gray('━'.repeat(56)));
+      printSearchPanel(search);
       return;
     }
 
@@ -94,6 +101,8 @@ export async function handleControlPanelStatus(
     console.log(chalk.bold.cyan(`Control panel: ${matterName}`));
     console.log(chalk.gray('━'.repeat(56)));
     printProviderPanel(panel.provider);
+    console.log(chalk.gray('━'.repeat(56)));
+    printSearchPanel(panel.search);
     console.log(chalk.gray('━'.repeat(56)));
     console.log(`Status: ${chalk.yellow(snapshot.status)}  Phase: ${chalk.cyan(snapshot.phase)}  Read-only: ${chalk.green('yes')}`);
     console.log(`Daemon: ${panel.daemon.running ? chalk.green('running') : chalk.red('stopped')}  Active runs: ${panel.daemon.activeRuns}`);
@@ -134,11 +143,14 @@ export async function handleControlPanelAgentPacket(
   try {
     if (!matterName) {
       const provider = await buildProviderPanelState();
+      const search = await buildSearchPanelState();
       if (options.json) {
-        console.log(JSON.stringify(provider, null, 2));
+        console.log(JSON.stringify({ provider, search }, null, 2));
         return;
       }
       printProviderPanel(provider);
+      console.log(chalk.gray('━'.repeat(56)));
+      printSearchPanel(search);
       return;
     }
 
@@ -160,6 +172,7 @@ export async function handleControlPanelAgentPacket(
       nextActions: panel.snapshot.nextActions,
       recommendedNextAction: panel.nextAction,
       provider: panel.provider,
+      search: panel.search,
     };
     if (options.json !== false) {
       console.log(JSON.stringify(packet, null, 2));

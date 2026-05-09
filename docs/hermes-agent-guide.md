@@ -81,8 +81,11 @@ harness control-panel status <matter-name> --json
 harness control-panel agent-packet <matter-name> --json
 harness provider list --json
 harness provider show [provider-name] --json
+harness provider reasoning show --json
 harness control-panel provider list --json
 harness control-panel model show --json
+harness control-panel reasoning show --json
+harness control-panel search --json
 harness config show [matter-name] --json
 harness policy show [matter-name] --json
 harness daemon status --json
@@ -149,6 +152,12 @@ harness control-panel provider select <provider-name>
 harness control-panel provider auth [...]
 harness control-panel model set <role> <model>
 harness control-panel model reset
+harness control-panel reasoning set <effort>
+harness control-panel reasoning reset
+harness control-panel search auth [...]
+harness control-panel search use <tavily|brave|generic>
+harness control-panel search enable
+harness control-panel search disable
 harness control-panel reset
 harness config init [...]
 harness config set <path> <value>
@@ -218,6 +227,9 @@ Provider profile facts Hermes must preserve:
 - The operator-selected profile also controls reasoning translation. Hermes
   should describe the generic Harness knob as `reasoningEffort`, then preserve
   the provider-native strategy reported by `harness provider show --json`.
+- Global reasoning effort is controlled through `harness control-panel reasoning
+  show|set|reset`; matter-level `_config.json` can still override it for one
+  matter.
 - OpenRouter, direct DeepSeek, OpenAI-compatible/custom, and Anthropic profiles
   are full Harness tool-loop profiles when configured with working auth and
   compatible models.
@@ -225,9 +237,9 @@ Provider profile facts Hermes must preserve:
   URL and model names. Direct DeepSeek V4 thinking mode uses `thinking` plus
   DeepSeek's `reasoning_effort`; Hermes must not describe it as OpenRouter,
   OpenAI, Anthropic, or Codex behavior.
-- Every DeepSeek model runs at maximum reasoning. Hermes must not ask the
-  operator to lower DeepSeek reasoning effort, and must report this as an
-  enforced Harness invariant rather than an optional preference.
+- DeepSeek reasoning is operator configurable. OpenRouter DeepSeek ids preserve
+  the requested `reasoningEffort`; direct DeepSeek maps Harness levels onto
+  DeepSeek's native `high`/`max` efforts and treats `none` as non-thinking mode.
 - OpenAI API-key profiles use OpenAI Chat Completions `reasoning_effort`.
 - OpenRouter profiles use OpenRouter's nested `reasoning` object.
 - Anthropic profiles use Anthropic `thinking` controls. For newer adaptive

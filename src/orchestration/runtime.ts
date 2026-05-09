@@ -85,14 +85,15 @@ export class OrchestrationRuntime {
     }
   }
 
-  abort(reason = 'aborted'): void {
+  abort(reason = 'aborted', runId?: string): void {
     this.aborted = true;
-    appendEvent({
+    void appendEvent({
       matterName: this.matterName,
-      type: 'run.completed',
-      data: { reason, runningAgents: this.running.size },
+      type: 'run.partial',
+      runId,
+      data: { reason, runningAgents: this.running.size, status: 'aborted' },
       source: 'system',
-    }).catch(() => {});
+    }).catch((error: unknown) => reportEventWriteFailure('abort event', error));
   }
 
   isAborted(): boolean {
@@ -129,12 +130,27 @@ export class OrchestrationRuntime {
     });
   }
 
-  async emitRunCompleted(runId: string, summary?: string): Promise<void> {
+  async emitRunCompleted(
+    runId: string,
+    summary?: string,
+    details: {
+      status?: 'completed' | 'needs_followup' | 'failed' | 'aborted' | 'budget_exceeded';
+      completedPhases?: number;
+      totalPhases?: number;
+    } = {},
+  ): Promise<void> {
+    const status = details.status ?? 'completed';
     await appendEvent({
       matterName: this.matterName,
-      type: 'run.completed',
+      type: status === 'completed' ? 'run.completed' : 'run.partial',
       runId,
-      data: { summary: summary?.substring(0, 500), totalCost: this.totalCost },
+      data: {
+        summary: summary?.substring(0, 500),
+        totalCost: this.totalCost,
+        status,
+        completedPhases: details.completedPhases,
+        totalPhases: details.totalPhases,
+      },
       source: 'system',
     });
   }
@@ -146,6 +162,11 @@ export class OrchestrationRuntime {
       runId,
       data: { controlCommandId: commandId, action },
       source: 'system',
-    }).catch(() => {});
+    }).catch((error: unknown) => reportEventWriteFailure('control event', error));
   }
+}
+
+function reportEventWriteFailure(eventName: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[orchestration] Failed to record ${eventName}: ${message}`);
 }

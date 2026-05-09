@@ -137,7 +137,7 @@ describe('OpenAICompatibleClient', () => {
     expect(body.thinking).toBeUndefined();
   });
 
-  it('upgrades DeepSeek OpenRouter reasoning requests to maximum effort', async () => {
+  it('passes configured DeepSeek OpenRouter reasoning effort without upgrading it', async () => {
     const client = new OpenAICompatibleClient({
       apiKey: 'test-key',
       baseUrl: 'https://openrouter.ai/api/v1',
@@ -151,12 +151,12 @@ describe('OpenAICompatibleClient', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(init.body);
-    expect(body.reasoning).toEqual({ effort: 'xhigh' });
+    expect(body.reasoning).toEqual({ effort: 'minimal' });
     expect(body.reasoning_effort).toBeUndefined();
     expect(body.thinking).toBeUndefined();
   });
 
-  it('forces maximum reasoning for DeepSeek models through OpenRouter', async () => {
+  it('leaves DeepSeek OpenRouter reasoning at provider default when no effort is configured', async () => {
     const client = new OpenAICompatibleClient({
       apiKey: 'test-key',
       baseUrl: 'https://openrouter.ai/api/v1',
@@ -170,7 +170,7 @@ describe('OpenAICompatibleClient', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(init.body);
-    expect(body.reasoning).toEqual({ effort: 'xhigh' });
+    expect(body.reasoning).toBeUndefined();
     expect(body.reasoning_effort).toBeUndefined();
     expect(body.thinking).toBeUndefined();
   });
@@ -218,7 +218,7 @@ describe('OpenAICompatibleClient', () => {
     expect(body.messages[0].reasoning_content).toBe('reasoned about the lookup');
   });
 
-  it('keeps direct DeepSeek V4 thinking at maximum even when disable is requested', async () => {
+  it('disables direct DeepSeek V4 thinking when reasoning effort is none', async () => {
     const client = new OpenAICompatibleClient({
       apiKey: 'test-key',
       baseUrl: 'https://api.deepseek.com',
@@ -232,8 +232,26 @@ describe('OpenAICompatibleClient', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     const body = JSON.parse(init.body);
+    expect(body.thinking).toEqual({ type: 'disabled' });
+    expect(body.reasoning_effort).toBeUndefined();
+  });
+
+  it('maps direct DeepSeek V4 lower thinking efforts to high', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://api.deepseek.com',
+      providerName: 'deepseek-direct',
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'think lightly' }],
+      config: { model: 'deepseek-v4-flash', reasoningEffort: 'low' },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
     expect(body.thinking).toEqual({ type: 'enabled' });
-    expect(body.reasoning_effort).toBe('max');
+    expect(body.reasoning_effort).toBe('high');
   });
 
   it('maps OpenAI-compatible cached and reasoning usage details', async () => {
@@ -416,7 +434,7 @@ describe('CodexSdkClient', () => {
     vi.unstubAllGlobals();
   });
 
-  it('runs streamed SDK calls with restrictive options and maps final response usage', async () => {
+  it('runs streamed SDK calls with native agent options and maps final response usage', async () => {
     const runStreamed = mockCodexRun([
       { type: 'thread.started', thread_id: 'thread-1' },
       { type: 'turn.started' },
@@ -459,12 +477,12 @@ describe('CodexSdkClient', () => {
     });
     expect(codexSdkMock.startThread).toHaveBeenCalledWith({
       model: 'gpt-5.5',
-      sandboxMode: 'read-only',
+      sandboxMode: 'workspace-write',
       workingDirectory: '/tmp/harness-test',
       modelReasoningEffort: 'high',
-      networkAccessEnabled: false,
-      webSearchMode: 'disabled',
-      webSearchEnabled: false,
+      networkAccessEnabled: true,
+      webSearchMode: 'live',
+      webSearchEnabled: true,
       approvalPolicy: 'never',
       additionalDirectories: [],
     });
@@ -482,16 +500,41 @@ describe('CodexSdkClient', () => {
     });
   });
 
-  it('rejects Harness-owned tools before invoking the SDK', async () => {
-    const client = new CodexSdkClient();
+  it('configures the Harness MCP server when tools are provided', async () => {
+    const runStreamed = mockCodexRun([
+      { type: 'item.completed', item: { id: 'msg-1', type: 'agent_message', text: 'used tools' } },
+    ]);
+    const client = new CodexSdkClient({
+      workingDirectory: '/tmp/harness-test',
+      matterName: 'case-1',
+      harnessMcpServerPath: '/tmp/harness-mcp.js',
+    });
 
-    await expect(client.chatWithTools({
+    const response = await client.chatWithTools({
       messages: [{ role: 'user', content: 'use a tool' }],
       tools: [{ name: 'search', description: 'Search', inputSchema: { type: 'object' } }],
       config: { model: 'gpt-5.5' },
-    })).rejects.toThrow(/does not support Harness-owned tool calls in this profile.*tool-capable provider profile/);
+    });
 
-    expect(codexSdkMock.Codex).not.toHaveBeenCalled();
+    expect(response.content).toBe('used tools');
+    expect(codexSdkMock.Codex).toHaveBeenCalledWith(expect.objectContaining({
+      config: {
+        mcp_servers: {
+          harness: {
+            command: process.execPath,
+            args: ['/tmp/harness-mcp.js'],
+            env: expect.objectContaining({
+              ATTICUS_HARNESS_MCP: '1',
+              ATTICUS_HARNESS_CWD: '/tmp/harness-test',
+              ATTICUS_HARNESS_MATTER_NAME: 'case-1',
+              ATTICUS_HARNESS_MCP_TOOLS: '["search"]',
+            }),
+          },
+        },
+      },
+    }));
+    expect(runStreamed.mock.calls[0][0]).toContain('HARNESS MCP TOOLS');
+    expect(runStreamed.mock.calls[0][0]).toContain('"name": "search"');
   });
 
   it.each([
@@ -499,14 +542,23 @@ describe('CodexSdkClient', () => {
     ['file_change', { changes: [{ path: 'x', kind: 'update' }], status: 'completed' }],
     ['mcp_tool_call', { server: 'srv', tool: 'lookup', arguments: {}, status: 'in_progress' }],
     ['web_search', { query: 'latest rule' }],
-  ])('fails closed on native Codex %s events', async (type, payload) => {
-    mockCodexRun([{ type: 'item.started', item: { id: 'native-1', type, ...payload } }]);
+  ])('records native Codex %s events without failing the run', async (type, payload) => {
+    mockCodexRun([
+      { type: 'item.started', item: { id: 'native-1', type, ...payload } },
+      { type: 'item.completed', item: { id: 'msg-1', type: 'agent_message', text: 'done' } },
+    ]);
     const client = new CodexSdkClient();
 
-    await expect(client.chat({
+    const response = await client.chat({
       messages: [{ role: 'user', content: 'hello' }],
       config: { model: 'gpt-5.5' },
-    })).rejects.toThrow(`attempted native action "${type}"`);
+    });
+
+    expect(response.content).toBe('done');
+    expect(response.nativeActions?.[0]).toMatchObject({
+      id: 'native-1',
+      type,
+    });
   });
 
   it('does not pass Harness provider secrets into the Codex child environment', async () => {

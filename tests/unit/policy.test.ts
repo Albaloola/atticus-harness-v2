@@ -10,10 +10,20 @@ describe('tool policy classification', () => {
     expect(evaluateAutonomyPolicy(DEFAULTS.autonomy, 'evidence_chunk_read')).toBe('allow');
   });
 
+  it('treats matter inventory as read-only manifest access', () => {
+    expect(classifyToolCategory('matter_inventory')).toBe('read_only');
+    expect(evaluateAutonomyPolicy(DEFAULTS.autonomy, 'matter_inventory')).toBe('allow');
+  });
+
   it('classifies web research as network-gated work', () => {
     expect(classifyToolCategory('web_fetch')).toBe('network');
     expect(classifyToolCategory('web_search')).toBe('network');
     expect(evaluateAutonomyPolicy(DEFAULTS.autonomy, 'web_fetch')).toBe('ask');
+  });
+
+  it('treats draft generation as a local prepare-only tool', () => {
+    expect(classifyToolCategory('draft')).toBe('read_only');
+    expect(evaluateAutonomyPolicy(DEFAULTS.autonomy, 'draft')).toBe('allow');
   });
 
   it('blocks tools outside a worker allow-list before execution', async () => {
@@ -30,6 +40,23 @@ describe('tool policy classification', () => {
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('policy decision: ask');
+  });
+
+  it('omits disabled tools from model-facing definitions', () => {
+    const registry = new ToolRegistry({ registerDefaults: false });
+    registry.register({
+      name: 'disabled_probe',
+      description: 'A deliberately disabled tool for registry exposure tests',
+      inputSchema: { type: 'object', properties: {} },
+      isEnabled: () => false,
+      call: async () => ({ success: false, error: 'disabled' }),
+    });
+
+    const registeredNames = registry.getAll().map((tool) => tool.name);
+    const definitionNames = registry.getAllDefinitions().map((tool) => tool.name);
+
+    expect(registeredNames).toContain('disabled_probe');
+    expect(definitionNames).not.toContain('disabled_probe');
   });
 });
 

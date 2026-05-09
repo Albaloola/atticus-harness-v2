@@ -83,6 +83,15 @@ export interface AutonomyPolicy {
   maxMatterBudgetUsd?: number;
   maxRunBudgetUsd?: number;
   maxWallClockMinutes?: number;
+  gateFeedback: GateFeedbackConfig;
+}
+
+export interface GateFeedbackConfig {
+  enabled: boolean;
+  maxWorkerRetries: number;
+  maxMiniOrchestratorRetries: number;
+  maxMasterOrchestratorRetries: number;
+  feedbackLevel: 'summary' | 'check-level';
 }
 
 export interface ProviderPolicy {
@@ -137,6 +146,8 @@ export interface ProviderConfig {
   anthropicFormat?: boolean;
   /** Provider-native reasoning control strategy. */
   reasoningControl?: ReasoningControl;
+  /** Whether this provider can run a native agent loop instead of Harness-owned tool calls. */
+  agentCapable?: boolean;
 }
 
 export interface ProvidersConfig {
@@ -169,12 +180,28 @@ export interface ProviderProfile {
   anthropicFormat?: boolean;
   /** Provider-native reasoning control strategy */
   reasoningControl?: ReasoningControl;
+  /** Whether this provider can run a native agent loop instead of Harness-owned tool calls. */
+  agentCapable?: boolean;
   /** Model delegation per task role */
   models: ModelDelegation;
   /** Fallback model (optional) */
   fallbackModel?: string;
   /** Whether user has customised any model role (deviates from preset) */
   isCustom: boolean;
+}
+
+export type SearchProviderName = 'tavily' | 'brave' | 'generic';
+
+export interface SearchConfig {
+  /** Preferred external legal web search provider. */
+  provider: SearchProviderName;
+  /** Optional endpoint override. Brave uses its web-search endpoint; Tavily uses its API base/search endpoint. */
+  endpoint?: string;
+  /** Optional secret/env key override. Defaults to TAVILY_API_KEY or BRAVE_SEARCH_API_KEY by provider. */
+  keyName?: string;
+  /** Optional usage tracking project id for providers that support it. */
+  project?: string;
+  defaultMaxResults?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,10 +213,13 @@ export interface GlobalHarnessConfig {
   activeProvider: string;
   /** Available provider profiles. */
   profiles: Record<string, ProviderProfile>;
+  /** Optional global reasoning effort applied to all provider profiles unless matter config overrides it. */
+  reasoningEffort?: ReasoningEffort;
   /** Legacy default model, preserved for compatibility. */
   defaultModel: string;
   /** Legacy flat provider config (for backward compat) */
   providers: ProvidersConfig;
+  search: SearchConfig;
   providerPolicy: ProviderPolicy;
   autonomy: AutonomyPolicy;
   toolPolicy: ToolPolicy;
@@ -216,6 +246,8 @@ export interface ResolvedHarnessConfig {
   autonomy: AutonomyPolicy;
   /** Resolved tool approval policy */
   toolPolicy: ToolPolicy;
+  /** External legal web search configuration */
+  search: SearchConfig;
   /** Whether config was loaded from disk vs defaults only */
   fromDisk: boolean;
   /** Matter name, if one was specified */
@@ -227,12 +259,16 @@ export interface ResolvedHarnessConfig {
 // ---------------------------------------------------------------------------
 // Per-matter override (written to matters/<name>/_config.json)
 // ---------------------------------------------------------------------------
+export type AutonomyPolicyOverride = Omit<Partial<AutonomyPolicy>, 'gateFeedback'> & {
+  gateFeedback?: Partial<GateFeedbackConfig>;
+};
+
 export interface MatterConfigOverride {
   model?: string;
   temperature?: number;
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;
-  autonomy?: Partial<AutonomyPolicy>;
+  autonomy?: AutonomyPolicyOverride;
   toolPolicy?: ToolPolicy;
 }
 
@@ -293,12 +329,18 @@ export const DEFAULTS: GlobalHarnessConfig = {
       reasoningControl: 'openrouter-reasoning',
     },
   },
+  search: {
+    provider: 'tavily',
+    endpoint: 'https://api.tavily.com/search',
+    keyName: 'TAVILY_API_KEY',
+    defaultMaxResults: 10,
+  },
   providerPolicy: {
     defaultProvider: 'openrouter',
     models: DEFAULT_MODEL_DELEGATION,
     retries: 3,
     timeoutMs: 180_000,
-    concurrentRequests: 4,
+    concurrentRequests: 15,
     failClosed: true,
     allowedModels: [
       'deepseek/deepseek-v4-flash',
@@ -327,8 +369,15 @@ export const DEFAULTS: GlobalHarnessConfig = {
     minGateScoreForAutoAccept: 0.8,
     externalActionMode: 'prepare_only',
     allowExternalDispatch: false,
-    maxConcurrentAgents: 4,
+    maxConcurrentAgents: 15,
     maxAgentDepth: 3,
+    gateFeedback: {
+      enabled: true,
+      maxWorkerRetries: 3,
+      maxMiniOrchestratorRetries: 2,
+      maxMasterOrchestratorRetries: 1,
+      feedbackLevel: 'check-level',
+    },
   },
   toolPolicy: {
     read_only: {

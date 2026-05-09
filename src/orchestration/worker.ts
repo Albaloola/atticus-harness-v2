@@ -101,10 +101,17 @@ export class WorkerAgent {
       const userMessage = [
         `Task: ${this.spawn.title}`,
         `Objective: ${this.spawn.objective}`,
+        this.spawn.contextPack ? `Phase context:\n${this.spawn.contextPack}` : undefined,
         '',
         'Complete your assigned task using the available tools.',
+        'Use matter_inventory before exec_sqlite/search_files for evidence manifests, production selection, bundle indexes, or schema guidance.',
+        'For long evidence, keep paging evidence_chunk_read/read_file with nextChunkIndex/nextOffset until you reach the relevant section or endReached/complete; do not treat one window as the whole document.',
+        'For long deliverables, checkpoint sections with write_file mode "append" and expectedContentHash so later turns can continue without losing earlier work.',
+        'If the task is not applicable to this matter after checking the evidence, return status "completed" with a finding that explains why; reserve "blocked" for missing authority or evidence that prevents any bounded output.',
+        'Each finding should include kind: holding, party_argument, procedural_fact, evidence_fact, risk_signal, unsupported_inference, gap, or not_applicable.',
+        'Write the summary, findings, risks, proposed tasks, and next actions in English unless the operator explicitly asked for another language.',
         'Output your final result as a JSON object with: status, summary, findings, risks, proposedTasks, artifactIds, nextActions.',
-      ].join('\n');
+      ].filter((line): line is string => typeof line === 'string').join('\n');
 
       const loopResult = await this.executeQueryLoop(userMessage);
 

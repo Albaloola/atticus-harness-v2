@@ -43,6 +43,7 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     delegatedAuthProvider: 'codex-cli',
     baseUrl: 'codex://local',
     reasoningControl: 'codex-sdk',
+    agentCapable: true,
     models: {
       fast: 'gpt-5.5',
       reasoning: 'gpt-5.5',
@@ -286,6 +287,7 @@ function normalizeDiskProfile(name: string, diskProfile: ProviderProfile): Provi
     apiPath: diskProfile.apiPath ?? preset.apiPath,
     anthropicFormat: diskProfile.anthropicFormat ?? preset.anthropicFormat,
     reasoningControl: diskProfile.reasoningControl ?? preset.reasoningControl,
+    agentCapable: diskProfile.agentCapable ?? preset.agentCapable,
     models: { ...preset.models, ...(diskProfile.models ?? {}) },
     fallbackModel: diskProfile.fallbackModel ?? preset.fallbackModel,
     isCustom: true,
@@ -308,6 +310,7 @@ export function profileToProviderConfig(profile: ProviderProfile, apiKey?: strin
     apiPath: profile.apiPath,
     anthropicFormat: profile.anthropicFormat,
     reasoningControl: profile.reasoningControl,
+    agentCapable: profile.agentCapable,
   };
 }
 

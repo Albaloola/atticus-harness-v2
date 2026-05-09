@@ -605,7 +605,7 @@ describe('WebSearchTool', () => {
   });
 
   it('returns error when no provider configured', async () => {
-    const tool = new WebSearchTool();
+    const tool = new WebSearchTool(undefined, { autoConfigure: false });
     const result = await tool.call(
       { query: 'test' },
       makeContext(matterName),
@@ -615,12 +615,12 @@ describe('WebSearchTool', () => {
   });
 
   it('isEnabled returns false when no provider', () => {
-    const tool = new WebSearchTool();
+    const tool = new WebSearchTool(undefined, { autoConfigure: false });
     expect(tool.isEnabled()).toBe(false);
   });
 
   it('isEnabled returns true after setting provider', () => {
-    const tool = new WebSearchTool();
+    const tool = new WebSearchTool(undefined, { autoConfigure: false });
     tool.setProvider(new MockSearchProvider([]));
     expect(tool.isEnabled()).toBe(true);
   });
@@ -689,6 +689,55 @@ describe('WebSearchTool', () => {
     expect(result.data![0].sourceType).toBe('statute');
   });
 
+  it('passes Tavily legal search options to provider', async () => {
+    let captured: unknown;
+    const provider = {
+      async search(_query: string, options: unknown) {
+        captured = options;
+        return [
+          {
+            title: 'Authority',
+            url: 'https://caselaw.nationalarchives.gov.uk/uksc/2019/41',
+            snippet: 'A legal source',
+            sourceType: 'case_law',
+            jurisdiction: 'Scotland',
+            rawContent: '# Authority',
+            score: 0.9,
+            provider: 'tavily',
+          },
+        ];
+      },
+    };
+
+    const tool = new WebSearchTool(provider);
+    const result = await tool.call(
+      {
+        query: 'prorogation',
+        includeDomains: ['caselaw.nationalarchives.gov.uk'],
+        excludeDomains: ['example.com'],
+        jurisdiction: 'Scotland',
+        searchDepth: 'advanced',
+        includeRawContent: 'markdown',
+        topic: 'general',
+        timeRange: 'year',
+      },
+      makeContext(matterName),
+    );
+
+    expect(result.success).toBe(true);
+    expect(captured).toMatchObject({
+      includeDomains: ['caselaw.nationalarchives.gov.uk'],
+      excludeDomains: ['example.com'],
+      jurisdiction: 'Scotland',
+      searchDepth: 'advanced',
+      includeRawContent: 'markdown',
+      topic: 'general',
+      timeRange: 'year',
+    });
+    expect(result.data?.[0].provider).toBe('tavily');
+    expect(result.data?.[0].rawContent).toBe('# Authority');
+  });
+
   it('handles provider errors gracefully', async () => {
     const provider = new MockSearchProvider([]);
     // Override search to throw
@@ -702,7 +751,7 @@ describe('WebSearchTool', () => {
   });
 
   it('name, description, and schema are correct', () => {
-    const tool = new WebSearchTool();
+    const tool = new WebSearchTool(undefined, { autoConfigure: false });
     expect(tool.name).toBe('web_search');
     expect(tool.description).toContain('Search');
     expect(tool.inputSchema.type).toBe('object');

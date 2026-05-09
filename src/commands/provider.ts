@@ -1,9 +1,16 @@
 import chalk from 'chalk';
-import { loadGlobalConfig, saveGlobalConfig } from '../config/loader.js';
+import { loadGlobalConfig, loadMatterConfigOverride, saveGlobalConfig } from '../config/loader.js';
 import { saveSecret, getSecret, getOAuthToken } from '../config/secrets.js';
 import { resolveProviderAuth } from '../config/auth.js';
 import { assertModelCompatibleWithProfile } from '../config/model-compat.js';
 import type { GlobalHarnessConfig, ProviderProfile, ModelRole } from '../config/schema.js';
+import type { ReasoningEffort } from '../types/llm.js';
+import {
+  REASONING_EFFORTS,
+  assertReasoningEffort,
+  formatReasoningEffort,
+  normalizeReasoningEffort,
+} from '../config/reasoning.js';
 import {
   DEFAULT_ACTIVE_PROVIDER,
   DEFAULT_PROVIDER_PROFILES,
@@ -16,6 +23,15 @@ import {
 } from '../config/presets.js';
 
 type JsonOptions = { json?: boolean };
+type ReasoningEffortSource = 'global' | 'matter' | 'provider-default';
+
+export interface ProviderReasoningState {
+  effort?: ReasoningEffort;
+  display: string;
+  source: ReasoningEffortSource;
+  control: string;
+  validEfforts: readonly ReasoningEffort[];
+}
 
 export interface ProviderPanelState {
   active: ProviderProfile;
@@ -23,15 +39,28 @@ export interface ProviderPanelState {
     state: 'OK' | 'MISSING' | 'NONE' | 'UNSUPPORTED' | 'DELEGATED';
     detail: string;
   };
+  reasoning: ProviderReasoningState;
   profiles: ProviderProfile[];
 }
 
-export async function buildProviderPanelState(): Promise<ProviderPanelState> {
+export async function buildProviderPanelState(matterName?: string): Promise<ProviderPanelState> {
   const { config } = await loadGlobalConfig();
   const active = config.profiles[config.activeProvider];
+  const matterOverride = matterName ? await loadMatterConfigOverride(matterName) : null;
+  const globalEffort = normalizeReasoningEffort(config.reasoningEffort, 'global reasoningEffort');
+  const matterEffort = matterOverride?.reasoningEffort !== undefined
+    ? normalizeReasoningEffort(matterOverride.reasoningEffort, `matter ${matterName} reasoningEffort`)
+    : undefined;
+  const reasoningEffort = matterEffort ?? globalEffort;
+  const reasoningSource: ReasoningEffortSource = matterEffort !== undefined
+    ? 'matter'
+    : globalEffort !== undefined
+      ? 'global'
+      : 'provider-default';
   return {
     active,
     auth: await resolveAuthStatus(active),
+    reasoning: buildReasoningState(active, reasoningEffort, reasoningSource),
     profiles: Object.values(config.profiles),
   };
 }
@@ -50,10 +79,15 @@ export async function handleProviderList(options: JsonOptions = {}): Promise<voi
     baseUrl: profile.baseUrl,
   })));
   if (options.json) {
-    console.log(JSON.stringify({ activeProvider: state.active.name, profiles: rows }, null, 2));
+    console.log(JSON.stringify({
+      activeProvider: state.active.name,
+      reasoning: state.reasoning,
+      profiles: rows,
+    }, null, 2));
     return;
   }
   console.log(chalk.bold.cyan('Provider profiles'));
+  console.log(`Reasoning effort: ${formatReasoningLine(state.reasoning)}`);
   for (const row of rows) {
     const marker = row.active ? chalk.green('*') : ' ';
     console.log(`${marker} ${row.name} (${row.preset}) ${chalk.gray(row.providerKind)} ${chalk.gray(row.toolSupport)} ${chalk.gray(`reasoning=${row.reasoningControl}`)} ${chalk.gray(row.authType)} ${chalk.gray(row.baseUrl)} auth=${row.auth}`);
@@ -70,12 +104,18 @@ export async function handleProviderShow(name?: string, options: JsonOptions = {
     throw new Error(`Unknown provider profile: ${name}`);
   }
   const auth = await resolveAuthStatus(profile);
-  const output = { profile, auth, active: profile.name === config.activeProvider };
+  const globalEffort = normalizeReasoningEffort(config.reasoningEffort, 'global reasoningEffort');
+  const reasoning = buildReasoningState(
+    profile,
+    globalEffort,
+    globalEffort !== undefined ? 'global' : 'provider-default',
+  );
+  const output = { profile, auth, active: profile.name === config.activeProvider, reasoning };
   if (options.json) {
     console.log(JSON.stringify(output, null, 2));
     return;
   }
-  printProviderProfile(profile, auth, output.active);
+  printProviderProfile(profile, auth, output.active, reasoning);
 }
 
 export async function handleProviderSelect(name: string): Promise<void> {
@@ -130,6 +170,7 @@ export async function handleProviderReset(): Promise<void> {
   const { config } = await loadGlobalConfig();
   config.activeProvider = DEFAULT_ACTIVE_PROVIDER;
   config.profiles = cloneDefaultProviderProfiles();
+  delete config.reasoningEffort;
   applyActiveProfile(config, config.profiles[DEFAULT_ACTIVE_PROVIDER]);
   await saveGlobalConfig(config);
   console.log('Provider profiles reset to factory defaults; secrets were preserved.');
@@ -171,22 +212,61 @@ export async function handleProviderModelReset(): Promise<void> {
   console.log(`Model delegation reset for ${active.name}`);
 }
 
+export async function handleProviderReasoningShow(options: JsonOptions = {}): Promise<void> {
+  const state = await buildProviderPanelState();
+  if (options.json) {
+    console.log(JSON.stringify({ provider: state.active.name, reasoning: state.reasoning }, null, 2));
+    return;
+  }
+  console.log(chalk.bold.cyan('Reasoning effort'));
+  console.log(`  Provider: ${state.active.name}`);
+  console.log(`  Effort:   ${formatReasoningLine(state.reasoning)}`);
+  console.log(`  Control:  ${state.reasoning.control}`);
+  console.log(`  Valid:    ${REASONING_EFFORTS.join(', ')}`);
+}
+
+export async function handleProviderReasoningSet(effort: string): Promise<void> {
+  if (isReasoningResetKeyword(effort)) {
+    await handleProviderReasoningReset();
+    return;
+  }
+  const normalized = assertReasoningEffort(effort.toLowerCase(), 'reasoning effort');
+  const { config } = await loadGlobalConfig();
+  config.reasoningEffort = normalized;
+  await saveGlobalConfig(config);
+  console.log(`Reasoning effort set to ${normalized}`);
+}
+
+export async function handleProviderReasoningReset(): Promise<void> {
+  const { config } = await loadGlobalConfig();
+  delete config.reasoningEffort;
+  await saveGlobalConfig(config);
+  console.log('Reasoning effort reset to provider default');
+}
+
 export function printProviderPanel(state: ProviderPanelState): void {
   console.log(chalk.bold.cyan('Provider'));
   console.log(`  Active: ${state.active.name} (${state.active.isCustom ? 'custom' : 'preset'})`);
   console.log(`  Kind:   ${state.active.providerKind ?? 'openai-compatible'} / ${toolSupportForProfile(state.active)}`);
   console.log(`  Reason: ${reasoningControlForProfile(state.active)}`);
+  console.log(`  Effort: ${formatReasoningLine(state.reasoning)}`);
   console.log(`  Auth:   ${state.auth.state} — ${state.auth.detail}`);
   console.log(`  API:    ${state.active.baseUrl}`);
   printModels(state.active);
 }
 
-function printProviderProfile(profile: ProviderProfile, auth: ProviderPanelState['auth'], active: boolean): void {
+function printProviderProfile(
+  profile: ProviderProfile,
+  auth: ProviderPanelState['auth'],
+  active: boolean,
+  reasoning: ProviderReasoningState,
+): void {
   console.log(chalk.bold.cyan(`Provider: ${profile.name}${active ? ' (active)' : ''}`));
   console.log(`  Label:  ${profile.label}`);
   console.log(`  Preset: ${profile.isCustom ? 'custom' : profile.preset}`);
   console.log(`  Kind:   ${profile.providerKind ?? 'openai-compatible'} / ${toolSupportForProfile(profile)}`);
   console.log(`  Reason: ${reasoningControlForProfile(profile)}`);
+  console.log(`  Effort: ${formatReasoningLine(reasoning)}`);
   console.log(`  Auth:   ${auth.state} — ${auth.detail}`);
   console.log(`  API:    ${profile.baseUrl}`);
   printModels(profile);
@@ -195,7 +275,7 @@ function printProviderProfile(profile: ProviderProfile, auth: ProviderPanelState
 function toolSupportForProfile(profile: ProviderProfile): string {
   switch (profile.providerKind ?? 'openai-compatible') {
     case 'codex-sdk':
-      return 'tool-free; use --no-tools';
+      return 'agent (native MCP tools)';
     case 'local':
       return 'tool-capable when the local server supports tool calls';
     case 'anthropic':
@@ -206,6 +286,31 @@ function toolSupportForProfile(profile: ProviderProfile): string {
 
 function reasoningControlForProfile(profile: ProviderProfile): string {
   return profile.reasoningControl ?? 'none';
+}
+
+function buildReasoningState(
+  profile: ProviderProfile,
+  effort: ReasoningEffort | undefined,
+  source: ReasoningEffortSource,
+): ProviderReasoningState {
+  return {
+    effort,
+    display: formatReasoningEffort(effort),
+    source,
+    control: reasoningControlForProfile(profile),
+    validEfforts: REASONING_EFFORTS,
+  };
+}
+
+function formatReasoningLine(reasoning: ProviderReasoningState): string {
+  const source = reasoning.source === 'provider-default' ? 'provider default' : reasoning.source;
+  return reasoning.source === 'provider-default'
+    ? reasoning.display
+    : `${reasoning.display} (${source})`;
+}
+
+function isReasoningResetKeyword(value: string): boolean {
+  return ['default', 'provider-default', 'auto', 'unset', 'reset'].includes(value.toLowerCase());
 }
 
 function printModels(profile: ProviderProfile): void {
@@ -274,6 +379,7 @@ function applyActiveProfile(config: GlobalHarnessConfig, profile: ProviderProfil
     apiPath: profile.apiPath,
     anthropicFormat: profile.anthropicFormat,
     reasoningControl: profile.reasoningControl,
+    agentCapable: profile.agentCapable,
   };
 }
 

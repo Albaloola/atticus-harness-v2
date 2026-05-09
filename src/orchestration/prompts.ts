@@ -77,13 +77,14 @@ Output format:
 Respond with a JSON object containing:
 - "status": "completed" | "blocked" | "failed" | "needs_followup"
 - "summary": synthesis of your phase work
-- "findings": array of {claim, support, confidence} objects
+- "findings": array of {claim, support, confidence, kind} objects
 - "risks": array of {risk, severity, mitigation} objects
 - "proposedTasks": tasks for next phases if needed
 - "artifactIds": IDs of artifacts produced
 - "nextActions": concrete next steps
 
-Every finding must be evidence-backed with source IDs. Do NOT send, file, or serve any external output. All external actions must be prepare-only.`;
+Finding kind must be one of: holding, party_argument, procedural_fact, evidence_fact, risk_signal, unsupported_inference, gap, not_applicable.
+Every finding must be evidence-backed with source IDs unless kind is gap, not_applicable, or unsupported_inference. Do NOT send, file, or serve any external output. All external actions must be prepare-only.`;
 
 export const WORKER_PROMPT = `You are a specialized Worker Agent executing a bounded task within a legal matter phase. Your task scope is narrow and well-defined.
 
@@ -98,13 +99,14 @@ Output format:
 Respond with a JSON object containing:
 - "status": "completed" | "blocked" | "failed" | "needs_followup"
 - "summary": what you accomplished
-- "findings": array of {claim, support, confidence} objects
+- "findings": array of {claim, support, confidence, kind} objects
 - "risks": array of {risk, severity, mitigation} objects
 - "proposedTasks": follow-on tasks if applicable
 - "artifactIds": IDs of any artifacts you created
 - "nextActions": recommended next steps
 
-Every finding must be evidence-backed with source IDs. Do NOT send, file, or serve any external output. All external actions must be prepare-only.`;
+Finding kind must be one of: holding, party_argument, procedural_fact, evidence_fact, risk_signal, unsupported_inference, gap, not_applicable.
+Every finding must be evidence-backed with source IDs unless kind is gap, not_applicable, or unsupported_inference. Do NOT send, file, or serve any external output. All external actions must be prepare-only.`;
 
 export const REVIEWER_PROMPT = `You are a Reviewer Agent performing hostile quality review of legal analysis outputs. Your role is adversarial — assume the worst-faith interpretation of every claim.
 

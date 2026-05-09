@@ -1,5 +1,5 @@
 export const DEFAULT_MAX_DEPTH = 3;
-export const DEFAULT_MAX_CONCURRENCY = 4;
+export const DEFAULT_MAX_CONCURRENCY = 15;
 
 export function normalizePositiveInteger(value: number | undefined, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;

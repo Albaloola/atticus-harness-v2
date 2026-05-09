@@ -1,6 +1,7 @@
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
 import { readFile } from 'fs/promises';
 import { verifyCandidateCitations } from '../citation/verify.js';
+import { resolveWorkspacePath } from './path-safety.js';
 
 export class VerifyCitationsTool implements Tool<{ candidatePath: string }, unknown> {
   readonly name = 'verify_citations';
@@ -8,7 +9,7 @@ export class VerifyCitationsTool implements Tool<{ candidatePath: string }, unkn
   readonly inputSchema = {
     type: 'object',
     properties: {
-      candidatePath: { type: 'string', description: 'Path to the candidate document to verify' },
+      candidatePath: { type: 'string', description: 'Workspace-relative candidate document path, or absolute path inside the current workspace' },
     },
     required: ['candidatePath'],
   };
@@ -17,14 +18,15 @@ export class VerifyCitationsTool implements Tool<{ candidatePath: string }, unkn
 
   async call(args: { candidatePath: string }, context: ToolUseContext): Promise<ToolResult<unknown>> {
     try {
-      const content = await readFile(args.candidatePath, 'utf-8');
+      const candidatePath = resolveWorkspacePath(args.candidatePath);
+      const content = await readFile(candidatePath, 'utf-8');
       const matterName = context.matterName;
       if (!matterName) {
         return { success: false, error: 'Citation verification requires a matter context' };
       }
 
       const result = await verifyCandidateCitations(matterName, {
-        id: args.candidatePath,
+        id: candidatePath,
         content,
         metadata: {},
       });
@@ -55,7 +57,7 @@ export class VerifyCitationsTool implements Tool<{ candidatePath: string }, unkn
       return {
         success: true,
         data: {
-          candidateId: args.candidatePath,
+          candidateId: candidatePath,
           checks: result.checks,
           summary: { total: result.checks.length, supported, unsupported, contradicted, notChecked },
           passed: result.passed,

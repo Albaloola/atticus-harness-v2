@@ -1,9 +1,20 @@
-import { Codex, type ModelReasoningEffort, type ThreadEvent, type ThreadItem, type Usage } from '@openai/codex-sdk';
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+import {
+  Codex,
+  type CodexOptions,
+  type ModelReasoningEffort,
+  type ThreadEvent,
+  type ThreadItem,
+  type Usage,
+} from '@openai/codex-sdk';
 import { checkCodexLoginStatus } from '../config/codex-readiness.js';
 import { LLMError } from './errors.js';
 import type { LLMClient, LLMClientCapabilities } from './client.js';
-import type { LLMRequest, LLMResponse, LLMUsage, ReasoningEffort } from '../types/llm.js';
+import type { AutonomyPolicy } from '../config/schema.js';
+import type { LLMNativeAction, LLMRequest, LLMResponse, LLMUsage, ReasoningEffort } from '../types/llm.js';
 import type { LLMMessage } from '../types/message.js';
+import type { ToolDefinition } from '../types/tool.js';
 
 const CODEX_ENV_ALLOWLIST = [
   'HOME',
@@ -33,26 +44,51 @@ const NATIVE_ACTION_TYPES = new Set([
   'web_search',
 ]);
 
+const DEFAULT_HARNESS_MCP_SERVER_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'mcp',
+  'harness-server.js',
+);
+
 export interface CodexSdkClientOptions {
   providerName?: string;
   timeoutMs?: number;
   workingDirectory?: string;
   codexPathOverride?: string;
+  harnessMcpServerPath?: string;
+  matterName?: string;
+  autonomy?: AutonomyPolicy;
+  agentMode?: boolean;
 }
 
 export class CodexSdkClient implements LLMClient {
-  readonly capabilities: LLMClientCapabilities = { tools: false, jsonSchema: true };
+  readonly capabilities: LLMClientCapabilities;
 
   private readonly providerName: string;
   private readonly timeoutMs: number;
   private readonly workingDirectory: string;
   private readonly codexPathOverride?: string;
+  private readonly harnessMcpServerPath: string;
+  private readonly matterName?: string;
+  private readonly autonomy?: AutonomyPolicy;
+  private readonly agentMode: boolean;
 
   constructor(options: CodexSdkClientOptions = {}) {
     this.providerName = options.providerName ?? 'codex-sdk';
     this.timeoutMs = options.timeoutMs ?? 180_000;
     this.workingDirectory = options.workingDirectory ?? process.cwd();
     this.codexPathOverride = options.codexPathOverride;
+    this.harnessMcpServerPath = options.harnessMcpServerPath ?? DEFAULT_HARNESS_MCP_SERVER_PATH;
+    this.matterName = options.matterName;
+    this.autonomy = options.autonomy;
+    this.agentMode = options.agentMode ?? true;
+    this.capabilities = {
+      tools: false,
+      jsonSchema: true,
+      agentMode: this.agentMode,
+      nativeMcpTools: this.agentMode,
+    };
   }
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -60,28 +96,27 @@ export class CodexSdkClient implements LLMClient {
   }
 
   async chatWithTools(request: LLMRequest): Promise<LLMResponse> {
-    if (request.tools && request.tools.length > 0) {
-      throw new LLMError(
-        'Provider codex-sdk does not support Harness-owned tool calls in this profile; run with --no-tools or select a tool-capable provider profile.',
-        400,
-        this.providerName,
-      );
-    }
-
-    const prompt = buildPrompt(request.messages, Boolean(request.config.jsonMode && !request.config.jsonSchema));
+    const prompt = buildPrompt(
+      request.messages,
+      Boolean(request.config.jsonMode && !request.config.jsonSchema),
+      request.tools,
+      this.agentMode,
+    );
     return this.withTimeout(async (signal) => {
+      const codexConfig = this.buildCodexConfig(request.tools);
       const codex = new Codex({
         codexPathOverride: this.codexPathOverride,
         env: buildCodexEnv(process.env),
+        ...(codexConfig ? { config: codexConfig } : {}),
       });
       const thread = codex.startThread({
         model: request.config.model,
-        sandboxMode: 'read-only',
+        sandboxMode: this.agentMode ? 'workspace-write' : 'read-only',
         workingDirectory: this.workingDirectory,
         modelReasoningEffort: mapReasoningEffort(request.config.reasoningEffort),
-        networkAccessEnabled: false,
-        webSearchMode: 'disabled',
-        webSearchEnabled: false,
+        networkAccessEnabled: this.agentMode,
+        webSearchMode: this.agentMode ? 'live' : 'disabled',
+        webSearchEnabled: this.agentMode,
         approvalPolicy: 'never',
         additionalDirectories: [],
       });
@@ -93,6 +128,7 @@ export class CodexSdkClient implements LLMClient {
 
       let finalResponse = '';
       let usage: Usage | null = null;
+      const nativeActions: LLMNativeAction[] = [];
       for await (const event of events) {
         const next = this.handleEvent(event);
         if (next.finalResponse !== undefined) {
@@ -100,6 +136,9 @@ export class CodexSdkClient implements LLMClient {
         }
         if (next.usage !== undefined) {
           usage = next.usage;
+        }
+        if (next.nativeAction !== undefined) {
+          nativeActions.push(next.nativeAction);
         }
       }
 
@@ -109,6 +148,7 @@ export class CodexSdkClient implements LLMClient {
 
       return {
         content: finalResponse,
+        nativeActions: nativeActions.length ? nativeActions : undefined,
         usage: usage ? mapUsage(usage) : undefined,
         provider: this.providerName,
         model: request.config.model,
@@ -124,7 +164,25 @@ export class CodexSdkClient implements LLMClient {
     return true;
   }
 
-  private handleEvent(event: ThreadEvent): { finalResponse?: string; usage?: Usage } {
+  private buildCodexConfig(tools: ToolDefinition[] | undefined): CodexOptions['config'] | undefined {
+    if (!this.agentMode || !tools?.length) return undefined;
+    return {
+      mcp_servers: {
+        harness: {
+          command: process.execPath,
+          args: [this.harnessMcpServerPath],
+          env: buildHarnessMcpEnv({
+            workingDirectory: this.workingDirectory,
+            matterName: this.matterName,
+            autonomy: this.autonomy,
+            tools,
+          }),
+        },
+      },
+    };
+  }
+
+  private handleEvent(event: ThreadEvent): { finalResponse?: string; usage?: Usage; nativeAction?: LLMNativeAction } {
     switch (event.type) {
       case 'item.started':
       case 'item.updated':
@@ -144,9 +202,9 @@ export class CodexSdkClient implements LLMClient {
     }
   }
 
-  private handleItem(item: ThreadItem): { finalResponse?: string } {
+  private handleItem(item: ThreadItem): { finalResponse?: string; nativeAction?: LLMNativeAction } {
     if (NATIVE_ACTION_TYPES.has(item.type)) {
-      throw new LLMError(`Codex SDK attempted native action "${item.type}" outside Harness tool policy.`, 400, this.providerName);
+      return { nativeAction: mapNativeAction(item) };
     }
 
     switch (item.type) {
@@ -189,7 +247,12 @@ export class CodexSdkClient implements LLMClient {
   }
 }
 
-function buildPrompt(messages: LLMMessage[], forceJsonInstruction: boolean): string {
+function buildPrompt(
+  messages: LLMMessage[],
+  forceJsonInstruction: boolean,
+  tools: ToolDefinition[] | undefined,
+  agentMode: boolean,
+): string {
   const body = messages.map((message) => {
     const label = message.toolName ? `${message.role}:${message.toolName}` : message.role;
     const toolCalls = message.toolCalls?.length
@@ -198,9 +261,17 @@ function buildPrompt(messages: LLMMessage[], forceJsonInstruction: boolean): str
     return `## ${label.toUpperCase()}\n${message.content}${toolCalls}`;
   }).join('\n\n');
 
+  const toolSection = agentMode && tools?.length
+    ? `\n\n## HARNESS MCP TOOLS\nThe Harness exposes case tools through the MCP server named "harness". Use those MCP tools directly when they are useful. Do not emit OpenAI-style function calls; Codex owns tool execution in this provider mode.\n\n${JSON.stringify(tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+    })), null, 2)}`
+    : '';
+
   return forceJsonInstruction
-    ? `${body}\n\nReturn only valid JSON.`
-    : body;
+    ? `${body}${toolSection}\n\nReturn only valid JSON.`
+    : `${body}${toolSection}`;
 }
 
 function mapReasoningEffort(effort: ReasoningEffort | undefined): ModelReasoningEffort | undefined {
@@ -216,6 +287,61 @@ function mapUsage(usage: Usage): LLMUsage {
     cacheHitTokens: usage.cached_input_tokens,
     reasoningOutputTokens: usage.reasoning_output_tokens,
   };
+}
+
+function mapNativeAction(item: ThreadItem): LLMNativeAction {
+  const record = item as unknown as Record<string, unknown>;
+  const data = { ...record };
+  delete data.id;
+  delete data.type;
+  const status = typeof record.status === 'string' ? record.status : undefined;
+  return {
+    id: typeof record.id === 'string' ? record.id : undefined,
+    type: item.type,
+    status,
+    label: nativeActionLabel(item.type, record),
+    data,
+  };
+}
+
+function nativeActionLabel(type: string, item: Record<string, unknown>): string | undefined {
+  switch (type) {
+    case 'command_execution':
+      return typeof item.command === 'string' ? item.command : undefined;
+    case 'mcp_tool_call': {
+      const server = typeof item.server === 'string' ? item.server : 'mcp';
+      const tool = typeof item.tool === 'string' ? item.tool : 'tool';
+      return `${server}.${tool}`;
+    }
+    case 'web_search':
+      return typeof item.query === 'string' ? item.query : undefined;
+    case 'file_change': {
+      const changes = Array.isArray(item.changes) ? item.changes.length : 0;
+      return `${changes} file change${changes === 1 ? '' : 's'}`;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function buildHarnessMcpEnv(input: {
+  workingDirectory: string;
+  matterName?: string;
+  autonomy?: AutonomyPolicy;
+  tools: ToolDefinition[];
+}): Record<string, string> {
+  const env: Record<string, string> = {
+    ATTICUS_HARNESS_MCP: '1',
+    ATTICUS_HARNESS_CWD: input.workingDirectory,
+    ATTICUS_HARNESS_MCP_TOOLS: JSON.stringify(input.tools.map((tool) => tool.name)),
+  };
+  if (input.matterName) {
+    env.ATTICUS_HARNESS_MATTER_NAME = input.matterName;
+  }
+  if (input.autonomy) {
+    env.ATTICUS_HARNESS_MCP_AUTONOMY = JSON.stringify(input.autonomy);
+  }
+  return env;
 }
 
 function buildCodexEnv(env: NodeJS.ProcessEnv): Record<string, string> {

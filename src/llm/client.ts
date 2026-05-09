@@ -23,6 +23,8 @@ export interface LLMClient {
 export interface LLMClientCapabilities {
   tools: boolean;
   jsonSchema?: boolean;
+  agentMode?: boolean;
+  nativeMcpTools?: boolean;
 }
 
 export interface OpenAICompatibleResponse {
@@ -104,10 +106,6 @@ function buildOpenRouterReasoningPayload(effort: ReasoningEffort): Record<string
 
 function isDeepSeekModel(model: string): boolean {
   return model.toLowerCase().includes('deepseek');
-}
-
-function effectiveReasoningEffort(model: string, effort: ReasoningEffort | undefined): ReasoningEffort | undefined {
-  return isDeepSeekModel(model) ? 'xhigh' : effort;
 }
 
 function mapDeepSeekReasoningEffort(effort: ReasoningEffort): 'high' | 'max' | undefined {
@@ -363,7 +361,7 @@ export class OpenAICompatibleClient implements LLMClient {
       payload.response_format = { type: 'json_object' };
     }
 
-    const reasoningEffort = effectiveReasoningEffort(request.config.model, request.config.reasoningEffort);
+    const reasoningEffort = request.config.reasoningEffort;
     const disableThinking = isDeepSeekModel(request.config.model) ? false : request.config.disableThinking;
     if (this.reasoningControl === 'deepseek-thinking' && (disableThinking || reasoningEffort)) {
       if (!reasoningEffort || reasoningEffort === 'none' || disableThinking) {
@@ -476,6 +474,9 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
       providerName,
       timeoutMs,
       workingDirectory: process.cwd(),
+      matterName: isResolvedConfig ? config.matterName : undefined,
+      autonomy: isResolvedConfig ? config.autonomy : undefined,
+      agentMode: providerMetadata.agentCapable ?? true,
     });
   }
 

@@ -1,17 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { computeGateScore, type GateScoringContext } from '../../src/acceptance/gate-score.js';
 import { hasQuorum, aggregateFindings, getQuorumDecision } from '../../src/acceptance/review-quorum.js';
+import { appendGateException, findStandingGateException, listGateExceptions, reuseStandingGateException } from '../../src/acceptance/gate-exceptions.js';
 import type { CandidateArtifact, CandidateMetadata } from '../../src/types/artifact.js';
 import type { AutonomyPolicy, ExternalActionMode } from '../../src/config/schema.js';
 import type { HostileReview, ReviewSeverity, ReviewFindingType } from '../../src/types/review.js';
+import { closeStateDb } from '../../src/state/store.js';
+import { listEvents } from '../../src/state/events.js';
+import { deleteMatter, initMatter } from '../../src/storage/matter.js';
 
 vi.mock('../../src/storage/candidate.js', () => ({
   acceptCandidate: vi.fn(),
   listCandidates: vi.fn(),
+  saveCandidate: vi.fn(),
 }));
 
-import { acceptCandidate } from '../../src/storage/candidate.js';
-import { tryAutoAccept, checkGates, requiresOperator } from '../../src/acceptance/auto-accept.js';
+import { acceptCandidate, saveCandidate } from '../../src/storage/candidate.js';
+import { tryAutoAccept, checkGates, requiresOperator, buildGateExceptionPolicyVersion } from '../../src/acceptance/auto-accept.js';
 
 function makeCandidate(overrides: Partial<CandidateArtifact> = {}): CandidateArtifact {
   return {
@@ -47,8 +52,15 @@ function makePolicy(overrides: Partial<AutonomyPolicy> = {}): AutonomyPolicy {
     minGateScoreForAutoAccept: 0.8,
     externalActionMode: 'prepare_only',
     allowExternalDispatch: false,
-    maxConcurrentAgents: 4,
+    maxConcurrentAgents: 15,
     maxAgentDepth: 3,
+    gateFeedback: {
+      enabled: true,
+      maxWorkerRetries: 3,
+      maxMiniOrchestratorRetries: 2,
+      maxMasterOrchestratorRetries: 1,
+      feedbackLevel: 'check-level',
+    },
     ...overrides,
   };
 }
@@ -408,6 +420,139 @@ describe('auto-accept', () => {
       expect(result.gateScore!).toBeLessThan(0.9);
     });
 
+    it('returns structured gate feedback when gate score is below minimum', async () => {
+      const candidate = makeCandidate({
+        content: 'minimal',
+        metadata: {
+          citations: [
+            { citationId: 'EXH-SRC-404', evidenceId: 'ev-missing', quote: 'unsupported' },
+          ],
+          priorAttemptIds: ['cand-prev'],
+          supersedesCandidateId: 'cand-prev',
+        },
+      });
+      const policy = makePolicy({
+        minGateScoreForAutoAccept: 0.9,
+        requireHostileReviewForAcceptance: false,
+        requireCitationVerificationForAcceptance: false,
+      });
+
+      const result = await tryAutoAccept(candidate, 'test-matter', policy);
+
+      expect(result.accepted).toBe(false);
+      expect(result.gateFeedback).toMatchObject({
+        candidateId: 'cand-001',
+        threshold: 0.9,
+        achievedScore: result.gateScore,
+        priorAttemptIds: ['cand-prev'],
+        supersedesCandidateId: 'cand-prev',
+        evidenceRefs: ['ev-missing'],
+        citationRefs: ['EXH-SRC-404'],
+      });
+      expect(result.gateFeedback?.failedChecks.length).toBeGreaterThan(0);
+      expect(result.gateFeedback?.locations.length).toBeGreaterThan(0);
+      expect(candidate.metadata.gateFeedback).toEqual(result.gateFeedback);
+    });
+
+    it('persists gate feedback and emits an event when matter state exists', async () => {
+      const matterName = 'test-gate-feedback';
+      await initMatter(matterName);
+      try {
+        const candidate = makeCandidate({
+          matterName,
+          content: 'minimal',
+          metadata: { citations: [] },
+        });
+        const policy = makePolicy({
+          minGateScoreForAutoAccept: 0.9,
+          requireHostileReviewForAcceptance: false,
+          requireCitationVerificationForAcceptance: false,
+        });
+
+        const result = await tryAutoAccept(candidate, matterName, policy);
+
+        expect(result.accepted).toBe(false);
+        expect(saveCandidate).toHaveBeenCalledWith(
+          matterName,
+          expect.objectContaining({
+            metadata: expect.objectContaining({
+              gateFeedback: result.gateFeedback,
+            }),
+          }),
+        );
+        const feedbackEvents = listEvents(matterName, { type: 'case.quality_gate.feedback_created' });
+        expect(feedbackEvents).toHaveLength(1);
+        expect(feedbackEvents[0].data).toMatchObject({
+          candidateId: candidate.id,
+          feedbackId: result.gateFeedback?.feedbackId,
+          achievedScore: result.gateFeedback?.achievedScore,
+          threshold: 0.9,
+          gateFeedback: result.gateFeedback,
+        });
+      } finally {
+        closeStateDb(matterName);
+        await deleteMatter(matterName);
+      }
+    });
+
+    it('accepts a below-threshold candidate only when all failed checks have exact standing exceptions', async () => {
+      const matterName = 'test-gate-exception-accept';
+      await initMatter(matterName);
+      try {
+        const candidate = makeCandidate({
+          matterName,
+          content: 'minimal',
+          metadata: { citations: [] },
+        });
+        const policy = makePolicy({
+          minGateScoreForAutoAccept: 0.9,
+          requireHostileReviewForAcceptance: false,
+          requireCitationVerificationForAcceptance: false,
+        });
+
+        const firstAttempt = await tryAutoAccept(candidate, matterName, policy);
+        expect(firstAttempt.accepted).toBe(false);
+        expect(firstAttempt.gateFeedback?.failedChecks.length).toBeGreaterThan(0);
+
+        for (const failedCheck of firstAttempt.gateFeedback!.failedChecks) {
+          await appendGateException(matterName, {
+            candidateId: candidate.id,
+            gateCheckFailed: failedCheck.name,
+            reason: `Standing exception for ${failedCheck.name}`,
+            authorisedBy: 'master_orchestrator',
+            permanentRule: true,
+            match: {
+              policyVersion: buildGateExceptionPolicyVersion(policy),
+              evidenceRefs: firstAttempt.gateFeedback!.evidenceRefs,
+              citationRefs: firstAttempt.gateFeedback!.citationRefs,
+              locations: firstAttempt.gateFeedback!.locations,
+            },
+          });
+        }
+        vi.mocked(acceptCandidate).mockResolvedValue({
+          id: 'artifact-with-exceptions',
+          matterName,
+          type: 'draft',
+          title: 'Accepted With Exceptions',
+          content: 'content',
+          accepted: '2025-01-16T10:00:00.000Z',
+          acceptedFrom: candidate.id,
+          citations: [],
+        });
+
+        const secondAttempt = await tryAutoAccept(candidate, matterName, policy);
+
+        expect(secondAttempt.accepted).toBe(true);
+        expect(secondAttempt.acceptedWithGateExceptions).toBe(true);
+        expect(secondAttempt.exceptionIds).toHaveLength(firstAttempt.gateFeedback!.failedChecks.length);
+        expect(listEvents(matterName, { type: 'case.quality_gate.exception_reused' }))
+          .toHaveLength(firstAttempt.gateFeedback!.failedChecks.length);
+      } finally {
+        closeStateDb(matterName);
+        await deleteMatter(matterName);
+      }
+    });
+
     it('rejects when citation verification not passed', async () => {
       const candidate = makeCandidate();
       const policy = makePolicy({ requireCitationVerificationForAcceptance: true, requireQualityGateForAcceptance: false, requireHostileReviewForAcceptance: false });
@@ -542,6 +687,92 @@ describe('auto-accept', () => {
       expect(result).toHaveProperty('passed');
       expect(result.checks).toHaveLength(10);
     });
+  });
+});
+
+describe('gate exceptions', () => {
+  const matterName = 'test-gate-exceptions';
+
+  beforeEach(async () => {
+    await initMatter(matterName);
+  });
+
+  afterEach(async () => {
+    closeStateDb(matterName);
+    await deleteMatter(matterName);
+  });
+
+  it('stores append-only exception records and reuses only exact standing matches', async () => {
+    const locations = [{ kind: 'candidate' as const, path: 'candidate:cand-001', label: 'Citation coverage' }];
+    const exception = await appendGateException(matterName, {
+      candidateId: 'cand-001',
+      gateCheckFailed: 'Citation coverage',
+      reason: 'Evidence set lacks the expected citation format but source support is present.',
+      authorisedBy: 'master_orchestrator',
+      permanentRule: true,
+      match: {
+        policyVersion: 'v1',
+        evidenceRefs: ['ev-001'],
+        citationRefs: ['EXH-SRC-001'],
+        locations,
+      },
+    });
+
+    const stored = await listGateExceptions(matterName);
+    expect(stored).toHaveLength(1);
+    expect(stored[0].exceptionId).toBe(exception.exceptionId);
+
+    const exact = await findStandingGateException(matterName, {
+      gateCheckFailed: 'Citation coverage',
+      policyVersion: 'v1',
+      evidenceRefs: ['ev-001'],
+      citationRefs: ['EXH-SRC-001'],
+      locations,
+    });
+    expect(exact?.exception.exceptionId).toBe(exception.exceptionId);
+    expect(exact?.nonMatchingFields).toEqual([]);
+
+    const reused = await reuseStandingGateException(matterName, {
+      candidateId: 'cand-002',
+      authorisedBy: 'master_orchestrator',
+      gateCheckFailed: 'Citation coverage',
+      policyVersion: 'v1',
+      evidenceRefs: ['ev-001'],
+      citationRefs: ['EXH-SRC-001'],
+      locations,
+    });
+    expect(reused?.exception.exceptionId).toBe(exception.exceptionId);
+    const reuseEvents = listEvents(matterName, { type: 'case.quality_gate.exception_reused' });
+    expect(reuseEvents).toHaveLength(1);
+    expect(reuseEvents[0].data).toMatchObject({
+      exceptionId: exception.exceptionId,
+      candidateId: 'cand-002',
+      gateCheckFailed: 'Citation coverage',
+      authorisedBy: 'master_orchestrator',
+      matchingFields: ['matterName', 'gateCheckFailed', 'policyVersion', 'evidenceRefs', 'citationRefs', 'locations'],
+      nonMatchingFields: [],
+    });
+
+    const partial = await findStandingGateException(matterName, {
+      gateCheckFailed: 'Citation coverage',
+      policyVersion: 'v1',
+      evidenceRefs: ['ev-001'],
+      citationRefs: ['EXH-SRC-999'],
+      locations,
+    });
+    expect(partial).toBeNull();
+
+    const partialReuse = await reuseStandingGateException(matterName, {
+      candidateId: 'cand-003',
+      authorisedBy: 'master_orchestrator',
+      gateCheckFailed: 'Citation coverage',
+      policyVersion: 'v1',
+      evidenceRefs: ['ev-001'],
+      citationRefs: ['EXH-SRC-999'],
+      locations,
+    });
+    expect(partialReuse).toBeNull();
+    expect(listEvents(matterName, { type: 'case.quality_gate.exception_reused' })).toHaveLength(1);
   });
 });
 

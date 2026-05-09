@@ -31,8 +31,22 @@ describe('system prompt assembly', () => {
     expect(prompt).toContain('Matter: anfal');
     expect(prompt).toContain('Autonomy mode: operator_safe');
     expect(prompt).toContain('Active Skill: legal-humanizer');
+    expect(prompt).toContain('# Output Style');
+    expect(prompt).toContain('Name: default');
     expect(prompt.indexOf('# System')).toBeLessThan(prompt.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY));
     expect(prompt.indexOf(SYSTEM_PROMPT_DYNAMIC_BOUNDARY)).toBeLessThan(prompt.indexOf('# Environment'));
+  });
+
+  it('injects the selected output style into the harness prompt context', async () => {
+    const prompt = await buildSystemPrompt(
+      'test-matter',
+      makeMatterIndex('test-matter'),
+      makeAgentConfig(undefined, 'code-review'),
+    );
+
+    expect(prompt).toContain('# Output Style');
+    expect(prompt).toContain('Name: code-review');
+    expect(prompt).toContain('Use a code-review stance');
   });
 
   it('wraps orchestration role prompts with the same harness prompt contract', () => {
@@ -115,12 +129,13 @@ function makeMatterIndex(name: string): MatterIndex {
   };
 }
 
-function makeAgentConfig(skillName: string): AgentConfig {
+function makeAgentConfig(skillName?: string, outputStyle?: string): AgentConfig {
   return {
     maxTurns: 3,
     model: 'test-model',
     temperature: 0,
     skillName,
+    outputStyle,
     quietMode: true,
     verbose: false,
   };

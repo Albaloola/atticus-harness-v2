@@ -3,7 +3,8 @@ export { DEFAULTS, type GlobalHarnessConfig, type AutonomyPolicy, type AutonomyP
 export type { McpConfig, McpServerConfig, McpTransportType } from '../mcp/types.js';
 export type { PluginsConfig, PluginManifest, LoadedHarnessPlugin } from '../plugins/types.js';
 export { loadSecrets, getSecret, saveSecret, deleteSecret, getOpenRouterKey, getProviderKey, getSearchApiKey, getTavilyApiKey, getBraveSearchApiKey } from './secrets.js';
-export { loadGlobalConfig, saveGlobalConfig, resolveConfig, getConfigValue, setConfigValue, loadMatterConfigOverride, type LoadConfigOptions } from './loader.js';
+export { createPlaintextFileSecureStorage, PlaintextFileSecureStorage, type SecureStorage, type SecureStorageBackendDescription } from './secure-storage.js';
+export { loadGlobalConfig, saveGlobalConfig, resolveConfig, getConfigValue, explainConfigValue, setConfigValue, loadMatterConfigOverride, type LoadConfigOptions, type ConfigExplanation, type ConfigProvenanceEntry, type ConfigSourceKind } from './loader.js';
 export { evaluatePolicy, evaluateAutonomyPolicy, classifyToolCategory, requiresAuditLog } from './policy.js';
 
 export { canonicalProviderPolicy, configuredPolicyModels, evaluateProviderPolicy, assertProviderPolicyAllowed, ProviderPolicyError, type ProviderPolicyDecision } from './provider-policy.js';

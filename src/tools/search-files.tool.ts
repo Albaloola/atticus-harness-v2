@@ -11,6 +11,8 @@ export interface SearchFilesArgs {
 
 export class SearchFilesTool implements Tool<SearchFilesArgs, string[]> {
   readonly name = 'search_files';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = 'Search for files matching a glob pattern anywhere under a workspace path. Returns matching file paths.';
   readonly inputSchema = {
     type: 'object',

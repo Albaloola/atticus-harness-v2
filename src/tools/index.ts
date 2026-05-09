@@ -10,6 +10,7 @@ import { TodoWriteTool } from './todo-write.tool.js';
 import { SleepTool } from './sleep.tool.js';
 import { NotebookEditTool } from './notebook-edit.tool.js';
 import { ToolSearchTool } from './tool-search.tool.js';
+import { ReadToolResultTool } from './read-tool-result.tool.js';
 import { ExecSqliteTool } from './exec-sqlite.tool.js';
 import { LlmCallTool } from './llm-call.tool.js';
 import { EvidenceSearchTool } from './evidence-search.tool.js';
@@ -23,7 +24,7 @@ import { QualityGateTool } from './quality-gate.tool.js';
 import { WebSearchTool } from '../research/web-search.tool.js';
 import { WebFetchTool } from '../research/web-fetch.tool.js';
 import type { AutonomyPolicy } from '../config/schema.js';
-import { McpToolManager } from '../mcp/client.js';
+import { McpToolManager, mergeMcpServerConfigs } from '../mcp/client.js';
 import type { McpConfig } from '../mcp/types.js';
 import { buildPluginMcpConfig } from '../plugins/loader.js';
 import type { PluginsConfig } from '../plugins/types.js';
@@ -64,6 +65,7 @@ export class ToolRegistry {
     this.register(new TodoWriteTool());
     this.register(new SleepTool());
     this.register(new NotebookEditTool());
+    this.register(new ReadToolResultTool());
     this.register(new ExecSqliteTool());
     this.register(new LlmCallTool());
     this.register(new EvidenceSearchTool());
@@ -158,12 +160,13 @@ export class ToolRegistry {
     plugins?: PluginsConfig;
     log?: (message: string) => void;
   }): Promise<void> {
-    const directServers = input.mcp?.enabled === false ? {} : (input.mcp?.servers ?? {});
+    const directServers = input.mcp?.enabled === false ? {} : markDirectMcpServers(input.mcp?.servers ?? {});
     const pluginMcp = await buildPluginMcpConfig(input.plugins);
-    const servers = {
-      ...directServers,
-      ...pluginMcp.servers,
-    };
+    const servers = mergeMcpServerConfigs({
+      direct: directServers,
+      plugin: pluginMcp.servers,
+      log: input.log,
+    });
     if (Object.keys(servers).length === 0) return;
 
     const defaultTimeoutMs = input.mcp?.defaultTimeoutMs ?? pluginMcp.defaultTimeoutMs ?? 60_000;
@@ -228,13 +231,17 @@ export class ToolRegistry {
         source: 'tool',
         data: {
           tool: name,
+          toolCallId: context.toolCallId,
           success: result.success,
           error: result.error,
           policyDecision,
           durationMs: Date.now() - started,
           args: redactArgs(args),
           output: result.output ? truncate(result.output, 500) : undefined,
+          storedResult: result.storedResult,
         },
+        runId: context.runId,
+        taskId: context.taskId,
       });
     } catch {
     }
@@ -251,4 +258,15 @@ function redactArgs(args: Record<string, unknown>): Record<string, unknown> {
     redacted[key] = /key|token|secret|password/i.test(key) ? '[REDACTED]' : value;
   }
   return redacted;
+}
+
+function markDirectMcpServers(servers: Record<string, import('../mcp/types.js').McpServerConfig>): Record<string, import('../mcp/types.js').McpServerConfig> {
+  const marked: Record<string, import('../mcp/types.js').McpServerConfig> = {};
+  for (const [name, server] of Object.entries(servers)) {
+    marked[name] = {
+      ...server,
+      source: server.source ?? { kind: 'manual' },
+    };
+  }
+  return marked;
 }

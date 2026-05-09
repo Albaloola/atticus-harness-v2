@@ -235,6 +235,8 @@ export interface GlobalHarnessConfig {
   mcp: McpConfig;
   /** Codex/Claude-style plugin discovery and component loading. */
   plugins: PluginsConfig;
+  /** Selected output style prompt profile. */
+  outputStyle?: string;
   providerPolicy: ProviderPolicy;
   autonomy: AutonomyPolicy;
   toolPolicy: ToolPolicy;
@@ -267,6 +269,8 @@ export interface ResolvedHarnessConfig {
   mcp: McpConfig;
   /** Plugin discovery and loading configuration. */
   plugins: PluginsConfig;
+  /** Selected output style prompt profile. */
+  outputStyle?: string;
   /** Whether config was loaded from disk vs defaults only */
   fromDisk: boolean;
   /** Matter name, if one was specified */
@@ -287,6 +291,7 @@ export interface MatterConfigOverride {
   temperature?: number;
   maxTokens?: number;
   reasoningEffort?: ReasoningEffort;
+  outputStyle?: string;
   autonomy?: AutonomyPolicyOverride;
   toolPolicy?: ToolPolicy;
 }
@@ -366,6 +371,7 @@ export const DEFAULTS: GlobalHarnessConfig = {
     includeCodexCache: true,
     directories: [],
   },
+  outputStyle: 'default',
   providerPolicy: {
     defaultProvider: 'openrouter',
     models: DEFAULT_MODEL_DELEGATION,

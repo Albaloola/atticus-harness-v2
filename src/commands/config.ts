@@ -1,6 +1,6 @@
-import { resolveConfig, setConfigValue } from '../config/loader.js';
+import { explainConfigValue, resolveConfig, saveGlobalConfig, setConfigValue } from '../config/loader.js';
 import { getOpenRouterKey } from '../config/secrets.js';
-import { mkdir, access, writeFile } from 'fs/promises';
+import { mkdir, access } from 'fs/promises';
 import { constants } from 'fs';
 import { getConfigDir, getConfigPath, getSecretsPath } from '../config/paths.js';
 import { DEFAULTS } from '../config/schema.js';
@@ -22,6 +22,7 @@ export async function handleConfigShow(
       name: output.providerName,
       model: output.model,
       reasoningEffort: output.reasoningEffort ?? 'provider default',
+      outputStyle: output.outputStyle ?? 'default',
       baseUrl: (output.provider as JsonObject).baseUrl,
       apiKey: (output.provider as JsonObject).apiKey
         ? 'configured'
@@ -35,6 +36,28 @@ export async function handleConfigShow(
     if (output.matterName) {
       console.log(`  matter:     ${output.matterName}`);
     }
+  }
+}
+
+export async function handleConfigExplain(
+  path: string,
+  opts: { matter?: string; json?: boolean }
+): Promise<void> {
+  const explanation = await explainConfigValue(path, { matterName: opts.matter });
+  if (opts.json) {
+    console.log(JSON.stringify(explanation, null, 2));
+    return;
+  }
+
+  console.log(`Config: ${explanation.key}`);
+  console.log(`  effective: ${formatValue(explanation.effectiveValue)}`);
+  for (const entry of explanation.provenance) {
+    const marker = entry.active ? '*' : ' ';
+    const sourcePath = entry.sourcePath ? ` ${entry.sourcePath}` : '';
+    console.log(`${marker} ${entry.source}${sourcePath}: ${formatValue(entry.value)}`);
+  }
+  if (explanation.tip) {
+    console.log(`  tip: ${explanation.tip}`);
   }
 }
 
@@ -68,9 +91,7 @@ export async function handleConfigInit(
     defaults.providers.openrouter = defaults.providers.openrouter ?? {};
   }
 
-  await writeFile(configPath, JSON.stringify(defaults, null, 2) + '\n', {
-    mode: 0o600,
-  });
+  await saveGlobalConfig(defaults);
 
   console.log('Config initialized at', configPath);
 
@@ -228,4 +249,10 @@ function printSection(title: string, data: JsonObject): void {
       console.log(`  ${key}: ${display}`);
     }
   }
+}
+
+function formatValue(value: unknown): string {
+  if (value === undefined) return 'undefined';
+  if (typeof value === 'object' && value !== null) return JSON.stringify(value);
+  return String(value);
 }

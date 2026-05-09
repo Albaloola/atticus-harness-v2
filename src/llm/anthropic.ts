@@ -1,4 +1,5 @@
-import { AuthError, LLMError, classifyError } from './errors.js';
+import { AuthError, LLMError, classifyError, classifyThrownError } from './errors.js';
+import { defaultRetryPolicy, type RetryAttempt, type RetryFailure, withRetry } from './retry.js';
 import type { LLMClientCapabilities } from './client.js';
 import type { LLMRequest, LLMResponse, LLMUsage, ReasoningEffort } from '../types/llm.js';
 import type { LLMMessage, ToolCall } from '../types/message.js';
@@ -8,6 +9,9 @@ export interface AnthropicClientOptions {
   authToken?: string;
   baseUrl?: string;
   timeoutMs?: number;
+  maxRetries?: number;
+  onRetry?: (attempt: RetryAttempt) => void | Promise<void>;
+  onRetryFailure?: (failure: RetryFailure) => void | Promise<void>;
   providerName?: string;
   anthropicVersion?: string;
 }
@@ -115,6 +119,9 @@ export class AnthropicClient {
   private readonly authToken: string;
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
+  private readonly maxRetries: number;
+  private readonly onRetry?: (attempt: RetryAttempt) => void | Promise<void>;
+  private readonly onRetryFailure?: (failure: RetryFailure) => void | Promise<void>;
   private readonly providerName: string;
   private readonly anthropicVersion: string;
 
@@ -123,6 +130,9 @@ export class AnthropicClient {
     this.authToken = options.authToken ?? '';
     this.baseUrl = options.baseUrl ?? 'https://api.anthropic.com/v1';
     this.timeoutMs = options.timeoutMs ?? 180_000;
+    this.maxRetries = options.maxRetries ?? 3;
+    this.onRetry = options.onRetry;
+    this.onRetryFailure = options.onRetryFailure;
     this.providerName = options.providerName ?? 'anthropic';
     this.anthropicVersion = options.anthropicVersion ?? '2023-06-01';
   }
@@ -134,7 +144,7 @@ export class AnthropicClient {
   async chatWithTools(request: LLMRequest): Promise<LLMResponse> {
     this.assertAuth();
     const payload = this.buildPayload(request);
-    return this.withTimeout(async (signal) => {
+    return this.withRetry(() => this.withTimeout(async (signal) => {
       const response = await fetch(joinUrl(this.baseUrl, '/messages'), {
         method: 'POST',
         headers: this.buildHeaders(),
@@ -144,7 +154,7 @@ export class AnthropicClient {
 
       if (!response.ok) {
         const body = await readResponseText(response);
-        throw classifyError(response.status, body);
+        throw classifyError(response.status, body, this.providerName, { headers: response.headers });
       }
 
       const data = (await response.json()) as AnthropicResponse;
@@ -152,12 +162,12 @@ export class AnthropicClient {
         throw new LLMError(data.error.message, 0, this.providerName);
       }
       return this.parseResponse(data);
-    });
+    }));
   }
 
   async healthCheck(): Promise<boolean> {
     this.assertAuth();
-    return this.withTimeout(async (signal) => {
+    return this.withRetry(() => this.withTimeout(async (signal) => {
       const response = await fetch(joinUrl(this.baseUrl, '/models'), {
         method: 'GET',
         headers: this.buildHeaders(false),
@@ -165,10 +175,10 @@ export class AnthropicClient {
       });
       if (response.status === 401 || response.status === 403 || response.status >= 500) {
         const body = await readResponseText(response);
-        throw classifyError(response.status, body);
+        throw classifyError(response.status, body, this.providerName, { headers: response.headers });
       }
       return response.ok;
-    });
+    }));
   }
 
   private assertAuth(): void {
@@ -198,18 +208,21 @@ export class AnthropicClient {
     try {
       return await operation(controller.signal);
     } catch (err) {
-      if (err instanceof LLMError) throw err;
-      const error = err as Error;
-      if (error.name === 'AbortError' || /abort|aborted/i.test(error.message)) {
-        throw new LLMError(`Request timed out after ${this.timeoutMs}ms`, 408, this.providerName);
-      }
-      if (err instanceof TypeError && error.message.includes('fetch')) {
-        throw new LLMError(`Network error: ${error.message}`, 0, this.providerName);
-      }
-      throw new LLMError(`Unexpected error: ${error.message}`, 0, this.providerName);
+      throw classifyThrownError(err, this.providerName, this.timeoutMs);
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
+    return withRetry(operation, {
+      ...defaultRetryPolicy,
+      maxAttempts: Math.max(1, Math.trunc(this.maxRetries || 1)),
+      source: 'interactive',
+    }, {
+      onRetry: this.onRetry,
+      onFailure: this.onRetryFailure,
+    });
   }
 
   private buildPayload(request: LLMRequest): Record<string, unknown> {

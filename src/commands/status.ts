@@ -4,6 +4,7 @@ import { deriveSnapshot } from '../state/snapshot.js';
 import type { MatterRuntimeSnapshot } from '../types/state.js';
 import { buildLegalBlockerSummary } from '../observability/legal-blockers.js';
 import { evaluateRunReadiness } from '../orchestration/run-readiness.js';
+import { readResumeSummary } from '../state/resume-summary.js';
 
 export default async function statusHandler(
   matterName: string,
@@ -32,6 +33,7 @@ export default async function statusHandler(
     }
     const legalBlockers = await buildLegalBlockerSummary(matterName);
     const runReadiness = await evaluateRunReadiness({ matterName, requireAcceptedArtifact: false });
+    const resumeSummary = await readResumeSummary(matterName);
 
     if (options.json) {
       const output = {
@@ -54,6 +56,7 @@ export default async function statusHandler(
         snapshotRunReadiness: snapshot.runReadiness,
         legalBlockers,
         runReadiness,
+        resumeSummary,
         model: index.config.model || 'deepseek/deepseek-v4-flash',
       };
       console.log(JSON.stringify(output, null, 2));
@@ -130,6 +133,21 @@ export default async function statusHandler(
       for (const blocker of runReadiness.blockers.slice(0, 5)) {
         console.log(`    ${chalk.yellow('-')} ${blocker.objectId}: ${blocker.reason}`);
       }
+      console.log('');
+    }
+
+    if (resumeSummary) {
+      console.log(chalk.cyan.bold('  Resume Summary:'));
+      if (resumeSummary.lastUserGoal) {
+        console.log(`    Goal: ${resumeSummary.lastUserGoal.substring(0, 140)}`);
+      }
+      if (resumeSummary.lastModelVisibleSummary) {
+        console.log(`    Last: ${resumeSummary.lastModelVisibleSummary.substring(0, 140)}`);
+      }
+      if (resumeSummary.failedOperation) {
+        console.log(`    Recoverable failure: ${JSON.stringify(resumeSummary.failedOperation).substring(0, 140)}`);
+      }
+      console.log(`    Updated: ${formatDate(resumeSummary.updatedAt)}`);
       console.log('');
     }
 

@@ -3,6 +3,8 @@ import { searchEvidence } from '../storage/sqlite/search.js';
 
 export class EvidenceSearchTool implements Tool<{ query: string; topK?: number }, unknown[]> {
   readonly name = 'evidence_search';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = 'Search indexed evidence using full-text search. Returns ranked snippets and chunk indexes; call evidence_chunk_read for full chunk content.';
   readonly inputSchema = {
     type: 'object',

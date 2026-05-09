@@ -7,6 +7,7 @@ import { resolveConfig } from '../config/loader.js';
 import { buildCourtOfSessionRuleContext } from '../rules/court-session-rules.js';
 import { buildSheriffCourtRuleContext } from '../rules/sheriff-court-rules.js';
 import { buildScotCourtsCorpusContext } from '../rules/scotcourts-corpus.js';
+import { resolveOutputStyle } from '../output-styles/loader.js';
 
 const AGENT_ROLE_INSTRUCTIONS = `You work on legal matters by analyzing evidence, drafting documents, verifying citations, running review/gates, and managing case workflows.
 
@@ -61,6 +62,8 @@ export async function buildSystemPrompt(
   }
 
   const resolved = await resolveConfig({ matterName }).catch(() => undefined);
+  const outputStyleName = config.outputStyle ?? resolved?.outputStyle ?? 'default';
+  const outputStyle = await resolveOutputStyle(outputStyleName);
   return buildHarnessSystemPrompt('agent_loop', AGENT_ROLE_INSTRUCTIONS, {
     matterName,
     matter: matterIndex,
@@ -70,6 +73,7 @@ export async function buildSystemPrompt(
     autonomy: resolved?.autonomy,
     toolPolicy: resolved?.toolPolicy,
     skillSection: prompts.filter(Boolean).join('\n\n') || undefined,
+    outputStyle,
   });
 }
 

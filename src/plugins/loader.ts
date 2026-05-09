@@ -1,11 +1,17 @@
 import { access, readdir, readFile } from 'fs/promises';
 import { constants } from 'fs';
 import { homedir } from 'os';
-import { dirname, isAbsolute, join, resolve } from 'path';
+import { dirname, isAbsolute, join, relative, resolve } from 'path';
 import { loadSkillsFromDir } from '../skills/loader.js';
 import type { SkillDefinition } from '../skills/types.js';
 import type { McpConfig, McpServerConfig } from '../mcp/types.js';
-import type { LoadedHarnessPlugin, PluginManifest, PluginsConfig } from './types.js';
+import { mergeMcpServerConfigs } from '../mcp/client.js';
+import type { LoadedHarnessPlugin, PluginManifest, PluginSourceKind, PluginsConfig } from './types.js';
+import {
+  expandPluginPathReference,
+  resolvePluginComponentPath,
+  validatePluginManifest,
+} from './validate.js';
 
 const PLUGIN_MANIFEST_DIRS = ['.codex-plugin', '.claude-plugin'];
 
@@ -32,10 +38,11 @@ export async function discoverHarnessPlugins(options: PluginDiscoveryOptions = {
       if (seen.has(manifestPath)) continue;
       seen.add(manifestPath);
       try {
-        const manifest = JSON.parse(await readFile(manifestPath, 'utf-8')) as PluginManifest;
-        if (!manifest.name || disabled.has(manifest.name)) continue;
+        const rootDir = dirname(dirname(manifestPath));
+        const manifest = validatePluginManifest(JSON.parse(await readFile(manifestPath, 'utf-8')), rootDir);
+        if (disabled.has(manifest.name)) continue;
         if (enabled && !enabled.has(manifest.name)) continue;
-        const plugin = await hydratePlugin(manifestPath, manifest);
+        const plugin = await hydratePlugin(manifestPath, manifest, options);
         plugins.push(plugin);
       } catch (error) {
         log(`[plugin] skipped ${manifestPath}: ${error instanceof Error ? error.message : String(error)}`);
@@ -72,11 +79,11 @@ export async function buildPluginMcpConfig(config?: PluginsConfig): Promise<McpC
   for (const plugin of plugins) {
     const configs = await readPluginMcpServers(plugin);
     for (const [serverName, serverConfig] of Object.entries(configs)) {
-      servers[`${plugin.name}:${serverName}`] = resolveMcpServerPaths(serverConfig, plugin.rootDir);
+      servers[`${plugin.name}:${serverName}`] = resolveMcpServerPaths(serverConfig, plugin);
     }
   }
 
-  return { enabled: true, servers, defaultTimeoutMs: 60_000 };
+  return { enabled: true, servers: mergeMcpServerConfigs({ plugin: servers }), defaultTimeoutMs: 60_000 };
 }
 
 async function pluginSearchRoots(options: PluginDiscoveryOptions): Promise<string[]> {
@@ -119,20 +126,27 @@ async function findPluginManifestPaths(root: string, depth = 0): Promise<string[
   return manifests;
 }
 
-async function hydratePlugin(manifestPath: string, manifest: PluginManifest): Promise<LoadedHarnessPlugin> {
+async function hydratePlugin(
+  manifestPath: string,
+  manifest: PluginManifest,
+  options: PluginDiscoveryOptions,
+): Promise<LoadedHarnessPlugin> {
   const rootDir = dirname(dirname(manifestPath));
+  const source = inferPluginSource(rootDir, options);
   const skillsDirs = resolvePluginComponentPaths(manifest.skills ?? './skills', rootDir)
     .filter((path) => path.endsWith('skills') || path.includes('/skills'));
   const mcpPath = typeof manifest.mcpServers === 'string'
-    ? resolveComponentPath(manifest.mcpServers, rootDir)
+    ? resolvePluginComponentPath(manifest.mcpServers, rootDir)
     : await exists(join(rootDir, '.mcp.json')) ? join(rootDir, '.mcp.json') : undefined;
   const appPath = typeof manifest.apps === 'string'
-    ? resolveComponentPath(manifest.apps, rootDir)
+    ? resolvePluginComponentPath(manifest.apps, rootDir)
     : await exists(join(rootDir, '.app.json')) ? join(rootDir, '.app.json') : undefined;
 
   return {
     name: manifest.name,
     version: manifest.version ?? 'unknown',
+    source,
+    provenance: { source, rootDir, manifestPath },
     rootDir,
     manifestPath,
     manifest,
@@ -148,6 +162,7 @@ async function readPluginMcpServers(plugin: LoadedHarnessPlugin): Promise<Record
   }
   if (!plugin.mcpPath || !await exists(plugin.mcpPath)) return {};
   const parsed = JSON.parse(await readFile(plugin.mcpPath, 'utf-8')) as { mcpServers?: Record<string, McpServerConfig> };
+  validatePluginManifest({ name: plugin.name, mcpServers: parsed }, plugin.rootDir);
   return parsed.mcpServers ?? {};
 }
 
@@ -162,37 +177,57 @@ function namespaceSkill(pluginName: string, skill: SkillDefinition): SkillDefini
   };
 }
 
-function resolveMcpServerPaths(config: McpServerConfig, pluginRoot: string): McpServerConfig {
+function resolveMcpServerPaths(
+  config: McpServerConfig,
+  plugin: LoadedHarnessPlugin,
+): McpServerConfig {
+  const pluginRoot = plugin.rootDir;
   return {
     ...config,
-    cwd: config.cwd ? resolveComponentPath(config.cwd, pluginRoot) : config.cwd,
-    args: config.args?.map((arg) => expandPluginPath(arg, pluginRoot)),
+    cwd: config.cwd ? resolvePluginComponentPath(config.cwd, pluginRoot) : config.cwd,
+    args: config.args?.map((arg) => expandPluginPathReference(arg, pluginRoot)),
     env: config.env ? expandEnv(config.env, pluginRoot) : undefined,
+    source: config.source ?? {
+      kind: 'plugin',
+      pluginName: plugin.name,
+      pluginSource: plugin.source,
+      manifestPath: plugin.manifestPath,
+    },
   };
 }
 
 function resolvePluginComponentPaths(value: string | string[], pluginRoot: string): string[] {
   const values = Array.isArray(value) ? value : [value];
-  return values.map((entry) => resolveComponentPath(entry, pluginRoot));
-}
-
-function resolveComponentPath(value: string, pluginRoot: string): string {
-  return isAbsolute(value) ? value : resolve(pluginRoot, value);
-}
-
-function expandPluginPath(value: string, pluginRoot: string): string {
-  return value.replace(/\$\{PLUGIN_DIR\}|\$PLUGIN_DIR/g, pluginRoot);
+  return values.map((entry) => resolvePluginComponentPath(entry, pluginRoot));
 }
 
 function expandEnv(env: Record<string, string>, pluginRoot: string): Record<string, string> {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
-    result[key] = expandPluginPath(value, pluginRoot).replace(/\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, braced, bare) => {
+    result[key] = expandPluginPathReference(value, pluginRoot).replace(/\$\{([^}]+)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g, (_match, braced, bare) => {
       const envKey = String(braced ?? bare);
       return process.env[envKey] ?? '';
     });
   }
   return result;
+}
+
+function inferPluginSource(rootDir: string, options: PluginDiscoveryOptions): PluginSourceKind {
+  const cwd = resolve(options.cwd ?? process.cwd());
+  const codexHome = resolve(options.codexHome ?? process.env.CODEX_HOME ?? join(process.env.HOME ?? homedir(), '.codex'));
+  const root = resolve(rootDir);
+  if (isWithin(root, resolve(cwd, 'src', 'plugins'))) return 'built-in';
+  if (isWithin(root, resolve(cwd, '.codex', 'plugins', 'generated'))) return 'generated';
+  if (isWithin(root, resolve(cwd, '.codex', 'plugins')) || isWithin(root, resolve(cwd, '.atticus', 'plugins'))) return 'workspace';
+  if (isWithin(root, resolve(codexHome, 'plugins', 'marketplace'))) return 'marketplace';
+  if (isWithin(root, resolve(codexHome, 'plugins', 'cache'))) return 'installed';
+  if (isWithin(root, resolve(codexHome, 'plugins'))) return 'user-local';
+  return 'future';
+}
+
+function isWithin(child: string, parent: string): boolean {
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }
 
 function normalizePathList(paths: string[], cwd: string): string[] {

@@ -20,9 +20,26 @@ export interface PluginManifest {
   mcpServers?: string | { mcpServers?: Record<string, McpServerConfig> };
 }
 
+export type PluginSourceKind =
+  | 'built-in'
+  | 'workspace'
+  | 'user-local'
+  | 'installed'
+  | 'generated'
+  | 'marketplace'
+  | 'future';
+
+export interface PluginProvenance {
+  source: PluginSourceKind;
+  rootDir: string;
+  manifestPath: string;
+}
+
 export interface LoadedHarnessPlugin {
   name: string;
   version: string;
+  source: PluginSourceKind;
+  provenance: PluginProvenance;
   rootDir: string;
   manifestPath: string;
   manifest: PluginManifest;

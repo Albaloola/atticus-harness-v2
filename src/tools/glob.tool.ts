@@ -19,6 +19,8 @@ export interface GlobResult {
 
 export class GlobTool implements Tool<GlobArgs, GlobResult> {
   readonly name = 'glob';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = 'Find files by glob pattern anywhere under a workspace path. Results are sorted by most recently modified first.';
   readonly inputSchema = {
     type: 'object',

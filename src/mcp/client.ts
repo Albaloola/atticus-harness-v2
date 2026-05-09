@@ -24,6 +24,59 @@ export interface McpToolRegistration {
   tool: Tool<Record<string, unknown>, unknown>;
 }
 
+export function mcpServerSignature(config: McpServerConfig): string {
+  const type = config.type ?? (config.url ? 'http' : 'stdio');
+  if (type === 'stdio') {
+    return stableStringify({
+      type,
+      command: config.command ?? '',
+      args: config.args ?? [],
+      cwd: config.cwd ?? '',
+      env: config.env ?? {},
+    });
+  }
+
+  return stableStringify({
+    type,
+    url: config.url ?? '',
+    headers: config.headers ?? {},
+  });
+}
+
+export function mergeMcpServerConfigs(options: {
+  direct?: Record<string, McpServerConfig>;
+  plugin?: Record<string, McpServerConfig>;
+  log?: (message: string) => void;
+}): Record<string, McpServerConfig> {
+  const direct = options.direct ?? {};
+  const plugin = options.plugin ?? {};
+  const log = options.log ?? (() => undefined);
+  const merged: Record<string, McpServerConfig> = {};
+  const seenSignatures = new Map<string, string>();
+
+  for (const [name, config] of sortedEntries(direct)) {
+    merged[name] = config;
+    seenSignatures.set(mcpServerSignature(config), name);
+  }
+
+  for (const [name, config] of sortedEntries(plugin)) {
+    if (merged[name]) {
+      log(`[mcp] skipped plugin server ${name}: manual/direct server with same name is already configured`);
+      continue;
+    }
+    const signature = mcpServerSignature(config);
+    const duplicateOf = seenSignatures.get(signature);
+    if (duplicateOf) {
+      log(`[mcp] skipped plugin server ${name}: duplicate of ${duplicateOf}`);
+      continue;
+    }
+    merged[name] = config;
+    seenSignatures.set(signature, name);
+  }
+
+  return merged;
+}
+
 export class McpToolManager {
   private readonly servers = new Map<string, ConnectedMcpServer>();
   private readonly tools = new Map<string, { serverName: string; toolName: string }>();
@@ -120,6 +173,9 @@ class McpProxyTool implements Tool<Record<string, unknown>, unknown> {
   readonly name: string;
   readonly description: string;
   readonly inputSchema: Record<string, unknown>;
+  readonly executionKind = 'mcp' as const;
+  readonly isConcurrencySafe = false;
+  readonly modifiesContext = true;
 
   constructor(private readonly options: {
     manager: McpToolManager;
@@ -217,6 +273,24 @@ function uniqueToolName(base: string, used: Set<string>): string {
   let index = 2;
   while (used.has(`${base}_${index}`)) index++;
   return `${base}_${index}`;
+}
+
+function sortedEntries<T>(record: Record<string, T>): [string, T][] {
+  return Object.entries(record).sort(([a], [b]) => a.localeCompare(b));
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(sortStable(value));
+}
+
+function sortStable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => sortStable(entry));
+  if (!isRecord(value)) return value;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = sortStable(value[key]);
+  }
+  return sorted;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

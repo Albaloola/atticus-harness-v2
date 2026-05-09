@@ -30,6 +30,9 @@ const HARD_MAX_OUTPUT_CHARS = 8_000_000;
 
 export class BashTool implements Tool<BashArgs, BashResult> {
   readonly name = 'bash';
+  readonly executionKind = 'shell' as const;
+  readonly isConcurrencySafe = false;
+  readonly modifiesContext = true;
   readonly description = 'Execute a shell command in the current workspace and return stdout, stderr, exit code, signal, timeout, and truncation metadata.';
   readonly inputSchema = {
     type: 'object',

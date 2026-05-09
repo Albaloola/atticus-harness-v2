@@ -11,6 +11,8 @@ export interface ToolSearchResult {
 
 export class ToolSearchTool implements Tool<ToolSearchArgs, ToolSearchResult> {
   readonly name = 'tool_search';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = 'Search the currently registered Harness tool catalog by name, description, or input schema.';
   readonly inputSchema = {
     type: 'object',

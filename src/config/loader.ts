@@ -84,8 +84,13 @@ export async function saveGlobalConfig(config: GlobalHarnessConfig): Promise<voi
   }
   const normalized = normalizeProviderProfiles(config);
   const configPath = getConfigPath();
+  const nextContent = JSON.stringify(normalized, null, 2) + '\n';
+  try {
+    if (await readFile(configPath, 'utf-8') === nextContent) return;
+  } catch {
+  }
   const tmpPath = join(dirname(configPath), `.${basename(configPath)}.${process.pid}.${Date.now()}.tmp`);
-  await writeFile(tmpPath, JSON.stringify(normalized, null, 2) + '\n', { mode: 0o600 });
+  await writeFile(tmpPath, nextContent, { mode: 0o600 });
   await rename(tmpPath, configPath);
 }
 
@@ -165,6 +170,22 @@ export interface LoadConfigOptions {
   strict?: boolean;
 }
 
+export type ConfigSourceKind = 'default' | 'global' | 'matter';
+
+export interface ConfigProvenanceEntry {
+  source: ConfigSourceKind;
+  sourcePath?: string;
+  value: unknown;
+  active: boolean;
+}
+
+export interface ConfigExplanation {
+  key: string;
+  effectiveValue: unknown;
+  provenance: ConfigProvenanceEntry[];
+  tip?: string;
+}
+
 export async function resolveConfig(options: LoadConfigOptions = {}): Promise<ResolvedHarnessConfig> {
   const loaded = await loadGlobalConfig();
   const globalConfig = normalizeProviderProfiles(loaded.config);
@@ -176,6 +197,7 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
   let temperature: number | undefined;
   let maxTokens: number | undefined;
   let reasoningEffort = normalizeReasoningEffort(globalConfig.reasoningEffort, 'global reasoningEffort');
+  let outputStyle = globalConfig.outputStyle;
   const selectedProviderName = providerName ?? globalConfig.activeProvider;
   if (isLegacyCodexOAuthProfileName(selectedProviderName)) {
     throw new Error(legacyCodexOAuthMigrationMessage(selectedProviderName));
@@ -218,6 +240,7 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
           `matter ${matterName} reasoningEffort`,
         );
       }
+      if (matterOverride.outputStyle !== undefined) outputStyle = matterOverride.outputStyle;
       if (matterOverride.autonomy) {
         autonomy = deepMerge(
           autonomy as unknown as Record<string, unknown>,
@@ -277,6 +300,7 @@ export async function resolveConfig(options: LoadConfigOptions = {}): Promise<Re
     search: globalConfig.search,
     mcp: globalConfig.mcp,
     plugins: globalConfig.plugins,
+    outputStyle,
     fromDisk,
     matterName,
   };
@@ -319,6 +343,7 @@ function redactConfig(config: ResolvedHarnessConfig): Record<string, unknown> {
     search: config.search,
     mcp: config.mcp,
     plugins: config.plugins,
+    outputStyle: config.outputStyle,
     fromDisk: config.fromDisk,
     matterName: config.matterName,
   };
@@ -335,6 +360,57 @@ export async function getConfigValue(path: string): Promise<unknown> {
   return current;
 }
 
+export async function explainConfigValue(
+  path: string,
+  options: { matterName?: string } = {},
+): Promise<ConfigExplanation> {
+  const configPath = getConfigPath();
+  const defaultValue = getNestedValue(DEFAULTS as unknown as Record<string, unknown>, path);
+  const diskConfig = await readJsonFile<Partial<GlobalHarnessConfig>>(configPath);
+  const diskValue = diskConfig ? getNestedValue(diskConfig as Record<string, unknown>, path) : undefined;
+  const matterPath = options.matterName ? getMatterConfigPath(options.matterName) : undefined;
+  const matterConfig = matterPath ? await readJsonFile<Partial<GlobalHarnessConfig> & MatterConfigOverride>(matterPath) : undefined;
+  const matterValue = matterConfig ? getNestedValue(matterConfig as Record<string, unknown>, path) : undefined;
+  const effectiveValue = matterValue !== undefined
+    ? matterValue
+    : diskValue !== undefined
+      ? diskValue
+      : defaultValue;
+  const provenance: ConfigProvenanceEntry[] = [
+    {
+      source: 'default',
+      value: defaultValue,
+      active: matterValue === undefined && diskValue === undefined,
+    },
+  ];
+  if (diskConfig && diskValue !== undefined) {
+    provenance.push({
+      source: 'global',
+      sourcePath: configPath,
+      value: diskValue,
+      active: matterValue === undefined,
+    });
+  }
+  if (matterPath && matterConfig && matterValue !== undefined) {
+    provenance.push({
+      source: 'matter',
+      sourcePath: matterPath,
+      value: matterValue,
+      active: true,
+    });
+  }
+
+  return {
+    key: path,
+    effectiveValue: redactConfigExplanationValue(path, effectiveValue),
+    provenance: provenance.map((entry) => ({
+      ...entry,
+      value: redactConfigExplanationValue(path, entry.value),
+    })),
+    tip: buildConfigRepairTip(path, effectiveValue, options.matterName),
+  };
+}
+
 export async function setConfigValue(path: string, value: unknown): Promise<void> {
   const { config } = await loadGlobalConfig();
   const keys = path.split('.');
@@ -347,4 +423,77 @@ export async function setConfigValue(path: string, value: unknown): Promise<void
   }
   target[keys[keys.length - 1]] = value;
   await saveGlobalConfig(config);
+}
+
+async function readJsonFile<T>(path: string): Promise<T | undefined> {
+  try {
+    return JSON.parse(await readFile(path, 'utf-8')) as T;
+  } catch {
+    return undefined;
+  }
+}
+
+function getNestedValue(source: Record<string, unknown>, path: string): unknown {
+  let current: unknown = source;
+  for (const key of path.split('.')) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return current;
+}
+
+function redactConfigExplanationValue(path: string, value: unknown): unknown {
+  if (value === undefined) return value;
+  if (isSensitiveConfigPath(path)) return '__REDACTED__';
+  return redactNestedConfigValue(value);
+}
+
+function redactNestedConfigValue(value: unknown, keyHint = ''): unknown {
+  if (value === null || value === undefined) return value;
+  if (isSensitiveConfigPath(keyHint)) return '__REDACTED__';
+  if (typeof value === 'string') return redactSecretLikeString(value);
+  if (typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((entry) => redactNestedConfigValue(entry, keyHint));
+
+  const output: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    output[key] = redactNestedConfigValue(entry, key);
+  }
+  return output;
+}
+
+function isSensitiveConfigPath(path: string): boolean {
+  return /(^|\.|_|\b)(apiKey|api[_-]?key|authToken|authorization|bearer|cookie|credential|oauthToken|password|secret|token)($|\.|_|\b)/i.test(path);
+}
+
+function redactSecretLikeString(value: string): string {
+  return value
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, 'Bearer __REDACTED__')
+    .replace(/\b(?:sk|pk|rk|or|tvly|brv)-[A-Za-z0-9_-]{8,}\b/g, '__REDACTED__')
+    .replace(/\b[A-Za-z0-9._%+-]+_API_KEY\s*=\s*['"]?[^'"\s]+['"]?/gi, '__REDACTED__');
+}
+
+function buildConfigRepairTip(path: string, value: unknown, matterName?: string): string | undefined {
+  if (matterName && !/^[a-zA-Z0-9_-]+$/.test(matterName)) {
+    return 'Matter names must use only letters, numbers, hyphens, or underscores.';
+  }
+  if (/apiKey|keyName/i.test(path) && (value === undefined || value === '')) {
+    return 'Provider credentials should be stored with "harness provider auth <profile> <key>" or an environment variable matching the profile keyName.';
+  }
+  if (/^activeProvider$|^providers\.|^profiles\./.test(path) && value === undefined) {
+    return 'Check "harness provider list" and select a configured profile with "harness provider select <name>".';
+  }
+  if (/\.model$|models\.|defaultModel$/.test(path) && typeof value === 'string' && /:free$|\/auto$/.test(value)) {
+    return 'Provider policy usually denies free, auto-routed, or reserved models; choose an explicit allowed model for the active profile.';
+  }
+  if (/mcp\.servers\..*\.type$/.test(path) && !['stdio', 'http', 'sse', undefined].includes(value as string | undefined)) {
+    return 'MCP transport must be one of stdio, http, or sse.';
+  }
+  if (/plugins\./.test(path)) {
+    return 'Plugin paths and manifests are validated for traversal; run "harness plugin list" for skipped plugin errors.';
+  }
+  if (/toolPolicy|autonomy/.test(path)) {
+    return 'If a skill requests a disabled tool, adjust the specific tool policy override instead of weakening unrelated categories.';
+  }
+  return undefined;
 }

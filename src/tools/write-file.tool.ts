@@ -21,6 +21,9 @@ export interface WriteFileResult {
 
 export class WriteFileTool implements Tool<WriteFileArgs, WriteFileResult> {
   readonly name = 'write_file';
+  readonly executionKind = 'write' as const;
+  readonly isConcurrencySafe = false;
+  readonly modifiesContext = true;
   readonly description = 'Write or append content to a file. Use append plus expectedContentHash to checkpoint long artifacts safely.';
   readonly inputSchema = {
     type: 'object',

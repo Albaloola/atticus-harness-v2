@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { AnthropicClient, CodexSdkClient, OpenRouterClient, createLLMClient } from '../../src/llm/index.ts';
-import { resolveConfig } from '../../src/config/loader.ts';
+import { explainConfigValue, resolveConfig } from '../../src/config/loader.ts';
 import { evaluateProviderPolicy } from '../../src/config/provider-policy.ts';
 import { DEFAULTS } from '../../src/config/schema.ts';
 import { getMatterConfigPath } from '../../src/config/paths.ts';
@@ -183,6 +183,133 @@ describe('OpenRouterClient config resolution', () => {
       expect(config.autonomy.gateFeedback.enabled).toBe(DEFAULTS.autonomy.gateFeedback.enabled);
       expect(config.autonomy.gateFeedback.maxMiniOrchestratorRetries).toBe(DEFAULTS.autonomy.gateFeedback.maxMiniOrchestratorRetries);
       expect(config.autonomy.requireQualityGateForAcceptance).toBe(DEFAULTS.autonomy.requireQualityGateForAcceptance);
+    } finally {
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('explains config provenance across defaults, global config, and matter overrides', async () => {
+    const matterName = `config-provenance-${Date.now()}`;
+    const configDir = join(tmpHome, '.atticus-harness');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'config.json'),
+      JSON.stringify({ ...DEFAULTS, outputStyle: 'legal-brief' }),
+      'utf-8',
+    );
+    await initMatter(matterName);
+
+    try {
+      writeFileSync(
+        getMatterConfigPath(matterName),
+        JSON.stringify({ outputStyle: 'court-prep' }),
+        'utf-8',
+      );
+
+      const explanation = await explainConfigValue('outputStyle', { matterName });
+
+      expect(explanation.effectiveValue).toBe('court-prep');
+      expect(explanation.provenance.map((entry) => entry.source)).toEqual(['default', 'global', 'matter']);
+      expect(explanation.provenance.find((entry) => entry.source === 'matter')?.active).toBe(true);
+    } finally {
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('redacts secret-bearing values from config explanations', async () => {
+    const configDir = join(tmpHome, '.atticus-harness');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(
+      join(configDir, 'config.json'),
+      JSON.stringify({
+        ...DEFAULTS,
+        providers: {
+          ...DEFAULTS.providers,
+          openrouter: {
+            ...DEFAULTS.providers.openrouter,
+            apiKey: 'sk-secret-config-value',
+          },
+          custom: {
+            baseUrl: 'https://example.test',
+            defaultModel: 'custom/model',
+            authToken: 'Bearer secret-token-value',
+          },
+        },
+      }),
+      'utf-8',
+    );
+
+    const apiKeyExplanation = await explainConfigValue('providers.openrouter.apiKey');
+    const providerExplanation = await explainConfigValue('providers.custom');
+
+    expect(apiKeyExplanation.effectiveValue).toBe('__REDACTED__');
+    expect(JSON.stringify(apiKeyExplanation)).not.toContain('sk-secret-config-value');
+    expect(JSON.stringify(providerExplanation)).not.toContain('secret-token-value');
+    expect(providerExplanation.effectiveValue).toMatchObject({
+      baseUrl: 'https://example.test',
+      authToken: '__REDACTED__',
+    });
+  });
+
+  it('persists retry schedule events for resolved matter LLM clients', async () => {
+    const matterName = `retry-events-${Date.now()}`;
+    await initMatter(matterName);
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        headers: new Headers({ 'retry-after': '0.001' }),
+        text: async () => JSON.stringify({ error: { code: 'rate_limit' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'ok' } }],
+        }),
+      });
+
+    try {
+      const client = createLLMClient({
+        providerName: 'openrouter',
+        provider: {
+          providerKind: 'openai-compatible',
+          authType: 'api-key',
+          apiKey: 'test-key',
+          baseUrl: 'https://api.openrouter.test/v1',
+          maxRetries: 2,
+        },
+        profile: {
+          ...DEFAULTS.profiles['openrouter-deepseek'],
+          name: 'openrouter',
+        },
+        activeProfile: undefined,
+        providerPolicy: DEFAULTS.providerPolicy,
+        model: DEFAULTS.providerPolicy.models.fast,
+        autonomy: DEFAULTS.autonomy,
+        toolPolicy: DEFAULTS.toolPolicy,
+        search: DEFAULTS.search,
+        mcp: DEFAULTS.mcp,
+        plugins: DEFAULTS.plugins,
+        outputStyle: DEFAULTS.outputStyle,
+        fromDisk: false,
+        matterName,
+      });
+
+      await client.chat({
+        messages: [{ role: 'user', content: 'hello' }],
+        config: { model: DEFAULTS.providerPolicy.models.fast },
+      });
+
+      const events = readFileSync(join('matters', matterName, '_state', 'events.jsonl'), 'utf-8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line));
+      const retryEvent = events.find((event) => event.type === 'llm.retry.scheduled');
+      expect(retryEvent).toBeDefined();
+      expect(retryEvent.data.provider).toBe('openrouter');
+      expect(retryEvent.data.delayMs).toBeGreaterThanOrEqual(0);
+      expect(retryEvent.data.error.category).toBe('rate_limit');
     } finally {
       await deleteMatter(matterName);
     }

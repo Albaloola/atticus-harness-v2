@@ -723,6 +723,17 @@ program
         const { handleConfigSet } = await import('./commands/config.js');
         await handleConfigSet(path, value);
       })
+  )
+  .addCommand(
+    new Command('explain')
+      .description('Explain a config value, its provenance, and repair tips')
+      .argument('<path>', 'Dot-separated config path')
+      .option('--matter <name>', 'Matter name for matter-level overrides')
+      .option('--json', 'JSON output')
+      .action(async (path, options) => {
+        const { handleConfigExplain } = await import('./commands/config.js');
+        await handleConfigExplain(path, options);
+      })
   );
 
 // Secrets management

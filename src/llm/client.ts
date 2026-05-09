@@ -7,11 +7,19 @@ import {
 } from './config.js';
 import { AnthropicClient } from './anthropic.js';
 import { CodexSdkClient } from './codex-sdk.js';
-import { AuthError, LLMError, classifyError } from './errors.js';
+import {
+  AuthError,
+  LLMError,
+  MalformedProviderResponseError,
+  classifyError,
+  classifyThrownError,
+} from './errors.js';
+import { defaultRetryPolicy, type RetryAttempt, type RetryFailure, withRetry } from './retry.js';
 import { assertProviderPolicyAllowed } from '../config/provider-policy.js';
 import type { ReasoningControl, ResolvedHarnessConfig } from '../config/schema.js';
 import type { LLMRequest, LLMResponse, LLMUsage, ReasoningEffort } from '../types/llm.js';
 import type { LLMMessage, ToolCall } from '../types/message.js';
+import { appendEvent } from '../state/events.js';
 
 export interface LLMClient {
   capabilities?: LLMClientCapabilities;
@@ -71,6 +79,9 @@ export interface OpenAICompatibleClientOptions {
   chatPath?: string;
   healthPath?: string;
   timeoutMs?: number;
+  maxRetries?: number;
+  onRetry?: (attempt: RetryAttempt) => void | Promise<void>;
+  onRetryFailure?: (failure: RetryFailure) => void | Promise<void>;
   /** Explicitly allow unauthenticated requests, e.g. local Ollama. */
   allowNoAuth?: boolean;
   headers?: Record<string, string>;
@@ -147,6 +158,9 @@ export class OpenAICompatibleClient implements LLMClient {
   private chatPath: string;
   private healthPath?: string;
   private timeoutMs: number;
+  private maxRetries: number;
+  private onRetry?: (attempt: RetryAttempt) => void | Promise<void>;
+  private onRetryFailure?: (failure: RetryFailure) => void | Promise<void>;
   private providerName: string;
   private allowNoAuth: boolean;
   private headers: Record<string, string>;
@@ -164,6 +178,9 @@ export class OpenAICompatibleClient implements LLMClient {
     this.chatPath = options?.chatPath || CHAT_COMPLETIONS_PATH;
     this.healthPath = options?.healthPath;
     this.timeoutMs = options?.timeoutMs || config.timeoutMs || 180_000;
+    this.maxRetries = options?.maxRetries || config.maxRetries || 3;
+    this.onRetry = options?.onRetry;
+    this.onRetryFailure = options?.onRetryFailure;
     this.providerName = options?.providerName || config.providerName || 'openrouter';
     this.allowNoAuth = options?.allowNoAuth ?? isLocalProvider(this.providerName, this.baseUrl);
     if (this.allowNoAuth && !options?.apiKey && !options?.authToken) {
@@ -202,7 +219,7 @@ export class OpenAICompatibleClient implements LLMClient {
     const payload = this.buildPayload(request);
     const url = joinUrl(this.baseUrl, this.chatPath);
 
-    return this.withTimeout(async (signal) => {
+    return this.withRetry(() => this.withTimeout(async (signal) => {
       const response = await fetch(url, {
         method: 'POST',
         headers: this.buildHeaders(),
@@ -212,7 +229,7 @@ export class OpenAICompatibleClient implements LLMClient {
 
       if (!response.ok) {
         const body = await readResponseText(response);
-        throw classifyError(response.status, body);
+        throw classifyError(response.status, body, this.providerName, { headers: response.headers });
       }
 
       const data = (await response.json()) as OpenAICompatibleResponse;
@@ -222,7 +239,7 @@ export class OpenAICompatibleClient implements LLMClient {
       }
 
       return this.parseResponse(data);
-    });
+    }));
   }
 
   async healthCheck(): Promise<boolean> {
@@ -234,7 +251,7 @@ export class OpenAICompatibleClient implements LLMClient {
     const path = this.healthPath ?? (isLocalProvider(this.providerName, this.baseUrl) ? '/models' : '/models');
     const url = joinUrl(this.baseUrl, path);
 
-    return this.withTimeout(async (signal) => {
+    return this.withRetry(() => this.withTimeout(async (signal) => {
       const response = await fetch(url, {
         method: 'GET',
         headers: this.buildHeaders(false),
@@ -242,14 +259,14 @@ export class OpenAICompatibleClient implements LLMClient {
       });
       if (response.status === 401 || response.status === 403) {
         const body = await readResponseText(response);
-        throw classifyError(response.status, body);
+        throw classifyError(response.status, body, this.providerName, { headers: response.headers });
       }
       if (response.status >= 500) {
         const body = await readResponseText(response);
-        throw classifyError(response.status, body);
+        throw classifyError(response.status, body, this.providerName, { headers: response.headers });
       }
       return response.ok;
-    });
+    }));
   }
 
   private async hydrateConfigFromStore(): Promise<void> {
@@ -262,6 +279,9 @@ export class OpenAICompatibleClient implements LLMClient {
     }
     if (!this.explicitOptions.timeoutMs && config.timeoutMs) {
       this.timeoutMs = config.timeoutMs;
+    }
+    if (!this.explicitOptions.maxRetries && config.maxRetries) {
+      this.maxRetries = config.maxRetries;
     }
     if (!this.explicitOptions.providerName && config.providerName) {
       this.providerName = config.providerName;
@@ -310,18 +330,21 @@ export class OpenAICompatibleClient implements LLMClient {
     try {
       return await operation(controller.signal);
     } catch (err) {
-      if (err instanceof LLMError) throw err;
-      const error = err as Error;
-      if (error.name === 'AbortError' || /abort|aborted/i.test(error.message)) {
-        throw new LLMError(`Request timed out after ${this.timeoutMs}ms`, 408, this.providerName);
-      }
-      if (err instanceof TypeError && error.message.includes('fetch')) {
-        throw new LLMError(`Network error: ${error.message}`, 0, this.providerName);
-      }
-      throw new LLMError(`Unexpected error: ${error.message}`, 0, this.providerName);
+      throw classifyThrownError(err, this.providerName, this.timeoutMs);
     } finally {
       clearTimeout(timeoutId);
     }
+  }
+
+  private async withRetry<T>(operation: () => Promise<T>): Promise<T> {
+    return withRetry(operation, {
+      ...defaultRetryPolicy,
+      maxAttempts: Math.max(1, Math.trunc(this.maxRetries || 1)),
+      source: 'interactive',
+    }, {
+      onRetry: this.onRetry,
+      onFailure: this.onRetryFailure,
+    });
   }
 
   private buildPayload(request: LLMRequest): Record<string, unknown> {
@@ -413,20 +436,28 @@ export class OpenAICompatibleClient implements LLMClient {
   private parseResponse(data: OpenAICompatibleResponse): LLMResponse {
     const choice = data.choices?.[0];
     if (!choice) {
-      throw new LLMError(
+      throw new MalformedProviderResponseError(
         `Empty response from ${this.providerName} (no choices)`,
-        0,
         data.provider ?? this.providerName,
       );
     }
 
     const message = choice.message;
     const reasoningContent = message.reasoning_content ?? message.reasoning ?? undefined;
-    const toolCalls: ToolCall[] | undefined = message.tool_calls?.map((tc) => ({
-      id: tc.id,
-      name: tc.function.name,
-      args: JSON.parse(tc.function.arguments) as Record<string, unknown>,
-    }));
+    const toolCalls: ToolCall[] | undefined = message.tool_calls?.map((tc) => {
+      try {
+        return {
+          id: tc.id,
+          name: tc.function.name,
+          args: JSON.parse(tc.function.arguments) as Record<string, unknown>,
+        };
+      } catch (error) {
+        throw new MalformedProviderResponseError(
+          `Malformed tool arguments from ${this.providerName} for ${tc.function.name}: ${error instanceof Error ? error.message : String(error)}`,
+          data.provider ?? this.providerName,
+        );
+      }
+    });
 
     const usage: LLMUsage | undefined = data.usage
       ? {
@@ -468,6 +499,7 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
   const timeoutMs = provider.timeoutMs ?? 180_000;
   const apiKey = provider.apiKey;
   const reasoningControl = providerMetadata.reasoningControl;
+  const retryEvents = createRetryEventHandlers(config, providerName);
 
   if (providerKind === 'codex-sdk' || providerName === 'codex-sdk') {
     return new CodexSdkClient({
@@ -489,6 +521,8 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
       authToken: useOAuthBearer ? apiKey : undefined,
       baseUrl,
       timeoutMs,
+      maxRetries: provider.maxRetries,
+      ...retryEvents,
       providerName,
     });
   }
@@ -497,8 +531,79 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
     apiKey,
     baseUrl,
     timeoutMs,
+    maxRetries: provider.maxRetries,
+    ...retryEvents,
     providerName,
     reasoningControl,
     allowNoAuth: isLocalProvider(providerName, baseUrl),
   });
+}
+
+function createRetryEventHandlers(
+  config: ResolvedHarnessConfig | ProviderConfig,
+  providerName: string,
+): Pick<OpenAICompatibleClientOptions, 'onRetry' | 'onRetryFailure'> {
+  const matterName = 'matterName' in config ? config.matterName : undefined;
+  if (!matterName) return {};
+
+  return {
+    onRetry: async (attempt) => {
+      await appendRetryEvent({
+        matterName,
+        providerName,
+        type: 'llm.retry.scheduled',
+        data: {
+          attempt: attempt.attempt,
+          delayMs: attempt.delayMs,
+          source: attempt.source,
+          error: serializeRetryError(attempt.error),
+        },
+      });
+    },
+    onRetryFailure: async (failure) => {
+      await appendRetryEvent({
+        matterName,
+        providerName,
+        type: 'llm.retry.failed',
+        data: {
+          attempts: failure.attempts,
+          exhausted: failure.exhausted,
+          source: failure.source,
+          error: serializeRetryError(failure.error),
+        },
+      });
+    },
+  };
+}
+
+async function appendRetryEvent(input: {
+  matterName: string;
+  providerName: string;
+  type: 'llm.retry.scheduled' | 'llm.retry.failed';
+  data: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await appendEvent({
+      matterName: input.matterName,
+      type: input.type,
+      data: {
+        provider: input.providerName,
+        ...input.data,
+      },
+      source: 'agent',
+    });
+  } catch {
+  }
+}
+
+function serializeRetryError(error: LLMError): Record<string, unknown> {
+  return {
+    name: error.name,
+    message: error.message,
+    category: error.category,
+    code: error.code,
+    statusCode: error.statusCode,
+    provider: error.provider,
+    retryAfterMs: error.retryAfterMs,
+  };
 }

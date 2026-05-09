@@ -3,6 +3,7 @@ import { DEFAULT_MODEL, PRO_MODEL } from '../llm/config.js';
 import { buildModelDelegationPrompt } from '../config/model-routing.js';
 import type { AutonomyPolicy, ProviderPolicy, ToolPolicy } from '../config/schema.js';
 import type { MatterIndex } from '../types/matter.js';
+import { getBuiltInOutputStyle, type OutputStyle } from '../output-styles/loader.js';
 
 export const SYSTEM_PROMPT_DYNAMIC_BOUNDARY = '__ATTICUS_SYSTEM_PROMPT_DYNAMIC_BOUNDARY__';
 
@@ -29,6 +30,7 @@ export interface HarnessPromptContext {
   autonomy?: AutonomyPolicy;
   toolPolicy?: ToolPolicy;
   skillSection?: string;
+  outputStyle?: OutputStyle;
 }
 
 export function assembleSystemPrompt(input: PromptAssemblyInput): string {
@@ -130,6 +132,7 @@ export function getHarnessDynamicSections(context: HarnessPromptContext = {}): P
       content: context.skillSection,
     });
   }
+  sections.push(getOutputStyleSection(context.outputStyle ?? getBuiltInOutputStyle('default')));
 
   return sections;
 }
@@ -209,6 +212,32 @@ function getPolicySection(context: HarnessPromptContext): PromptSection {
       .filter(Boolean)
       .join('\n'),
   };
+}
+
+function getOutputStyleSection(style: OutputStyle): PromptSection {
+  return {
+    key: 'output-style',
+    title: 'Output Style',
+    content: [
+      `Name: ${style.name}`,
+      style.description ? `Description: ${style.description}` : undefined,
+      style.appliesTo?.length ? `Applies to: ${style.appliesTo.join(', ')}` : undefined,
+      formatModelHints(style),
+      '',
+      style.body,
+    ]
+      .filter((line) => line !== undefined)
+      .join('\n'),
+  };
+}
+
+function formatModelHints(style: OutputStyle): string | undefined {
+  if (!style.modelHints) return undefined;
+  if (Array.isArray(style.modelHints)) {
+    return style.modelHints.length ? `Model hints: ${style.modelHints.join(', ')}` : undefined;
+  }
+  const entries = Object.entries(style.modelHints);
+  return entries.length ? `Model hints: ${entries.map(([key, value]) => `${key}=${value}`).join(', ')}` : undefined;
 }
 
 function formatSection(section: PromptSection): string {

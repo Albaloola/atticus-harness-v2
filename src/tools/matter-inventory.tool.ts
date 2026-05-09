@@ -110,6 +110,8 @@ interface QualityRow {
 
 export class MatterInventoryTool implements Tool<MatterInventoryArgs, MatterInventoryResult> {
   readonly name = 'matter_inventory';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = [
     'Read the current matter evidence inventory without guessing SQLite table names.',
     'Use this before exec_sqlite when selecting productions, building bundle indexes, or checking manifest/schema shape.',

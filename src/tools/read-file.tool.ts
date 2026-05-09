@@ -52,6 +52,8 @@ export interface ReadFileResult {
 
 export class ReadFileTool implements Tool<ReadFileArgs, ReadFileResult> {
   readonly name = 'read_file';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = [
     'Read a file or extracted document text. By default this attempts to return the whole readable document, up to a 1,200,000-token safety limit.',
     'Use startLine/limit or Claude-compatible file_path/offset/limit to jump directly to any line range for focused rereads.',

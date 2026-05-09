@@ -8,14 +8,15 @@ import type { Tool, ToolResult, ToolUseContext } from '../../src/types/tool.ts';
 import type { LLMResponse, LLMRequest } from '../../src/types/llm.ts';
 import { initMatter, deleteMatter } from '../../src/storage/matter.ts';
 import { closeAllStateDbs } from '../../src/state/store.ts';
+import { TokenLimitError } from '../../src/llm/errors.ts';
 
 class FakeLLMClient {
   capabilities?: { tools: boolean; jsonSchema?: boolean; agentMode?: boolean; nativeMcpTools?: boolean };
   requests: LLMRequest[] = [];
-  private responses: LLMResponse[];
+  private responses: Array<LLMResponse | Error>;
   private index = 0;
 
-  constructor(responses: LLMResponse[], capabilities?: { tools: boolean; jsonSchema?: boolean; agentMode?: boolean; nativeMcpTools?: boolean }) {
+  constructor(responses: Array<LLMResponse | Error>, capabilities?: { tools: boolean; jsonSchema?: boolean; agentMode?: boolean; nativeMcpTools?: boolean }) {
     this.responses = responses;
     this.capabilities = capabilities;
   }
@@ -25,6 +26,7 @@ class FakeLLMClient {
     const r = this.responses[this.index];
     if (r === undefined) throw new Error('No more fake responses');
     this.index++;
+    if (r instanceof Error) throw r;
     return r;
   }
 
@@ -250,6 +252,49 @@ describe('QueryLoop', () => {
       expect(toolMessage?.content).toContain('TAIL-MARKER');
       expect(toolMessage?.content).not.toContain('... [truncated]');
     });
+
+    it('persists oversized tool outputs and returns a bounded preview', async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), 'qloop-tool-results-'));
+      const originalCwd = process.cwd();
+      process.chdir(tmpDir);
+      try {
+        const largeOutput = `START\n${'x'.repeat(5000)}\nTAIL-MARKER`;
+        const toolRegistry = new ToolRegistry();
+        toolRegistry.register(new FakeTool('large_read_tool', makeSuccessToolResult(largeOutput)));
+        const fakeClient = new FakeLLMClient([
+          makeToolCallResponse('large_read_tool'),
+          makeResponse({ content: 'Summary' }),
+        ]);
+
+        const loop = new QueryLoop(
+          {
+            systemPrompt: 'Use tools.',
+            tools: toolRegistry,
+            runId: 'run-oversized',
+            maxToolOutputChars: 500,
+            quietMode: true,
+          },
+          fakeClient as unknown as FakeLLMClient & typeof fakeClient,
+        );
+
+        const result = await loop.run('Read the file');
+        const stored = result.turns[0].toolCalls?.[0].result.storedResult;
+        const secondRequest = fakeClient.requests[1];
+        const toolMessage = secondRequest!.messages.find((message) => message.role === 'tool');
+
+        expect(result.status).toBe('completed');
+        expect(stored).toBeDefined();
+        expect(stored!.storedResultPath).toContain('tool-results');
+        expect(existsSync(stored!.storedResultPath)).toBe(true);
+        expect(toolMessage?.content).toContain('storedResultPath=');
+        expect(toolMessage?.content).not.toContain('TAIL-MARKER');
+        const record = JSON.parse(readFileSync(stored!.storedResultPath, 'utf-8'));
+        expect(record.output).toContain('TAIL-MARKER');
+      } finally {
+        process.chdir(originalCwd);
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('maxTurns', () => {
@@ -303,6 +348,35 @@ describe('QueryLoop', () => {
       expect(result.finalContent).toBe('Final answer after compaction');
       expect(result.history.some((message) => message.content.includes('## Compacted Prior Context'))).toBe(true);
       expect(result.history.some((message) => message.content.includes('EV-001'))).toBe(true);
+    });
+
+    it('recovers from context length errors by compacting history and retrying once', async () => {
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(new FakeTool('large_tool', makeSuccessToolResult('important evidence EV-CTX '.repeat(80))));
+      const fakeClient = new FakeLLMClient([
+        makeToolCallResponse('large_tool'),
+        new TokenLimitError(0, 0, 'test-provider'),
+        makeResponse({ content: 'Recovered after compaction' }),
+      ]);
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Use tools and preserve evidence IDs.',
+          tools: toolRegistry,
+          maxTurns: 3,
+          maxHistoryChars: 100_000,
+          quietMode: true,
+        },
+        fakeClient as unknown as FakeLLMClient & typeof fakeClient,
+      );
+
+      const result = await loop.run('Analyze the large record');
+
+      expect(result.status).toBe('completed');
+      expect(result.finalContent).toBe('Recovered after compaction');
+      expect(fakeClient.requests).toHaveLength(3);
+      expect(fakeClient.requests[2].messages.some((message) => message.content.includes('context_overflow'))).toBe(true);
+      expect(fakeClient.requests[2].messages.some((message) => message.content.includes('EV-CTX'))).toBe(true);
     });
   });
 
@@ -360,6 +434,45 @@ describe('QueryLoop', () => {
       expect(event!.type).toBe('agent.turn.completed');
       expect(event!.source).toBe('agent');
       expect(event!.data.turnNumber).toBe(1);
+    });
+
+    it('emits context compaction events when recovering from provider context limits', async () => {
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(new FakeTool('large_tool', makeSuccessToolResult('important evidence EV-EVENT '.repeat(80))));
+      const fakeClient = new FakeLLMClient([
+        makeToolCallResponse('large_tool'),
+        new TokenLimitError(0, 0, 'test-provider'),
+        makeResponse({ content: 'Recovered with event' }),
+      ]);
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'x',
+          tools: toolRegistry,
+          matterName,
+          runId: 'run-context',
+          taskId: 'task-context',
+          maxTurns: 3,
+          quietMode: true,
+        },
+        fakeClient as unknown as FakeLLMClient & typeof fakeClient,
+      );
+
+      const result = await loop.run('Analyze');
+
+      expect(result.status).toBe('completed');
+      const eventsPath = join('matters', matterName, '_state', 'events.jsonl');
+      const events = readFileSync(eventsPath, 'utf-8')
+        .trim()
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      const event = events.find((entry) => entry.type === 'llm.context.compacted');
+      expect(event).toBeDefined();
+      expect(event.runId).toBe('run-context');
+      expect(event.taskId).toBe('task-context');
+      expect(event.data.reason).toBe('context_length');
+      expect(event.data.compacted).toBe(true);
     });
   });
 

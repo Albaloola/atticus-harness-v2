@@ -43,6 +43,8 @@ export interface EvidenceChunkReadResult {
 
 export class EvidenceChunkReadTool implements Tool<EvidenceChunkReadArgs, EvidenceChunkReadResult> {
   readonly name = 'evidence_chunk_read';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = [
     'Read indexed evidence chunks by evidenceId and chunkIndex.',
     'By default this attempts to return the whole indexed document from chunkIndex to the end, up to a 1,200,000-token safety limit.',

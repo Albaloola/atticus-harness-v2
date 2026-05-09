@@ -1,4 +1,12 @@
 export type McpTransportType = 'stdio' | 'http' | 'sse';
+export type McpServerSourceKind = 'manual' | 'plugin';
+
+export interface McpServerSourceMetadata {
+  kind: McpServerSourceKind;
+  pluginName?: string;
+  pluginSource?: string;
+  manifestPath?: string;
+}
 
 export interface McpServerConfig {
   type?: McpTransportType;
@@ -11,6 +19,7 @@ export interface McpServerConfig {
   disabled?: boolean;
   timeoutMs?: number;
   note?: string;
+  source?: McpServerSourceMetadata;
 }
 
 export interface McpConfig {

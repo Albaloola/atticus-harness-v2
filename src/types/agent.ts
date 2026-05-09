@@ -10,6 +10,7 @@ export interface AgentConfig {
   reasoningEffort?: ReasoningEffort;
   systemPrompt?: string;
   skillName?: string;
+  outputStyle?: string;
   providerName?: string;
   toolMode?: 'auto' | 'disabled';
   quietMode: boolean;

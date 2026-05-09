@@ -10,6 +10,7 @@ vi.mock('@openai/codex-sdk', () => ({
 }));
 
 import { OpenAICompatibleClient, AnthropicClient, CodexSdkClient, createLLMClient } from '../../src/llm/index.ts';
+import type { RateLimitError } from '../../src/llm/errors.ts';
 import { buildModelDelegationPrompt, selectModelForTask } from '../../src/llm/prompt-builder.ts';
 
 describe('OpenAICompatibleClient', () => {
@@ -372,6 +373,31 @@ describe('AnthropicClient', () => {
     expect(messagesUrl).toBe('https://api.anthropic.com/v1/messages');
     expect(messagesInit.headers.Authorization).toBe('Bearer oauth-token');
     expect(messagesInit.headers['x-api-key']).toBeUndefined();
+  });
+
+  it('classifies Anthropic rate limits with provider and retry-after metadata', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: false,
+      status: 429,
+      headers: new Headers({ 'retry-after': '3' }),
+      text: async () => JSON.stringify({ error: { code: 'rate_limit' } }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const client = new AnthropicClient({
+      apiKey: 'anthropic-key',
+      providerName: 'anthropic-test',
+      maxRetries: 1,
+    });
+
+    await expect(client.chat({
+      messages: [{ role: 'user', content: 'hello' }],
+      config: { model: 'claude-test' },
+    })).rejects.toMatchObject({
+      name: 'RateLimitError',
+      provider: 'anthropic-test',
+      retryAfterMs: 3000,
+    } satisfies Partial<RateLimitError>);
   });
 
   it('maps reasoning effort to Anthropic thinking budgets for non-tool calls', async () => {

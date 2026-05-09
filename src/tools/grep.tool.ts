@@ -49,6 +49,8 @@ const MAX_COLUMNS = 500;
 
 export class GrepTool implements Tool<GrepArgs, GrepResult> {
   readonly name = 'grep';
+  readonly executionKind = 'read' as const;
+  readonly isConcurrencySafe = true;
   readonly description = 'Search file contents with a regular expression. Supports path, glob, type, content/count/file output modes, line numbers, context, and offset/head_limit pagination.';
   readonly inputSchema = {
     type: 'object',

@@ -2,6 +2,7 @@ import type { AgentStructuredResult as BaseAgentStructuredResult, FindingKind } 
 import type { PhaseDefinition } from '../legal/workflow.js';
 import type { AutonomyPolicy, ProviderPolicy } from '../config/schema.js';
 import type { OrchestrationRuntime } from './runtime.js';
+import type { RunReadiness } from './run-readiness.js';
 
 export interface OrchestratorConfig {
   matterName: string;
@@ -73,6 +74,7 @@ export interface OrchestratorResult {
   findings: Array<{ claim: string; confidence: number }>;
   risks: Array<{ risk: string; severity: string }>;
   phaseResults: PhaseResult[];
+  runReadiness?: RunReadiness;
 }
 
 export interface PhaseResult {

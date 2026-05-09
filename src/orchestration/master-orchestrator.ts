@@ -8,6 +8,7 @@ import { resolveConfig } from '../config/loader.js';
 import { selectModelForTask } from '../config/model-routing.js';
 import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
 import { loadMatter, saveMatterIndex } from '../storage/matter.js';
+import { evaluateRunReadiness } from './run-readiness.js';
 import type { OrchestratorConfig, OrchestratorResult, AgentStructuredResult } from './types.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
@@ -121,7 +122,7 @@ export class MasterOrchestrator {
         }
       }
 
-      const result = this.synthesize(matterName, objective, phaseResults, failedPhases, blockedPhases, stoppedReason);
+      const result = await this.synthesize(matterName, objective, phaseResults, failedPhases, blockedPhases, stoppedReason, phases);
       const terminalStatus = stoppedReason ?? result.status;
       await this.runtime.emitRunCompleted(masterRun.id, result.summary, {
         status: terminalStatus,
@@ -204,14 +205,15 @@ export class MasterOrchestrator {
     };
   }
 
-  private synthesize(
+  private async synthesize(
     matterName: string,
     objective: string | undefined,
     phaseResults: Array<{ phase: PhaseDefinition; result: AgentStructuredResult }>,
     failedPhases: string[],
     blockedPhases: string[],
-    stoppedReason?: 'aborted' | 'budget_exceeded',
-  ): OrchestratorResult {
+    stoppedReason: 'aborted' | 'budget_exceeded' | undefined,
+    phases: PhaseDefinition[],
+  ): Promise<OrchestratorResult> {
     const allFindings = phaseResults.flatMap((p) =>
       p.result.findings.map((f) => ({ claim: `${p.phase.name}: ${f.claim}`, confidence: f.confidence === 'high' ? 1 : f.confidence === 'medium' ? 0.5 : 0 }))
     );
@@ -254,14 +256,24 @@ export class MasterOrchestrator {
       workerResults: [],
     }));
 
+    const runReadiness = await evaluateRunReadiness({
+      matterName,
+      phases,
+      phaseResults: allPhaseResults,
+      activityStatus: stoppedReason ?? (status === 'failed' ? 'failed' : status === 'completed' ? 'completed' : 'partial'),
+      requireAcceptedArtifact: false,
+      requireExportSignoff: false,
+    });
+
     return {
       matterName,
-      summary: `Orchestration ${status}: ${phaseResults.length - failedPhases.length - blockedPhases.length}/${phaseResults.length} phases completed, ${blockedPhases.length} blocked. ${allFindings.length} findings, ${allRisks.length} risks.${stoppedReason ? ` Stopped because ${stoppedReason}.` : ''}`,
+      summary: `Orchestration ${status}: ${phaseResults.length - failedPhases.length - blockedPhases.length}/${phaseResults.length} phases completed, ${blockedPhases.length} blocked. ${allFindings.length} findings, ${allRisks.length} risks. Court-ready: ${runReadiness.courtReadyStatus}.${stoppedReason ? ` Stopped because ${stoppedReason}.` : ''}`,
       status,
       artifacts: allArtifacts,
       findings: allFindings,
       risks: allRisks,
       phaseResults: allPhaseResults,
+      runReadiness,
     };
   }
 }

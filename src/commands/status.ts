@@ -3,6 +3,7 @@ import { loadMatter, getMatterPath } from '../storage/matter.js';
 import { deriveSnapshot } from '../state/snapshot.js';
 import type { MatterRuntimeSnapshot } from '../types/state.js';
 import { buildLegalBlockerSummary } from '../observability/legal-blockers.js';
+import { evaluateRunReadiness } from '../orchestration/run-readiness.js';
 
 export default async function statusHandler(
   matterName: string,
@@ -30,6 +31,7 @@ export default async function statusHandler(
       };
     }
     const legalBlockers = await buildLegalBlockerSummary(matterName);
+    const runReadiness = await evaluateRunReadiness({ matterName, requireAcceptedArtifact: false });
 
     if (options.json) {
       const output = {
@@ -49,6 +51,7 @@ export default async function statusHandler(
         costs: snapshot.costs,
         nextActions: snapshot.nextActions,
         legalBlockers,
+        runReadiness,
         model: index.config.model || 'deepseek/deepseek-v4-flash',
       };
       console.log(JSON.stringify(output, null, 2));
@@ -78,6 +81,7 @@ export default async function statusHandler(
     console.log(`  Candidates: ${chalk.bold(String(index.candidateCount))} outputs`);
     console.log(`  Artifacts:  ${chalk.bold(String(index.artifactCount))} accepted`);
     console.log(`  Blockers:   ${legalBlockers.total} legal`);
+    console.log(`  Readiness:  ${chalk.bold(runReadiness.courtReadyStatus)} (${runReadiness.activityStatus} activity, ${runReadiness.legalStatus} legal)`);
     console.log('');
 
     if (snapshot.activeAgents.length > 0) {
@@ -106,6 +110,14 @@ export default async function statusHandler(
       console.log(chalk.yellow.bold('  Risks:'));
       for (const risk of snapshot.latestRisks.slice(0, 3)) {
         console.log(`    ${chalk.yellow('\u26A0')} ${risk.substring(0, 100)}`);
+      }
+      console.log('');
+    }
+
+    if (runReadiness.blockers.length > 0) {
+      console.log(chalk.yellow.bold('  Readiness Blockers:'));
+      for (const blocker of runReadiness.blockers.slice(0, 5)) {
+        console.log(`    ${chalk.yellow('-')} ${blocker}`);
       }
       console.log('');
     }

@@ -1,7 +1,6 @@
 import type { PhaseDefinition } from './workflow.js';
 import { getDefaultPhases } from './workflow.js';
 import type { MatterPosture } from './matter-posture.js';
-import { classifyMatterPosture } from './matter-posture.js';
 import { requiredOutputsForPhase, type RequiredOutput } from './phase-contracts.js';
 
 export interface PhaseGraphNode {

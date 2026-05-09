@@ -10,7 +10,6 @@ import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
 import { loadMatter, saveMatterIndex } from '../storage/matter.js';
 import { evaluateRunReadiness } from './run-readiness.js';
 import type { OrchestratorConfig, OrchestratorResult, AgentStructuredResult } from './types.js';
-import { evaluateRunReadiness } from './run-readiness.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
 
@@ -123,7 +122,7 @@ export class MasterOrchestrator {
         }
       }
 
-      const result = await this.synthesize(matterName, objective, phaseResults, failedPhases, blockedPhases, stoppedReason, phases);
+      const result = await this.synthesize(matterName, objective, phaseResults, failedPhases, blockedPhases, stoppedReason);
       const terminalStatus = stoppedReason ?? result.status;
       await this.runtime.emitRunCompleted(masterRun.id, result.summary, {
         status: terminalStatus,
@@ -212,8 +211,7 @@ export class MasterOrchestrator {
     phaseResults: Array<{ phase: PhaseDefinition; result: AgentStructuredResult }>,
     failedPhases: string[],
     blockedPhases: string[],
-    stoppedReason: 'aborted' | 'budget_exceeded' | undefined,
-    phases: PhaseDefinition[],
+    stoppedReason?: 'aborted' | 'budget_exceeded',
   ): Promise<OrchestratorResult> {
     const allFindings = phaseResults.flatMap((p) =>
       p.result.findings.map((f) => ({ claim: `${p.phase.name}: ${f.claim}`, confidence: f.confidence === 'high' ? 1 : f.confidence === 'medium' ? 0.5 : 0 }))
@@ -259,9 +257,8 @@ export class MasterOrchestrator {
 
     const runReadiness = await evaluateRunReadiness({
       matterName,
-      phases,
       phaseResults: allPhaseResults,
-      activityStatus: stoppedReason ?? (status === 'failed' ? 'failed' : status === 'completed' ? 'completed' : 'partial'),
+      stoppedReason,
       requireAcceptedArtifact: false,
       requireExportSignoff: false,
     });

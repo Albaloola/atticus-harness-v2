@@ -24,15 +24,16 @@ export async function scoreBenchmarkExpectation(expectation: BenchmarkExpectatio
   const posture = await classifyMatterPosture({ matterName: expectation.matterName, objective: expectation.matterName });
   const runReadiness = await evaluateRunReadiness({ matterName: expectation.matterName, requireAcceptedArtifact: false });
   const weights = { ...DEFAULT_BENCHMARK_WEIGHTS, ...expectation.scoringWeights };
+  const telemetryDrift = runReadiness.telemetryReconciliation.some((item) => item.status === 'drift');
   const details: BenchmarkScoreDetail[] = [
     detail('posture', posture.primaryMode === expectation.expectedPosture ? 1 : 0, weights.posture, [`expected ${expectation.expectedPosture}, got ${posture.primaryMode}`]),
     detail('jurisdiction', overlapScore(expectation.expectedJurisdictions, posture.jurisdictions.map((j) => j.system)), weights.jurisdiction, [`detected: ${posture.jurisdictions.map((j) => `${j.system}/${j.forum}`).join(', ') || 'none'}`]),
-    detail('sourceUniverse', expectation.expectedSourceUniverse.length === 0 ? 1 : boundedRatio(runReadiness.candidateSummary.filesystemCount, expectation.expectedSourceUniverse.length), weights.sourceUniverse, [`candidate files: ${runReadiness.candidateSummary.filesystemCount}`]),
+    detail('sourceUniverse', expectation.expectedSourceUniverse.length === 0 ? 1 : boundedRatio(runReadiness.candidateSummary.jsonCount + runReadiness.candidateSummary.transcriptCount, expectation.expectedSourceUniverse.length), weights.sourceUniverse, [`candidate json=${runReadiness.candidateSummary.jsonCount}; transcripts=${runReadiness.candidateSummary.transcriptCount}`]),
     detail('productionSelection', expectation.expectedProductionUniverse.length === 0 ? 1 : boundedRatio(runReadiness.candidateSummary.jsonCount, expectation.expectedProductionUniverse.length), weights.productionSelection, [`json candidates: ${runReadiness.candidateSummary.jsonCount}`]),
     detail('legalOutcome', expectation.expectedOutcomeAssertions.length === 0 ? 1 : 0.5, weights.legalOutcome, ['outcome assertion review is expectation-driven and remains operator/audit checked']),
     detail('requiredArtifacts', expectation.requiredArtifacts.length === 0 ? (runReadiness.missingOutputs.length === 0 ? 1 : 0.5) : boundedRatio(runReadiness.artifactSummary.jsonCount, expectation.requiredArtifacts.length), weights.requiredArtifacts, [`accepted artifacts: ${runReadiness.artifactSummary.jsonCount}`]),
     detail('citationReadiness', runReadiness.legalReadinessResult?.ready ? 1 : 0, weights.citationReadiness, [`legal blockers: ${runReadiness.legalReadinessResult?.blockerCount ?? 0}`]),
-    detail('telemetryConsistency', runReadiness.telemetryReconciliation.notes.length === 0 ? 1 : 0, weights.telemetryConsistency, runReadiness.telemetryReconciliation.notes),
+    detail('telemetryConsistency', telemetryDrift ? 0 : 1, weights.telemetryConsistency, runReadiness.telemetryReconciliation.map((item) => `${item.surface}:${item.status}`)),
     detail('toolErrorResilience', 1, weights.toolErrorResilience, ['typed comparator avoided raw SQL/tool schema guessing']),
     detail('falseCompletion', runReadiness.activityStatus === 'completed' && runReadiness.courtReadyStatus !== 'ready' ? 0 : 1, weights.falseCompletion, [`activity=${runReadiness.activityStatus}; courtReady=${runReadiness.courtReadyStatus}`]),
   ];

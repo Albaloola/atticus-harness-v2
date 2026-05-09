@@ -3,7 +3,6 @@ import { listEvidence } from '../storage/evidence.js';
 export type MatterPrimaryMode = 'live_matter' | 'retrospective_benchmark' | 'archive_analysis';
 export type MatterTrack = 'ordinary_action' | 'judicial_review' | 'appellate' | 'university_ftp' | 'senate_appeal' | 'regulatory_slcc' | 'sar_data' | 'student_union' | 'settlement' | 'unknown';
 export type LiveObligation = 'filing' | 'service' | 'deadline' | 'permission' | 'appeal' | 'response' | 'none';
-export type PrivateDataPolicy = 'local_only' | 'public_sources_only' | 'unrestricted_public';
 
 export interface MatterPostureJurisdiction {
   system: string;
@@ -23,7 +22,7 @@ export interface MatterPosture {
   retrospectiveOutcomeKnown: boolean;
   requiresCourtReadyArtifacts: boolean;
   requiresExternalResearch: boolean;
-  privateDataPolicy: PrivateDataPolicy;
+  privateDataPolicy: 'local_only' | 'public_sources_only' | 'unrestricted_public';
   confidence: number;
   reasons: string[];
 }

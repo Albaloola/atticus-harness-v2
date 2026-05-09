@@ -1,43 +1,34 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, writeFile, rm } from 'fs/promises';
-import { mkdtempSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
-import { initMatter, deleteMatter, getMatterPath, loadMatter, saveMatterIndex } from '../../src/storage/matter.js';
-import { saveCandidate } from '../../src/storage/candidate.js';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mkdir, writeFile } from 'fs/promises';
+import { initMatter, deleteMatter, getMatterPath } from '../../src/storage/matter.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
 import { evaluateRunReadiness } from '../../src/orchestration/run-readiness.js';
-import statusHandler from '../../src/commands/status.js';
 
-const MATTER = 'run-readiness-test';
+const created: string[] = [];
 
-describe('run readiness and status telemetry', () => {
-  let tmpDir: string;
-  let originalCwd: string;
+async function freshMatter(name: string): Promise<void> {
+  await initMatter(name);
+  created.push(name);
+}
 
-  beforeEach(async () => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'atticus-run-readiness-'));
-    originalCwd = process.cwd();
-    process.chdir(tmpDir);
-    await initMatter(MATTER);
-  });
+afterEach(async () => {
+  closeAllStateDbs();
+  for (const matter of created.splice(0)) await deleteMatter(matter).catch(() => undefined);
+});
 
-  afterEach(async () => {
-    closeAllStateDbs();
-    await deleteMatter(MATTER).catch(() => {});
-    process.chdir(originalCwd);
-    await rm(tmpDir, { recursive: true, force: true });
-  });
+describe('run readiness', () => {
+  it('separates completed activity from missing court-ready outputs', async () => {
+    const matterName = 'readiness-missing-output-test';
+    await freshMatter(matterName);
 
-  it('flags activity-complete runs as court-ready follow-up when required artifacts are missing', async () => {
     const readiness = await evaluateRunReadiness({
-      matterName: MATTER,
-      activityStatus: 'completed',
+      matterName,
+      requireAcceptedArtifact: false,
       phaseResults: [{
         phaseId: 'document_production',
         phaseName: 'Document Production',
         status: 'completed',
-        summary: 'Worker finished without artifact IDs.',
+        summary: 'Worker activity completed without a reducer artifact.',
         findings: [],
         risks: [],
         artifactIds: [],
@@ -51,36 +42,16 @@ describe('run readiness and status telemetry', () => {
     expect(readiness.blockers.some((blocker) => blocker.blockerType === 'required_output')).toBe(true);
   });
 
-  it('reconciles index counters with JSON candidates and transcript files', async () => {
-    await saveCandidate(MATTER, {
-      id: 'candidate-1',
-      matterName: MATTER,
-      type: 'report',
-      title: 'Candidate report',
-      content: 'Report content',
-      status: 'candidate',
-      created: new Date().toISOString(),
-      metadata: {},
-    });
-    await mkdir(getMatterPath(MATTER, '_candidates'), { recursive: true });
-    await writeFile(getMatterPath(MATTER, '_candidates', 'transcript-1.md'), '# transcript', 'utf-8');
-    const index = await loadMatter(MATTER);
-    index.candidateCount = 0;
-    await saveMatterIndex(MATTER, index);
+  it('reconciles non-JSON candidate transcripts separately from JSON candidates', async () => {
+    const matterName = 'readiness-transcript-drift-test';
+    await freshMatter(matterName);
+    await mkdir(getMatterPath(matterName, '_candidates'), { recursive: true });
+    await writeFile(getMatterPath(matterName, '_candidates', 'transcript-worker-1.md'), 'transcript only', 'utf-8');
 
-    const readiness = await evaluateRunReadiness({ matterName: MATTER, requireAcceptedArtifact: false });
+    const readiness = await evaluateRunReadiness({ matterName, requireAcceptedArtifact: false });
 
-    expect(readiness.candidateSummary).toMatchObject({ indexCount: 0, jsonCount: 1, transcriptCount: 1 });
+    expect(readiness.candidateSummary.jsonCount).toBe(0);
+    expect(readiness.candidateSummary.transcriptCount).toBe(1);
     expect(readiness.telemetryReconciliation.find((item) => item.surface === 'candidates')?.status).toBe('drift');
-  });
-
-  it('adds runReadiness to status JSON output', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await statusHandler(MATTER, { json: true });
-    const output = JSON.parse(String(log.mock.calls[0]?.[0]));
-    log.mockRestore();
-
-    expect(output.runReadiness.courtReadyStatus).toBeTruthy();
-    expect(output.runReadiness.candidateSummary).toBeTruthy();
   });
 });

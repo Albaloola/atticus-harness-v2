@@ -65,3 +65,55 @@ function boundedRatio(actual: number, expected: number): number {
   if (expected <= 0) return 1;
   return Math.min(1, actual / expected);
 }
+
+export interface BenchmarkObservation {
+  posture?: Awaited<ReturnType<typeof classifyMatterPosture>>;
+  runReadiness?: RunReadiness;
+  sourceIds?: string[];
+  productionIds?: string[];
+  outcomeAssertions?: string[];
+  toolErrorCount?: number;
+  privacyViolation?: boolean;
+}
+
+export interface SynchronousBenchmarkScorecard {
+  matterName: string;
+  score: number;
+  band: 'pass' | 'needs_followup' | 'fail';
+  automaticFailReasons: string[];
+  dimensions: Record<string, { score: number; weight: number; reasons: string[] }>;
+}
+
+export function scoreBenchmark(expectation: Partial<BenchmarkExpectation> & { matterName: string }, observation: BenchmarkObservation): SynchronousBenchmarkScorecard {
+  const weights = { ...DEFAULT_BENCHMARK_WEIGHTS, ...expectation.scoringWeights };
+  const dimensions: SynchronousBenchmarkScorecard['dimensions'] = {
+    posture: scoreDetail(observation.posture?.primaryMode === expectation.expectedPosture || !expectation.expectedPosture, weights.posture),
+    jurisdiction: scoreRatio(expectation.expectedJurisdictions ?? [], new Set(observation.posture?.jurisdictions.map((j) => j.system) ?? []), weights.jurisdiction),
+    sourceUniverse: scoreRatio(expectation.expectedSourceUniverse ?? [], new Set(observation.sourceIds ?? []), weights.sourceUniverse),
+    productionSelection: scoreRatio(expectation.expectedProductionUniverse ?? [], new Set(observation.productionIds ?? []), weights.productionSelection),
+    legalOutcome: scoreRatio(expectation.expectedOutcomeAssertions ?? [], new Set(observation.outcomeAssertions ?? []), weights.legalOutcome),
+    requiredArtifacts: scoreDetail((observation.runReadiness?.missingOutputs.length ?? 0) === 0, weights.requiredArtifacts),
+    citationReadiness: scoreDetail(observation.runReadiness?.courtReadyStatus === 'ready', weights.citationReadiness),
+    telemetryConsistency: scoreDetail(observation.runReadiness?.telemetryReconciliation.every((item) => item.status === 'match') ?? false, weights.telemetryConsistency),
+    toolErrorResilience: scoreDetail((observation.toolErrorCount ?? 0) === 0, weights.toolErrorResilience),
+    falseCompletion: scoreDetail(!(observation.runReadiness?.activityStatus === 'completed' && observation.runReadiness.courtReadyStatus !== 'ready'), weights.falseCompletion),
+  };
+  const automaticFailReasons: string[] = [];
+  if (observation.privacyViolation) automaticFailReasons.push('privacy_violation');
+  if (observation.runReadiness?.activityStatus === 'completed' && observation.runReadiness.courtReadyStatus !== 'ready') automaticFailReasons.push('critical_false_completion');
+  const weighted = Object.values(dimensions).reduce((sum, dimension) => sum + dimension.score * dimension.weight, 0);
+  const totalWeight = Object.values(dimensions).reduce((sum, dimension) => sum + dimension.weight, 0) || 1;
+  const score = weighted / totalWeight;
+  const band = automaticFailReasons.length > 0 || score < 0.7 ? 'fail' : score < 0.85 ? 'needs_followup' : 'pass';
+  return { matterName: expectation.matterName, score, band, automaticFailReasons, dimensions };
+}
+
+function scoreDetail(pass: boolean, weight: number): { score: number; weight: number; reasons: string[] } {
+  return { score: pass ? 1 : 0, weight, reasons: pass ? [] : ['expectation not satisfied'] };
+}
+
+function scoreRatio(expected: string[], observed: Set<string>, weight: number): { score: number; weight: number; reasons: string[] } {
+  if (expected.length === 0) return { score: 1, weight, reasons: [] };
+  const covered = expected.filter((item) => observed.has(item)).length;
+  return { score: covered / expected.length, weight, reasons: covered === expected.length ? [] : ['missing expected items'] };
+}

@@ -1,7 +1,6 @@
 import type { PhaseDefinition } from './workflow.js';
 import { getDefaultPhases } from './workflow.js';
 import type { MatterPosture } from './matter-posture.js';
-import { classifyMatterPosture } from './matter-posture.js';
 import { requiredOutputsForPhase, type RequiredOutput } from './phase-contracts.js';
 
 export interface PhaseGraphNode {
@@ -26,12 +25,12 @@ export interface PhaseGraph {
   createdAt: string;
 }
 
-export async function buildPhaseGraph(input: { matterName: string; objective?: string; phases?: PhaseDefinition[]; posture?: MatterPosture }): Promise<PhaseGraph> {
+export function buildPhaseGraph(input: { matterName: string; objective?: string; phases?: PhaseDefinition[]; posture?: MatterPosture }): PhaseGraph {
   const phases = input.phases ?? getDefaultPhases();
-  const posture = input.posture ?? await classifyMatterPosture({ matterName: input.matterName, objective: input.objective });
+  const posture = input.posture ?? fallbackPosture(input.matterName, input.objective);
   const nodes = phases.map((phase, index): PhaseGraphNode => {
     const requiredOutputs = requiredOutputsForPhase(phase);
-    const liveOnly = phase.id === 'procedural_route_planning' || phase.id === 'document_production';
+    const liveOnly = phase.id === 'procedural_route_planning' || phase.id === 'document_production' || phase.id === 'bundle_and_war_room_assembly';
     const enabled = !(posture.primaryMode === 'retrospective_benchmark' && liveOnly && posture.liveObligations.includes('none'));
     return {
       phaseId: phase.id,
@@ -53,5 +52,25 @@ export async function buildPhaseGraph(input: { matterName: string; objective?: s
     globalRequiredOutputs: nodes.flatMap((node) => node.enabled ? node.requiredOutputs.filter((output) => output.requiredFor !== 'activity_completion') : []),
     notApplicablePolicy: ['retrospective_no_live_obligation', 'outside_matter_scope', 'operator_declined_export'],
     createdAt: new Date().toISOString(),
+  };
+}
+
+
+function fallbackPosture(matterName: string, objective = ''): MatterPosture {
+  const text = `${matterName} ${objective}`.toLowerCase();
+  const retrospective = /retrospective|benchmark|concluded|known outcome|judgment|uksc|appeal/.test(text);
+  return {
+    matterName,
+    primaryMode: retrospective ? 'retrospective_benchmark' : 'live_matter',
+    jurisdictions: [],
+    tracks: retrospective ? ['appellate'] : ['unknown'],
+    liveObligations: retrospective ? ['none'] : ['filing'],
+    sourceProfile: {},
+    retrospectiveOutcomeKnown: retrospective,
+    requiresCourtReadyArtifacts: !retrospective,
+    requiresExternalResearch: false,
+    privateDataPolicy: /omer|private|confidential/.test(text) ? 'local_only' : 'public_sources_only',
+    confidence: 0.5,
+    reasons: ['phase graph fallback posture'],
   };
 }

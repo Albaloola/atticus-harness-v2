@@ -1,58 +1,64 @@
 import { readFile, readdir } from 'fs/promises';
-import { join, basename } from 'path';
-import { normalizeExpectation, type BenchmarkExpectation } from './expectation.js';
+import { join } from 'path';
+import type { BenchmarkExpectation } from './expectation.js';
+import { getSeedBenchmarkExpectation } from './seed-expectations.js';
 
-export interface LoadedBenchmark {
-  benchmarkId: string;
-  root: string;
-  readme?: string;
-  expectation: BenchmarkExpectation;
+export async function loadBenchmarkExpectation(benchmarkDirOrName: string): Promise<BenchmarkExpectation> {
+  const filePath = benchmarkDirOrName.endsWith('.json')
+    ? benchmarkDirOrName
+    : join('benchmarks', benchmarkDirOrName, 'expectation.json');
+  try {
+    return validateExpectation(JSON.parse(await readFile(filePath, 'utf-8')));
+  } catch (error) {
+    const seed = getSeedBenchmarkExpectation(benchmarkDirOrName);
+    if (seed) return seed;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new Error(`Benchmark expectation not found for ${benchmarkDirOrName}`);
+    }
+    throw error;
+  }
 }
 
-export async function loadBenchmark(root: string): Promise<LoadedBenchmark> {
-  const benchmarkId = basename(root);
-  const readme = await readOptional(join(root, 'README.md'));
-  const expectationJson = await readOptional(join(root, 'expectation.json'));
-  const raw = expectationJson ? JSON.parse(expectationJson) as Partial<BenchmarkExpectation> : inferExpectationFromReadme(benchmarkId, readme ?? '');
-  return {
-    benchmarkId,
-    root,
-    readme,
-    expectation: normalizeExpectation({ matterName: raw.matterName ?? benchmarkId, ...raw }),
-  };
-}
-
-export async function loadBenchmarks(root = 'benchmarks'): Promise<LoadedBenchmark[]> {
+export async function listBenchmarkExpectations(root = 'benchmarks'): Promise<BenchmarkExpectation[]> {
   const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
-  const loaded: LoadedBenchmark[] = [];
+  const expectations: BenchmarkExpectation[] = [];
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
-    loaded.push(await loadBenchmark(join(root, entry.name)));
+    try {
+      expectations.push(await loadBenchmarkExpectation(entry.name));
+    } catch {
+      // Skip benchmark directories that have neither a valid fixture nor a built-in seed.
+    }
   }
-  return loaded.sort((a, b) => a.benchmarkId.localeCompare(b.benchmarkId));
+  return expectations;
 }
 
-async function readOptional(path: string): Promise<string | undefined> {
-  try {
-    return await readFile(path, 'utf-8');
-  } catch {
-    return undefined;
+export function validateExpectation(value: unknown): BenchmarkExpectation {
+  if (!value || typeof value !== 'object') throw new Error('Benchmark expectation must be an object');
+  const candidate = value as Partial<BenchmarkExpectation>;
+  const requiredStringFields = ['matterName', 'expectedPosture'] as const;
+  for (const field of requiredStringFields) {
+    if (typeof candidate[field] !== 'string') throw new Error(`Benchmark expectation missing string field: ${field}`);
   }
-}
-
-function inferExpectationFromReadme(matterName: string, readme: string): Partial<BenchmarkExpectation> & { matterName: string } {
-  const text = `${matterName} ${readme}`.toLowerCase();
-  return {
-    matterName,
-    expectedPosture: /dillon|cherry|uksc|judgment|supreme court/.test(text) ? 'retrospective_benchmark' : /omer|napier|anfal|live/.test(text) ? 'live_matter' : 'archive_analysis',
-    expectedJurisdictions: /scotland|court of session|sheriff/.test(text) ? ['Scotland'] : /uksc|supreme court|northern ireland/.test(text) ? ['United Kingdom'] : [],
-    expectedTracks: /appeal|appellate|uksc|supreme court/.test(text) ? ['appellate'] : /judicial review/.test(text) ? ['judicial_review'] : ['unknown'],
-    expectedSourceUniverse: [],
-    expectedProductionUniverse: [],
-    expectedOutcomeAssertions: [],
-    requiredArtifacts: [],
-    notApplicableOutputs: [],
-    knownReadinessBlockers: [],
-    privacyPolicy: /omer|private|confidential/.test(text) ? 'local_only' : 'public_sources_only',
-  };
+  const requiredArrayFields = [
+    'expectedJurisdictions',
+    'expectedTracks',
+    'expectedOutcomeAssertions',
+    'requiredArtifacts',
+    'notApplicableOutputs',
+    'knownReadinessBlockers',
+  ] as const;
+  for (const field of requiredArrayFields) {
+    if (!Array.isArray(candidate[field])) throw new Error(`Benchmark expectation missing array field: ${field}`);
+  }
+  if (!candidate.expectedSourceUniverse || typeof candidate.expectedSourceUniverse !== 'object') {
+    throw new Error('Benchmark expectation missing expectedSourceUniverse');
+  }
+  if (!candidate.expectedProductionUniverse || typeof candidate.expectedProductionUniverse !== 'object') {
+    throw new Error('Benchmark expectation missing expectedProductionUniverse');
+  }
+  if (!candidate.privacyPolicy || typeof candidate.privacyPolicy !== 'object') {
+    throw new Error('Benchmark expectation missing privacyPolicy');
+  }
+  return candidate as BenchmarkExpectation;
 }

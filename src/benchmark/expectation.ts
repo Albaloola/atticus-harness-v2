@@ -1,60 +1,119 @@
-import type { MatterPrimaryMode, MatterTrack, PrivateDataPolicy } from '../legal/matter-posture.js';
-import type { LegalArtifactType } from '../legal/artifact-types.js';
+export type BenchmarkMode = 'live_matter' | 'retrospective_benchmark' | 'archive_analysis';
+export type BenchmarkPrivacyLevel = 'public' | 'private' | 'mixed';
+
+export interface BenchmarkPrivacyPolicy {
+  level: BenchmarkPrivacyLevel;
+  allowExternalActions: boolean;
+  allowPrivateWebSearch: boolean;
+  notes?: string;
+}
+
+export interface ExpectedSourceUniverse {
+  expectedCount?: number;
+  minCount?: number;
+  requiredIds?: string[];
+  officialManifestRequired?: boolean;
+  notes?: string;
+}
+
+export interface ExpectedProductionUniverse {
+  expectedCount?: number;
+  minCount?: number;
+  requiredIds?: string[];
+  notes?: string;
+}
+
+export interface ScoringWeights {
+  posture: number;
+  jurisdiction: number;
+  sourceUniverse: number;
+  productionSelection: number;
+  legalOutcome: number;
+  requiredArtifacts: number;
+  citationReadiness: number;
+  telemetry: number;
+  toolErrorResilience: number;
+  falseCompletion: number;
+}
+
+export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
+  posture: 0.1,
+  jurisdiction: 0.1,
+  sourceUniverse: 0.15,
+  productionSelection: 0.1,
+  legalOutcome: 0.15,
+  requiredArtifacts: 0.15,
+  citationReadiness: 0.08,
+  telemetry: 0.06,
+  toolErrorResilience: 0.06,
+  falseCompletion: 0.05,
+};
 
 export interface BenchmarkExpectation {
   matterName: string;
-  expectedPosture: MatterPrimaryMode;
+  expectedPosture: BenchmarkMode;
   expectedJurisdictions: string[];
-  expectedTracks: MatterTrack[];
-  expectedSourceUniverse: string[];
-  expectedProductionUniverse: string[];
+  expectedTracks: string[];
+  expectedSourceUniverse: ExpectedSourceUniverse;
+  expectedProductionUniverse: ExpectedProductionUniverse;
   expectedOutcomeAssertions: string[];
-  requiredArtifacts: LegalArtifactType[];
-  notApplicableOutputs: LegalArtifactType[];
+  requiredArtifacts: string[];
+  notApplicableOutputs: string[];
   knownReadinessBlockers: string[];
-  privacyPolicy: PrivateDataPolicy;
-  scoringWeights: Partial<Record<BenchmarkScoreDimension, number>>;
+  privacyPolicy: BenchmarkPrivacyPolicy;
+  scoringWeights?: Partial<ScoringWeights>;
+  criticalOutcomeAssertions?: string[];
+  notes?: string;
 }
 
-export type BenchmarkScoreDimension =
-  | 'posture'
-  | 'jurisdiction'
-  | 'sourceUniverse'
-  | 'productionSelection'
-  | 'legalOutcome'
-  | 'requiredArtifacts'
-  | 'citationReadiness'
-  | 'telemetryConsistency'
-  | 'toolErrorResilience'
-  | 'falseCompletion';
+export interface BenchmarkObservation {
+  matterName: string;
+  posture?: BenchmarkMode | string;
+  jurisdictions?: string[];
+  tracks?: string[];
+  sourceUniverse?: {
+    count?: number;
+    ids?: string[];
+    officialManifestUsed?: boolean;
+  };
+  productionUniverse?: {
+    count?: number;
+    ids?: string[];
+  };
+  outcomeAssertions?: string[];
+  artifacts?: string[];
+  notApplicableOutputs?: string[];
+  readinessBlockers?: string[];
+  citationReadinessSatisfied?: boolean;
+  telemetry?: {
+    runStatus?: string;
+    phase?: string;
+    completedPhases?: number;
+    totalPhases?: number;
+    candidateCount?: number;
+    artifactCount?: number;
+    filesystemCandidateCount?: number;
+    filesystemArtifactCount?: number;
+  };
+  toolErrors?: Array<{ kind: string; recovered?: boolean; message?: string }>;
+  privacyEvents?: Array<{ kind: 'external_action' | 'private_web_search' | 'private_data_disclosure'; detail?: string }>;
+}
 
-export const DEFAULT_BENCHMARK_WEIGHTS: Record<BenchmarkScoreDimension, number> = {
-  posture: 0.12,
-  jurisdiction: 0.1,
-  sourceUniverse: 0.1,
-  productionSelection: 0.1,
-  legalOutcome: 0.12,
-  requiredArtifacts: 0.16,
-  citationReadiness: 0.12,
-  telemetryConsistency: 0.1,
-  toolErrorResilience: 0.04,
-  falseCompletion: 0.04,
-};
+export interface BenchmarkDimensionScore {
+  name: keyof ScoringWeights;
+  score: number;
+  weight: number;
+  passed: boolean;
+  notes: string[];
+}
 
-export function normalizeExpectation(raw: Partial<BenchmarkExpectation> & { matterName: string }): BenchmarkExpectation {
-  return {
-    matterName: raw.matterName,
-    expectedPosture: raw.expectedPosture ?? 'archive_analysis',
-    expectedJurisdictions: raw.expectedJurisdictions ?? [],
-    expectedTracks: raw.expectedTracks ?? ['unknown'],
-    expectedSourceUniverse: raw.expectedSourceUniverse ?? [],
-    expectedProductionUniverse: raw.expectedProductionUniverse ?? [],
-    expectedOutcomeAssertions: raw.expectedOutcomeAssertions ?? [],
-    requiredArtifacts: raw.requiredArtifacts ?? [],
-    notApplicableOutputs: raw.notApplicableOutputs ?? [],
-    knownReadinessBlockers: raw.knownReadinessBlockers ?? [],
-    privacyPolicy: raw.privacyPolicy ?? 'local_only',
-    scoringWeights: raw.scoringWeights ?? {},
+export interface BenchmarkScorecard {
+  matterName: string;
+  score: number;
+  status: 'pass' | 'needs_followup' | 'fail';
+  threshold: {
+    pass: 0.85;
+    needsFollowup: 0.7;
   };
   dimensions: BenchmarkDimensionScore[];
   criticalFailures: string[];

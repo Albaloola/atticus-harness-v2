@@ -6,6 +6,7 @@ import { DEFAULTS } from '../config/schema.js';
 import { selectModelForTask } from '../config/model-routing.js';
 import { DEFAULT_MAX_CONCURRENCY, normalizePositiveInteger, remainingDepth } from './limits.js';
 import { allowedToolsForPhase } from './phase-tools.js';
+import { classifyMatterPosture, isRetrospectiveAppellatePosture, phaseWorkerTitlesForPosture } from './contracts.js';
 import type { MiniOrchestratorInput, AgentStructuredResult } from './types.js';
 import type { TaskDagNode } from '../types/state.js';
 
@@ -345,7 +346,9 @@ export class MiniOrchestrator {
   }
 
   private decompose(objective: string, phase: string): Array<{ title: string }> {
-    const retrospectiveAppellate = isRetrospectiveAppellateMatter(objective);
+    const postureTitles = phaseWorkerTitlesForPosture(phase, objective);
+    if (postureTitles && postureTitles.length > 0) return postureTitles.map((title) => ({ title }));
+
     switch (phase) {
       case 'intake_and_normalization':
         return [
@@ -384,13 +387,6 @@ export class MiniOrchestrator {
           { title: 'Assess costs and funding risks' },
         ];
       case 'document_production':
-        if (retrospectiveAppellate) {
-          return [
-            { title: 'Classify live drafting and witness-statement requirements as applicable or not applicable for this concluded appellate record' },
-            { title: 'Select a compact production set using matter_inventory production candidates, distinguishing holdings from submissions' },
-            { title: 'Create a retrospective bundle-ready production index from evidence IDs, suppressing duplicate judgment and summary variants' },
-          ];
-        }
         return [
           { title: 'Draft key documents' },
           { title: 'Prepare witness statements if supported by the record, otherwise document why they are not applicable' },
@@ -403,13 +399,6 @@ export class MiniOrchestrator {
           { title: 'Check procedural compliance' },
         ];
       case 'bundle_and_war_room_assembly':
-        if (retrospectiveAppellate) {
-          return [
-            { title: 'Create retrospective appellate bundle index from matter_inventory production candidates' },
-            { title: 'Cross-reference holdings, party arguments, and procedural facts to evidence IDs' },
-            { title: 'Prepare retrospective operator handoff checklist and mark live filing or service tasks not applicable unless evidence requires them' },
-          ];
-        }
         return [
           { title: 'Create master bundle index' },
           { title: 'Cross-reference evidence and facts' },
@@ -437,7 +426,7 @@ export class MiniOrchestrator {
       'Do not block merely because a live litigation artifact is not needed; after checking the record, return completed with a not_applicable or gap finding.',
     ];
 
-    if (isRetrospectiveAppellateMatter(objective)) {
+    if (isRetrospectiveAppellatePosture(classifyMatterPosture(objective))) {
       lines.push(
         'Matter mode: retrospective/concluded appellate record. Do not demand live filing, service, deadline, witness, or court-practice-direction artifacts unless the evidence itself asks for current filing work.',
         'Production bridge: call matter_inventory with view="production_candidates" and includeDuplicates=false. Use recommended production candidates as bundle-ready evidence IDs.',
@@ -493,12 +482,4 @@ export class MiniOrchestrator {
 
 function isRecoverableWorkerStatus(status: AgentStructuredResult['status']): boolean {
   return status === 'failed' || status === 'blocked' || status === 'needs_followup';
-}
-
-function isRetrospectiveAppellateMatter(objective: string): boolean {
-  const lower = objective.toLowerCase();
-  const appellateSignal = /\b(appellate|appeal|supreme court|uksc|judgment|written case|prorogation|cherry|miller)\b/.test(lower);
-  const retrospectiveSignal = /\b(concluded|retrospective|known outcome|outcome|trial run|harness test|downloaded|case documents|court documents|already has the outcome)\b/.test(lower);
-  const liveActionSignal = /\b(file today|serve today|lodge today|urgent live filing|live deadline|current client matter)\b/.test(lower);
-  return appellateSignal && retrospectiveSignal && !liveActionSignal;
 }

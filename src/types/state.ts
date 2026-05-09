@@ -1,4 +1,5 @@
 import type { MatterStatus } from './matter.js';
+import type { RunReadiness } from '../orchestration/contracts.js';
 
 // ── Event types ──────────────────────────────────────────────
 
@@ -185,7 +186,9 @@ export interface MatterRuntimeSnapshot {
   nextActions: string[];
   leases?: Array<{ taskId: string; leaseId: string; owner?: string; role?: string; expiresAt?: string; stale: boolean }>;
   blockedReasons?: Array<{ taskId: string; reason: string }>;
+  runReadiness?: RunReadiness;
 }
+
 
 export interface TaskCounts {
   total: number;

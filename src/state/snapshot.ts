@@ -6,6 +6,7 @@ import { listTasks } from './tasks.js';
 import { isRunLive, listRuns } from './runs.js';
 import { recoverStaleRuntimeState } from './runtime-recovery.js';
 import type { MatterRuntimeSnapshot, TaskCounts, RuntimeCosts } from '../types/state.js';
+import { evaluateRunReadiness } from '../orchestration/contracts.js';
 import type { MatterStatus } from '../types/matter.js';
 
 export async function deriveSnapshot(
@@ -89,12 +90,21 @@ export async function deriveSnapshot(
   const derivedStatus = deriveRuntimeStatus(index.status, taskCounts, activeAgents.length);
   const phase = derivePhase(derivedStatus, evidence.length, candidates.length, taskCounts, activeAgents.length);
 
-  const nextActions = deriveNextActions(
+  const runReadiness = evaluateRunReadiness({
+    status: derivedStatus,
+    phase,
+    evidenceCount: evidence.length,
+    candidateCount: candidates.length,
+    taskCounts,
+    activeAgentCount: activeAgents.length,
+  });
+
+  const nextActions = mergeNextActions(deriveNextActions(
     derivedStatus,
     evidence.length,
     candidates.length,
     activeAgents.length,
-  );
+  ), runReadiness.nextActions);
 
   return {
     matterName,
@@ -112,6 +122,7 @@ export async function deriveSnapshot(
     nextActions,
     leases,
     blockedReasons,
+    runReadiness,
   };
 }
 
@@ -180,4 +191,8 @@ function deriveNextActions(
   }
 
   return actions;
+}
+
+function mergeNextActions(primary: string[], readiness: string[]): string[] {
+  return Array.from(new Set([...primary, ...readiness]));
 }

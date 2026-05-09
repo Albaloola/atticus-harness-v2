@@ -28,9 +28,12 @@ const PHASE_TOOL_ADDITIONS: Record<string, readonly string[]> = {
   operator_handoff: ['quality_gate'],
 };
 
-export function allowedToolsForPhase(phaseId: string): string[] {
-  return Array.from(new Set([
+const NETWORK_TOOLS = new Set(['web_search', 'web_fetch']);
+
+export function allowedToolsForPhase(phaseId: string, options: { allowNetwork?: boolean } = {}): string[] {
+  const tools = Array.from(new Set([
     ...COMMON_WORKER_TOOLS,
     ...(PHASE_TOOL_ADDITIONS[phaseId] ?? []),
   ]));
+  return options.allowNetwork ? tools : tools.filter((tool) => !NETWORK_TOOLS.has(tool));
 }

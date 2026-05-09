@@ -3,14 +3,16 @@ import { writeFile } from 'fs/promises';
 import { initMatter, deleteMatter } from '../../src/storage/matter.js';
 import { loadMatter } from '../../src/storage/matter.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
-import { listRuns } from '../../src/state/runs.js';
-import { listTasks } from '../../src/state/tasks.js';
-import { listEvents } from '../../src/state/events.js';
+import { createRun, listRuns, updateRun } from '../../src/state/runs.js';
+import { createTask, listTasks, updateTask } from '../../src/state/tasks.js';
+import { appendEvent, listEvents } from '../../src/state/events.js';
+import { recoverStaleRuntimeState } from '../../src/state/runtime-recovery.js';
 import { deriveSnapshot } from '../../src/state/snapshot.js';
 import { getMatterConfigPath } from '../../src/config/paths.js';
 import { getDefaultPhases } from '../../src/legal/workflow.js';
 import { allowedToolsForPhase } from '../../src/orchestration/phase-tools.js';
 import { DEFAULT_MAX_CONCURRENCY } from '../../src/orchestration/limits.js';
+import { buildProviderAgnosticResumePlan } from '../../src/orchestration/resume-recovery.js';
 import { ToolRegistry } from '../../src/tools/index.js';
 
 vi.mock('../../src/llm/client.js', () => ({
@@ -73,14 +75,22 @@ describe('phase tool contracts', () => {
       'evidence_ingest',
       'evidence_chunk_read',
     ]));
-    expect(allowedToolsForPhase('law_and_policy_research')).toEqual(expect.arrayContaining([
-      'web_search',
-      'web_fetch',
-    ]));
     expect(allowedToolsForPhase('verification_and_hostile_review')).toEqual(expect.arrayContaining([
       'hostile_review',
       'quality_gate',
       'verify_citations',
+    ]));
+  });
+
+  it('requires explicit network allowance before exposing web tools', () => {
+    expect(allowedToolsForPhase('law_and_policy_research')).not.toEqual(expect.arrayContaining([
+      'web_search',
+      'web_fetch',
+    ]));
+    expect(allowedToolsForPhase('procedural_route_planning')).not.toContain('web_search');
+    expect(allowedToolsForPhase('law_and_policy_research', { allowNetwork: true })).toEqual(expect.arrayContaining([
+      'web_search',
+      'web_fetch',
     ]));
   });
 
@@ -185,6 +195,34 @@ function mockWorkerStatus(status: 'completed' | 'blocked' | 'needs_followup' | '
   vi.mocked(createLLMClient).mockReturnValue(fakeClient as ReturnType<typeof createLLMClient>);
 }
 
+function mockWorkerPolicyViolation(): void {
+  const content = JSON.stringify({
+    status: 'completed',
+    summary: 'Official legislation was checked live on legislation.gov.uk.',
+    findings: [{ claim: 'Live official authority supports the route.', support: 'https://legislation.gov.uk/example', confidence: 'high' }],
+    risks: [],
+    proposedTasks: [],
+    artifactIds: [],
+    nextActions: ['Use live authority'],
+  });
+  const fakeClient = {
+    chatWithTools: vi.fn().mockResolvedValue({
+      content,
+      nativeActions: [{
+        id: 'native-web',
+        type: 'web_search',
+        status: 'completed',
+        label: 'legislation.gov.uk',
+      }],
+      toolCalls: undefined,
+    }),
+    chat: vi.fn().mockResolvedValue({ content }),
+    healthCheck: vi.fn().mockResolvedValue(true),
+  };
+  vi.mocked(OpenRouterClient).mockImplementation(() => fakeClient as unknown as InstanceType<typeof OpenRouterClient>);
+  vi.mocked(createLLMClient).mockReturnValue(fakeClient as ReturnType<typeof createLLMClient>);
+}
+
 describe('MasterOrchestrator', () => {
   const matterName = 'test-orch-m';
 
@@ -232,6 +270,8 @@ describe('MasterOrchestrator', () => {
     const runs = listRuns(matterName);
     expect(runs.filter((run) => run.role === 'master' && run.status === 'running')).toHaveLength(0);
     expect(runs.filter((run) => run.role === 'mini_orchestrator')).toHaveLength(10);
+    expect(runs.some((run) => run.role === 'master_supervisor')).toBe(true);
+    expect(runs.filter((run) => run.role === 'master_supervisor' && run.status === 'running')).toHaveLength(0);
     const miniRunIds = new Set(runs.filter((run) => run.role === 'mini_orchestrator').map((run) => run.id));
     expect(runs.some((run) => run.role === 'worker' && run.parentRunId && miniRunIds.has(run.parentRunId))).toBe(true);
 
@@ -400,6 +440,28 @@ describe('MasterOrchestrator', () => {
     expect((await loadMatter(matterName)).status).toBe('analyzing');
   }, 30000);
 
+  it('quarantines policy-violating worker outputs before master completion', async () => {
+    mockWorkerPolicyViolation();
+    const phases = getDefaultPhases().filter((phase) => phase.id === 'law_and_policy_research');
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Policy supervision test',
+      maxDepth: 2,
+      maxConcurrency: 1,
+      phases,
+    });
+
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe('needs_followup');
+    expect(result.phaseResults).toHaveLength(1);
+    expect(result.phaseResults[0].status).toBe('blocked');
+    expect(result.risks.some((risk) => risk.risk.includes('forbidden'))).toBe(true);
+    expect(listEvents(matterName).some((event) => event.type === 'agent.policy_violation')).toBe(true);
+    expect(listTasks(matterName).some((task) => task.kind === 'worker_retry')).toBe(true);
+    expect((await loadMatter(matterName)).status).toBe('analyzing');
+  }, 30000);
+
   it('uses configured gate-feedback worker retry limits in recovery tasks', async () => {
     mockWorkerStatus('needs_followup');
     await writeFile(
@@ -467,6 +529,287 @@ describe('MasterOrchestrator', () => {
     expect(workerTitles).not.toContain('Draft key documents');
     expect(workerTitles).not.toContain('Create master bundle index');
   }, 30000);
+
+  it('defers restart-only supervisor recommendations until the active phase can checkpoint', () => {
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Restart deferral test',
+      maxDepth: 2,
+      maxConcurrency: 1,
+    });
+    const restartOnly = {
+      status: 'needs_followup',
+      summary: 'Patched code requires a new process before final gates.',
+      actionsTaken: ['patched verifier'],
+      issues: [{
+        issue: 'Current process has old verifier in memory.',
+        severity: 'high',
+        evidence: 'unit test',
+        mitigation: 'Restart after checkpoint',
+      }],
+      recommendedRunAction: 'restart',
+      patched: true,
+      requiresRestart: true,
+    };
+    const completedPhase = {
+      status: 'completed',
+      summary: 'Phase workers all completed.',
+      findings: [{ claim: 'Completed work', support: 'TEST-SRC-0001', confidence: 'medium' }],
+      risks: [],
+      proposedTasks: [],
+      artifactIds: [],
+      nextActions: [],
+    };
+
+    expect((orchestrator as unknown as {
+      supervisorRequiresImmediateStop: (value: unknown) => boolean;
+      applySupervisorToPhaseResult: (result: typeof completedPhase, value: unknown) => typeof completedPhase;
+    }).supervisorRequiresImmediateStop(restartOnly)).toBe(false);
+
+    const merged = (orchestrator as unknown as {
+      applySupervisorToPhaseResult: (result: typeof completedPhase, value: unknown) => typeof completedPhase;
+    }).applySupervisorToPhaseResult(completedPhase, restartOnly);
+
+    expect(merged.status).toBe('completed');
+    expect(merged.risks.some((risk) => risk.risk.includes('Master supervisor'))).toBe(true);
+  });
+
+  it('resumes from ledger-completed phases instead of replaying the whole case', async () => {
+    const phases = getDefaultPhases().slice(0, 3);
+    const priorMaster = createRun({
+      matterName,
+      model: 'test-model',
+      role: 'master',
+      agentType: 'master_orchestrator',
+      prompt: 'Prior interrupted run',
+    });
+    updateRun(matterName, priorMaster.id, {
+      status: 'blocked',
+      summary: 'Prior run stopped after completed phases.',
+    });
+
+    for (const phase of phases.slice(0, 2)) {
+      const mini = createRun({
+        matterName,
+        model: 'test-model',
+        parentRunId: priorMaster.id,
+        role: 'mini_orchestrator',
+        agentType: 'mini_orchestrator',
+        prompt: phase.description,
+      });
+      await appendEvent({
+        matterName,
+        type: 'agent.spawned',
+        runId: mini.id,
+        source: 'agent',
+        data: { role: 'mini_orchestrator', phase: phase.id },
+      });
+      const worker = createRun({
+        matterName,
+        model: 'test-model',
+        parentRunId: mini.id,
+        role: 'worker',
+        agentType: 'worker',
+        prompt: `${phase.id} worker`,
+      });
+      updateRun(matterName, worker.id, {
+        status: 'completed',
+        summary: `${phase.name} worker completed.`,
+      });
+      updateRun(matterName, mini.id, {
+        status: 'completed',
+        summary: `${phase.name} completed.`,
+      });
+    }
+
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'Resume ledger test',
+      maxDepth: 1,
+      maxConcurrency: 1,
+      phases,
+      resume: true,
+    });
+
+    const result = await orchestrator.run();
+    const currentMaster = listRuns(matterName).find((run) => run.role === 'master' && run.prompt === 'Resume ledger test')!;
+    const currentMiniRuns = listRuns(matterName).filter((run) =>
+      run.role === 'mini_orchestrator' &&
+      run.parentRunId === currentMaster.id
+    );
+
+    expect(result.phaseResults.map((phase) => phase.phaseId)).toEqual(phases.map((phase) => phase.id));
+    expect(currentMiniRuns).toHaveLength(1);
+    expect(result.phaseResults[0].summary).toContain('Resumed from prior run');
+    expect(result.phaseResults[1].summary).toContain('Resumed from prior run');
+  }, 30000);
+
+  it('reconstructs resume position from provider-agnostic supervisor and mini events', async () => {
+    const phases = getDefaultPhases().slice(0, 5);
+    const priorMaster = createRun({
+      matterName,
+      model: 'gpt-5.5',
+      role: 'master',
+      agentType: 'master_orchestrator',
+      prompt: 'Prior codex run',
+    });
+
+    for (const [index, phase] of phases.entries()) {
+      const mini = createRun({
+        matterName,
+        model: 'gpt-5.5',
+        parentRunId: priorMaster.id,
+        role: 'mini_orchestrator',
+        agentType: 'mini_orchestrator',
+        prompt: phase.description,
+      });
+      await appendEvent({
+        matterName,
+        type: 'agent.spawned',
+        runId: mini.id,
+        source: 'orchestration',
+        data: { role: 'mini_orchestrator', phase: phase.id, provider: 'codex-sdk' },
+      });
+
+      if (index === 4) {
+        updateRun(matterName, mini.id, {
+          status: 'error',
+          summary: `${phase.name} interrupted by provider switch.`,
+          error: 'cancelled',
+        });
+        await appendEvent({
+          matterName,
+          type: 'agent.run.error',
+          runId: mini.id,
+          source: 'orchestration',
+          data: { role: 'mini_orchestrator', phase: phase.id, provider: 'codex-sdk', error: 'cancelled' },
+        });
+        continue;
+      }
+
+      const status = index === 2 ? 'blocked' : 'completed';
+      updateRun(matterName, mini.id, {
+        status: status === 'completed' ? 'completed' : 'blocked',
+        summary: `${phase.name} ${status}.`,
+      });
+      await appendEvent({
+        matterName,
+        type: status === 'completed' ? 'agent.run.completed' : 'agent.run.blocked',
+        runId: mini.id,
+        source: 'orchestration',
+        data: { role: 'mini_orchestrator', phase: phase.id, status, provider: 'codex-sdk' },
+      });
+
+      const supervisor = createRun({
+        matterName,
+        model: 'gpt-5.5',
+        parentRunId: priorMaster.id,
+        role: 'master_supervisor',
+        agentType: 'master_supervisor',
+        prompt: status === 'completed' ? 'after_phase' : 'blocked_phase',
+      });
+      updateRun(matterName, supervisor.id, {
+        status: 'completed',
+        summary: `${phase.name} supervisor accepted ${status}.`,
+      });
+      await appendEvent({
+        matterName,
+        type: 'agent.run.completed',
+        runId: supervisor.id,
+        source: 'orchestration',
+        data: {
+          role: 'master_supervisor',
+          checkpoint: status === 'completed' ? 'after_phase' : 'blocked_phase',
+          phaseId: phase.id,
+          status: 'completed',
+          recommendedRunAction: 'continue',
+          provider: 'codex-sdk',
+        },
+      });
+    }
+
+    const switchedProviderMaster = createRun({
+      matterName,
+      model: 'deepseek/deepseek-v4-flash',
+      role: 'master',
+      agentType: 'master_orchestrator',
+      prompt: 'Deepseek retry',
+    });
+    const preflight = createRun({
+      matterName,
+      model: 'deepseek/deepseek-v4-flash',
+      parentRunId: switchedProviderMaster.id,
+      role: 'master_supervisor',
+      agentType: 'master_supervisor',
+      prompt: 'preflight',
+    });
+    await appendEvent({
+      matterName,
+      type: 'agent.run.blocked',
+      runId: preflight.id,
+      source: 'orchestration',
+      data: {
+        role: 'master_supervisor',
+        checkpoint: 'preflight',
+        status: 'needs_followup',
+        recommendedRunAction: 'retry_phase',
+        provider: 'openrouter-custom',
+      },
+    });
+
+    const plan = buildProviderAgnosticResumePlan({
+      matterName,
+      objective: 'Deepseek retry',
+      phases,
+    });
+
+    expect(plan.source).toBe('events');
+    expect(plan.startIndex).toBe(4);
+    expect(plan.diagnostics.afterPhaseCount).toBe(3);
+    expect(plan.diagnostics.miniOrchestratorSpawnCount).toBe(5);
+    expect(plan.diagnostics.recoveredPhaseIds).toEqual(phases.slice(0, 4).map((phase) => phase.id));
+    expect(plan.phaseResults[2].result.status).toBe('blocked');
+    expect(plan.phaseResults[3].result.status).toBe('completed');
+  });
+
+  it('marks stale in-progress tasks as interrupted on resume instead of failed', async () => {
+    const run = createRun({
+      matterName,
+      model: 'test-model',
+      role: 'worker',
+      agentType: 'worker',
+      prompt: 'Interrupted worker',
+    });
+    updateRun(matterName, run.id, {
+      status: 'error',
+      summary: 'Interrupted by provider switch.',
+      error: 'cancelled',
+    });
+    const task = createTask({
+      matterName,
+      runId: run.id,
+      type: 'law_and_policy_research',
+      title: 'Interrupted task',
+      assignedAgent: 'worker',
+    });
+    updateTask(matterName, task.id, { status: 'in_progress' });
+
+    const recovery = await recoverStaleRuntimeState(matterName, {
+      preserveInterruptedTasks: true,
+      staleAfterMs: 1,
+    });
+
+    expect(recovery.failedTasks).toEqual([]);
+    expect(recovery.interruptedTasks).toContain(task.id);
+    const recoveredTask = listTasks(matterName).find((item) => item.id === task.id)!;
+    expect(recoveredTask.status).toBe('blocked');
+    expect(recoveredTask.data.interruptedByResume).toBe(true);
+    expect(listEvents(matterName).some((event) =>
+      event.type === 'agent.run.blocked' &&
+      event.taskId === task.id &&
+      event.data.recovery === 'interrupted_task'
+    )).toBe(true);
+  });
 });
 
 describe('Orchestrator types', () => {

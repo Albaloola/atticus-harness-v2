@@ -1,6 +1,6 @@
 # Harness v2 — Legal Operations Agent CLI
 
-Standalone terminal-native agent for legal work. Ingests evidence, runs hierarchical orchestration with tool-calling, drafts documents, verifies citations, manages matter workflows, schedules recurring jobs, and auto-accepts gated outputs. Built in TypeScript on Node.js.
+Standalone terminal-native agent for legal work. Ingests evidence, runs unified agent-driven orchestration with tool-calling, drafts documents, verifies citations, manages matter workflows, schedules recurring jobs, and auto-accepts gated outputs. Built in TypeScript on Node.js.
 
 
 ## Current status and architecture research
@@ -132,7 +132,7 @@ harness orchestrate my-case --objective "..." --max-depth 3 --concurrency 15
 harness orchestrate my-case --background --json
 ```
 
-The orchestrator runs a master→mini→worker pipeline across all 10 legal workflow phases: intake, evidence, issue spotting, legal research, merits/risk, procedural planning, document production, verification, bundle assembly, and operator handoff.
+The orchestrator is a unified agent-driven loop (`UnifiedMasterOrchestrator`) that replaces the former split master-orchestrator + master-supervisor design. It wraps a single long-lived QueryLoop agent with orchestration tools (`run_phase`, `get_orchestration_state`), full harness editing authority (read/write/edit files, bash, grep, SQLite), and provider-agnostic JSON retry. The agent controls which phases to run, monitors worker output, detects harness bugs, and can patch harness source code when the harness itself is broken. It runs across all 10 legal workflow phases: intake, evidence, issue spotting, legal research, merits/risk, procedural planning, document production, verification, bundle assembly, and operator handoff.
 
 ### Ongoing case management
 
@@ -377,7 +377,7 @@ tests/                  # Unit coverage for CLI, state, tools, orchestration, ex
 ### Key architecture principles
 
 - **Event-sourced**: Every agent thought, tool call, candidate, gate, reviewer result, source snapshot, reducer decision, lease transition, and acceptance decision is recorded as an event or durable state row. Status is derived from state, not inferred from model output.
-- **Hierarchical**: Master orchestrator decomposes matters into mini-orchestrators, which spawn workers for bounded tasks. Depth-limited recursion with configurable concurrency.
+- **Hierarchical**: Unified Master Orchestrator wraps a single long-lived QueryLoop agent with orchestration tools (`run_phase`, `get_orchestration_state`) and full harness editing authority. The agent controls mini-orchestrator spawns, inspects worker output, and runs phases across all 10 legal workflow stages. Depth-limited recursion with configurable concurrency.
 - **Autonomy-configurable**: Safety is policy, not hard-coded. Five autonomy modes from `operator_safe` to `full_local_autonomy`. External dispatch is always prepare-only in this version.
 - **Daemon-capable, CLI-controlled**: Run work asynchronously, inspect state without interrupting inference, and use `control-panel`/`monitor` for read-only supervision.
 - **Reducer-governed**: Candidate artifacts cross an explicit reducer packet and canonical writer boundary before becoming accepted artifacts.
@@ -397,7 +397,8 @@ npm run dev          # Watch mode
 ## What it does
 
 - ✅ CLI-first, daemon-capable, event-sourced legal orchestration
-- ✅ Master → mini-orchestrator → worker hierarchical pipeline
+- ✅ Unified master orchestrator (agent-driven, self-healing) replacing the former split design
+- ✅ Mini-orchestrator → worker hierarchical pipeline with orchestrator oversight
 - ✅ Scheduled recurring/one-shot jobs with cron expressions
 - ✅ Non-interrupting status snapshots and event streaming
 - ✅ Evidence-grade web research with source snapshots and citation verification
@@ -419,3 +420,18 @@ npm run dev          # Watch mode
 - No external legal dispatch — all outputs are prepare-only
 - No cloud bridge, no remote sessions
 - No plugin marketplace install UI
+
+## Recent Architecture Changes
+
+### Unified Master Orchestrator (2026-05-09)
+
+The former split design of `MasterOrchestrator` (deterministic phase loop) + `MasterSupervisor` (stateless checkpointer) has been merged into a single `UnifiedMasterOrchestrator`. The unified orchestrator:
+
+- Runs as a single long-lived `QueryLoop` agent with 60-turn capacity
+- Uses `run_phase` and `get_orchestration_state` as agent-callable tools
+- Has full harness editing authority (file writes, bash, SQLite, grep)
+- Can detect harness bugs and patch source code when the harness itself is broken
+- Uses provider-agnostic JSON retry (`retryNonJson` on QueryLoop) — works with DeepSeek, GPT, Claude, and all supported provider profiles without relying on provider-specific `response_format` parameters
+- Replaces the deterministic `parseMasterSupervisorResult` trap that caused infinite `retry_phase` loops on non-JSON output
+
+The old `MasterOrchestrator` and `MasterSupervisor` classes are preserved for backward compatibility (tests still use them directly) but marked as deprecated. The CLI `harness orchestrate` command now routes through `UnifiedMasterOrchestrator`.

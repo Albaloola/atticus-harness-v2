@@ -31,6 +31,12 @@ export interface HarnessMcpServerOptions {
   allowedTools?: string[];
   workingDirectory?: string;
   matterName?: string;
+  runId?: string;
+  taskId?: string;
+  masterRunId?: string;
+  maxDepth?: number;
+  maxConcurrency?: number;
+  resume?: boolean;
   autonomy?: AutonomyPolicy;
   log?: (message: string) => void;
 }
@@ -84,6 +90,8 @@ export function createHarnessMcpServer(options: HarnessMcpServerOptions = {}): H
               : successResponse(id, await callTool(message.params, registry, {
                   workingDirectory: options.workingDirectory,
                   matterName: options.matterName,
+                  runId: options.runId,
+                  taskId: options.taskId,
                   autonomy: options.autonomy,
                   log,
                 }));
@@ -117,6 +125,8 @@ export async function createConfiguredHarnessMcpServer(options: HarnessMcpServer
   } catch (error) {
     log(`[mcp] unable to load configured MCP/plugin tools: ${error instanceof Error ? error.message : String(error)}`);
   }
+
+  await registerOrchestrationTools(registry, options, log);
 
   return createHarnessMcpServer({ ...options, toolRegistry: registry });
 }
@@ -175,6 +185,8 @@ async function callTool(
   contextOptions: {
     workingDirectory?: string;
     matterName?: string;
+    runId?: string;
+    taskId?: string;
     autonomy?: AutonomyPolicy;
     log: (message: string) => void;
   },
@@ -202,12 +214,16 @@ async function callTool(
 function makeToolContext(options: {
   workingDirectory?: string;
   matterName?: string;
+  runId?: string;
+  taskId?: string;
   autonomy?: AutonomyPolicy;
   log: (message: string) => void;
 }): ToolUseContext {
   const matterPath = options.matterName ? join('matters', options.matterName) : '';
   return {
     matterName: options.matterName,
+    runId: options.runId,
+    taskId: options.taskId,
     getEvidencePath: (id: string) => join(matterPath, '_evidence', id),
     getExtractionPath: (id: string) => join(matterPath, '_extractions', `${id}.txt`),
     getConfig: () => ({
@@ -224,8 +240,80 @@ function optionsFromEnv(): HarnessMcpServerOptions {
     allowedTools: parseStringArray(process.env.ATTICUS_HARNESS_MCP_TOOLS),
     workingDirectory: process.env.ATTICUS_HARNESS_CWD,
     matterName: process.env.ATTICUS_HARNESS_MATTER_NAME,
+    runId: process.env.ATTICUS_HARNESS_RUN_ID,
+    taskId: process.env.ATTICUS_HARNESS_TASK_ID,
+    masterRunId: process.env.ATTICUS_HARNESS_MASTER_RUN_ID,
+    maxDepth: parsePositiveInteger(process.env.ATTICUS_HARNESS_MAX_DEPTH),
+    maxConcurrency: parsePositiveInteger(process.env.ATTICUS_HARNESS_MAX_CONCURRENCY),
+    resume: process.env.ATTICUS_HARNESS_RESUME === '1',
     autonomy: parseJson(process.env.ATTICUS_HARNESS_MCP_AUTONOMY) as AutonomyPolicy | undefined,
   };
+}
+
+async function registerOrchestrationTools(
+  registry: ToolRegistry,
+  options: HarnessMcpServerOptions,
+  log: (message: string) => void,
+): Promise<void> {
+  if (!options.matterName || (!wantsTool(options.allowedTools, 'run_phase') && !wantsTool(options.allowedTools, 'get_orchestration_state'))) {
+    return;
+  }
+
+  try {
+    const [
+      { createGetOrchestrationStateTool, createRunPhaseTool },
+      { OrchestrationRuntime },
+      { buildProviderAgnosticResumePlan },
+      { getDefaultPhases },
+      { resolveConfig },
+    ] = await Promise.all([
+      import('../orchestration/orchestration-tools.js'),
+      import('../orchestration/runtime.js'),
+      import('../orchestration/resume-recovery.js'),
+      import('../legal/workflow.js'),
+      import('../config/loader.js'),
+    ]);
+
+    const matterName = options.matterName;
+    const phases = getDefaultPhases();
+    const maxDepth = options.maxDepth ?? 1;
+    const maxConcurrency = options.maxConcurrency ?? 1;
+    const resolvedConfig = await resolveConfig({ matterName });
+    const resumePlan = options.resume
+      ? buildProviderAgnosticResumePlan({ matterName, phases })
+      : undefined;
+    const runtime = new OrchestrationRuntime({
+      matterName,
+      maxDepth,
+      maxConcurrency,
+    });
+    const phaseToolsConfig = {
+      matterName,
+      masterRunId: options.masterRunId ?? options.runId ?? 'mcp-master-run',
+      maxDepth,
+      maxConcurrency,
+      autonomy: options.autonomy ?? resolvedConfig.autonomy,
+      providerPolicy: resolvedConfig.providerPolicy,
+      runtime,
+      resumePlan,
+    };
+
+    registry.register(createRunPhaseTool(phaseToolsConfig));
+    registry.register(createGetOrchestrationStateTool(phaseToolsConfig));
+  } catch (error) {
+    log(`[mcp] unable to register orchestration tools: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function wantsTool(allowedTools: string[] | undefined, name: string): boolean {
+  if (!allowedTools) return true;
+  return allowedTools.includes(name) || allowedTools.includes('*');
+}
+
+function parsePositiveInteger(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function paramsObject(params: unknown): Record<string, unknown> {

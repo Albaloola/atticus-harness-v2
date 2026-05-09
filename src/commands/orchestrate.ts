@@ -3,7 +3,7 @@ import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH } from '../orchestration/lim
 
 export default async function orchestrateHandler(
   matterName: string,
-  options: { objective?: string; background?: boolean; json?: boolean; maxDepth?: string; concurrency?: string }
+  options: { objective?: string; background?: boolean; json?: boolean; maxDepth?: string; concurrency?: string; resume?: boolean }
 ): Promise<void> {
   try {
     const maxDepth = parsePositiveIntegerOption('max depth', options.maxDepth, DEFAULT_MAX_DEPTH);
@@ -13,12 +13,14 @@ export default async function orchestrateHandler(
     if (options.objective) console.log(chalk.gray(`  Objective: ${options.objective}`));
     console.log(chalk.gray(`  Max depth: ${maxDepth}`));
     console.log(chalk.gray(`  Concurrency: ${concurrency}`));
+    if (options.resume) console.log(chalk.gray('  Resume: enabled'));
 
     if (options.background) {
       const { spawnBackgroundHarness } = await import('../daemon/background.js');
       const { appendEvent } = await import('../state/events.js');
       const args = ['orchestrate', matterName, '--max-depth', String(maxDepth), '--concurrency', String(concurrency)];
       if (options.objective) args.push('--objective', options.objective);
+      if (options.resume) args.push('--resume');
       const background = spawnBackgroundHarness(args);
       await appendEvent({
         matterName,
@@ -42,12 +44,13 @@ export default async function orchestrateHandler(
       return;
     }
 
-    const { MasterOrchestrator } = await import('../orchestration/master-orchestrator.js');
-    const orchestrator = new MasterOrchestrator({
+    const { UnifiedMasterOrchestrator } = await import('../orchestration/unified-master-orchestrator.js');
+    const orchestrator = new UnifiedMasterOrchestrator({
       matterName,
       objective: options.objective,
       maxDepth,
       maxConcurrency: concurrency,
+      resume: Boolean(options.resume),
     });
     const result = await orchestrator.run();
 

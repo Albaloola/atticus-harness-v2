@@ -15,6 +15,7 @@ export interface OrchestratorConfig {
   phases?: PhaseDefinition[];
   autonomy?: Partial<AutonomyPolicy>;
   llmMode?: 'real' | 'fake';
+  resume?: boolean;
 }
 
 export interface AgentSpawnInput {
@@ -75,6 +76,7 @@ export interface OrchestratorResult {
   risks: Array<{ risk: string; severity: string }>;
   phaseResults: PhaseResult[];
   runReadiness?: RunReadiness;
+  harnessPatchesApplied?: string[];
 }
 
 export interface PhaseResult {

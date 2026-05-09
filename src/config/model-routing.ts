@@ -37,7 +37,7 @@ export function selectModelForTask(input: ModelTaskContext): string {
 export function buildModelDelegationPrompt(providerPolicy: ProviderPolicy): string {
   const routeLines = [
     ['fast', 'Routine extraction, triage, status, and concise worker tasks'],
-    ['reasoning', 'Planning, research synthesis, orchestration, and complex analysis'],
+    ['reasoning', 'Planning, research synthesis, master orchestration (UnifiedMasterOrchestrator), and complex analysis'],
     ['drafting', 'Legal drafting, correspondence, document production, and bundle text'],
     ['reviewer', 'Hostile review, adversarial quality checks, and risk challenge'],
     ['citation', 'Citation verification, source integrity checks, and factual accuracy checks'],

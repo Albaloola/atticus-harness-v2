@@ -59,6 +59,15 @@ Hermes is responsible for the operator conversation and supervision. Codex is
 responsible for running mutating Harness CLI commands. Harness is the system of
 record for case state.
 
+**Orchestrator architecture**: The harness now uses a `UnifiedMasterOrchestrator`
+— a single agent-driven loop that merges the former master-orchestrator +
+master-supervisor split. The unified orchestrator wraps a long-lived QueryLoop
+agent with orchestration tools (`run_phase`, `get_orchestration_state`), full
+harness editing authority, and provider-agnostic JSON retry. The agent controls
+phase execution, monitors worker output, and can patch harness source code when
+it detects harness-level bugs. There is no separate "observer" role — the master
+orchestrator IS the observer.
+
 Hermes may run no-write inspection commands directly. Hermes must brief Codex
 for commands that create, change, repair runtime state, accept, reject, schedule,
 pause, resume, cancel, reset, ingest, fetch, draft, verify, review, gate, or
@@ -216,6 +225,11 @@ The default full-tool provider path is OpenRouter with DeepSeek models:
 That default is not exclusive. Hermes must keep provider language neutral and
 must not imply that Codex SDK replaces OpenRouter, DeepSeek, Anthropic,
 OpenAI-compatible/custom profiles, local profiles, or direct DeepSeek profiles.
+
+The harness architecture is provider-agnostic: the unified orchestrator's
+`retryNonJson` feature works through prompt feedback rather than provider-specific
+API parameters (`response_format`, `outputSchema`). All supported provider
+profiles work with the unified orchestrator without code changes.
 
 Provider profile facts Hermes must preserve:
 

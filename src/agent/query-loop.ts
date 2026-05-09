@@ -5,7 +5,7 @@ import { DEFAULT_MODEL } from '../llm/config.js';
 import { TokenLimitError } from '../llm/errors.js';
 import type { AgentTurn, ToolCallResult } from '../types/agent.js';
 import type { LLMMessage } from '../types/message.js';
-import type { LLMResponse, ReasoningEffort } from '../types/llm.js';
+import type { LLMNativeAction, LLMResponse, ReasoningEffort } from '../types/llm.js';
 import type { StoredToolResultMetadata, ToolDefinition, ToolResult, ToolUseContext } from '../types/tool.js';
 import type { ToolRegistry } from '../tools/index.js';
 import { executeToolCalls } from '../tools/executor.js';
@@ -36,6 +36,9 @@ export interface QueryLoopConfig {
   autonomy?: AutonomyPolicy;
   maxHistoryChars?: number;
   maxToolOutputChars?: number;
+  mcpContext?: Record<string, string>;
+  /** When true, if the final response is not valid JSON, the loop will give the model another turn with feedback instead of returning raw non-JSON content. */
+  retryNonJson?: boolean;
 }
 
 export interface QueryLoopResult {
@@ -45,6 +48,8 @@ export interface QueryLoopResult {
   status: 'completed' | 'max_turns' | 'error';
   error?: string;
   transcriptPath?: string;
+  nativeActions?: LLMNativeAction[];
+  policyViolations?: string[];
 }
 
 interface HistoryCompactionResult {
@@ -71,12 +76,16 @@ export class QueryLoop {
 
   async run(userMessage: string): Promise<QueryLoopResult> {
     this.history.push({ role: 'user', content: userMessage });
+    const nativeActions: LLMNativeAction[] = [];
+    const policyViolations: string[] = [];
     await this.saveResumeSummary({
       lastUserGoal: userMessage,
       lastModelVisibleSummary: 'Run started.',
     });
 
     const maxTurns = this.config.maxTurns || 25;
+    let nonJsonRetries = 0;
+    const maxNonJsonRetries = 3;
 
     try {
       for (let turnCount = 1; turnCount <= maxTurns; turnCount++) {
@@ -102,6 +111,8 @@ export class QueryLoop {
           finalContent: '',
           status: 'error',
           error: message,
+          nativeActions: nativeActions.length ? nativeActions : undefined,
+          policyViolations: policyViolations.length ? policyViolations : undefined,
         };
       }
       this.compactHistoryIfNeeded();
@@ -130,13 +141,23 @@ export class QueryLoop {
           finalContent: '',
           status: 'error',
           error: msg,
+          nativeActions: nativeActions.length ? nativeActions : undefined,
+          policyViolations: policyViolations.length ? policyViolations : undefined,
         };
+      }
+
+      const responseViolations = this.recordNativePolicySignals(response);
+      if (response.nativeActions?.length) nativeActions.push(...response.nativeActions);
+      if (responseViolations.length) {
+        policyViolations.push(...responseViolations);
+        await this.emitPolicyViolationEvent(responseViolations, response.nativeActions);
       }
 
       this.history.push({
         role: 'assistant',
         content: response.content || '',
         reasoningContent: response.reasoningContent,
+        nativeActions: response.nativeActions,
         toolCalls: response.toolCalls,
       });
 
@@ -145,6 +166,20 @@ export class QueryLoop {
           console.log(
             `  [Agent] ${response.content.substring(0, 200)}${response.content.length > 200 ? '...' : ''}`
           );
+        }
+
+        if (this.config.retryNonJson && nonJsonRetries < maxNonJsonRetries && !isJsonLike(response.content)) {
+          nonJsonRetries += 1;
+          const feedback = buildNonJsonRetryFeedback(response.content);
+          this.history.push({
+            role: 'user',
+            content: feedback,
+          });
+          await this.saveResumeSummary({
+            lastUserGoal: userMessage,
+            lastModelVisibleSummary: `Non-JSON output detected (retry ${nonJsonRetries}/${maxNonJsonRetries}). Asked model to fix.`,
+          });
+          continue;
         }
 
         await this.emitTurnEvent(turnCount, response.content);
@@ -160,6 +195,8 @@ export class QueryLoop {
           finalContent: response.content || '(no response)',
           status: 'completed',
           transcriptPath,
+          nativeActions: nativeActions.length ? nativeActions : undefined,
+          policyViolations: policyViolations.length ? policyViolations : undefined,
         };
       }
 
@@ -235,6 +272,8 @@ export class QueryLoop {
         finalContent: '',
         status: 'max_turns',
         transcriptPath,
+        nativeActions: nativeActions.length ? nativeActions : undefined,
+        policyViolations: policyViolations.length ? policyViolations : undefined,
       };
     } finally {
       await this.toolRegistry.close();
@@ -274,6 +313,7 @@ export class QueryLoop {
             maxTokens: this.config.maxTokens ?? 8192,
             reasoningEffort: this.config.reasoningEffort,
             disableThinking: this.config.reasoningEffort ? this.config.reasoningEffort === 'none' : true,
+            mcpContext: this.buildMcpContext(),
           },
         });
       } catch (error) {
@@ -316,6 +356,14 @@ export class QueryLoop {
         if (this.config.verbose) console.log(`    ${msg}`);
       },
     };
+  }
+
+  private buildMcpContext(): Record<string, string> {
+    const context: Record<string, string> = { ...(this.config.mcpContext ?? {}) };
+    if (this.config.runId) context.ATTICUS_HARNESS_RUN_ID = this.config.runId;
+    if (this.config.taskId) context.ATTICUS_HARNESS_TASK_ID = this.config.taskId;
+    if (this.config.role) context.ATTICUS_HARNESS_ROLE = this.config.role;
+    return context;
   }
 
   private async prepareToolResultForModel(
@@ -421,6 +469,35 @@ export class QueryLoop {
     }
   }
 
+  private recordNativePolicySignals(response: LLMResponse): string[] {
+    return [
+      ...nativeActionPolicyViolations(response.nativeActions, this.config.autonomy),
+      ...selfReportedPolicyViolations(response.content, this.config.autonomy),
+    ];
+  }
+
+  private async emitPolicyViolationEvent(violations: string[], nativeActions?: LLMNativeAction[]): Promise<void> {
+    if (!this.config.matterName || violations.length === 0) return;
+    try {
+      await appendEvent({
+        matterName: this.config.matterName,
+        type: 'agent.policy_violation',
+        runId: this.config.runId,
+        taskId: this.config.taskId,
+        data: {
+          violations,
+          nativeActions: nativeActions?.map((action) => ({
+            type: action.type,
+            status: action.status,
+            label: action.label,
+          })),
+        },
+        source: 'agent',
+      });
+    } catch {
+    }
+  }
+
   private async saveTranscript(): Promise<string | undefined> {
     if (!this.config.matterName) return undefined;
 
@@ -436,7 +513,10 @@ export class QueryLoop {
           const toolCallsLine = m.toolCalls?.length
             ? '\n' + m.toolCalls.map((t) => `  \u2192 Tool: ${t.name}`).join('\n')
             : '';
-          return `## ${m.role.toUpperCase()}\n${m.content}${toolCallsLine}`;
+          const nativeActionsLine = m.nativeActions?.length
+            ? '\n' + m.nativeActions.map((a) => `  \u2192 Native: ${a.type}${a.label ? ` (${a.label})` : ''}${a.status ? ` [${a.status}]` : ''}`).join('\n')
+            : '';
+          return `## ${m.role.toUpperCase()}\n${m.content}${toolCallsLine}${nativeActionsLine}`;
         })
         .join('\n\n');
 
@@ -543,4 +623,93 @@ function truncateArgs(args: Record<string, unknown>): string {
 function truncateText(text: string, max: number): string {
   if (text.length <= max) return text;
   return text.substring(0, max) + '\n... [truncated]';
+}
+
+function nativeActionPolicyViolations(
+  actions: LLMNativeAction[] | undefined,
+  autonomy: AutonomyPolicy | undefined,
+): string[] {
+  if (!actions?.length || !autonomy) return [];
+  const violations: string[] = [];
+
+  for (const action of actions) {
+    const label = action.label ? ` (${action.label})` : '';
+    if (action.type === 'web_search' && !autonomy.autoApproveWeb) {
+      violations.push(`Native Codex web_search used while autonomy.autoApproveWeb=false${label}`);
+    } else if (action.type === 'command_execution' && !autonomy.autoApproveShell) {
+      violations.push(`Native Codex shell command used while autonomy.autoApproveShell=false${label}`);
+    } else if (action.type === 'file_change' && !autonomy.autoApproveFileWrites) {
+      violations.push(`Native Codex file change used while autonomy.autoApproveFileWrites=false${label}`);
+    } else if (action.type === 'mcp_tool_call') {
+      const server = typeof action.data?.server === 'string' ? action.data.server : undefined;
+      if (server && server !== 'harness') {
+        violations.push(`Native Codex MCP call used non-Harness server "${server}"${label}`);
+      }
+    }
+  }
+
+  return [...new Set(violations)];
+}
+
+function selfReportedPolicyViolations(
+  content: string | undefined,
+  autonomy: AutonomyPolicy | undefined,
+): string[] {
+  if (!content || !autonomy || autonomy.autoApproveWeb) return [];
+  const compact = content.replace(/\s+/g, ' ');
+  const claimsLiveOfficialSource =
+    hasUnnegatedPolicyClaim(
+      compact,
+      /\blive official (?:sources?|authorit(?:y|ies)|legislation|pages?|web pages?|URLs?).{0,80}\b(?:checked|verified|accessed|searched|consulted|used)\b/gi,
+    ) ||
+    /\bofficial (?:sources?|authorit(?:y|ies)|legislation|pages?|web pages?|URLs?).{0,120}\b(?:checked|verified|accessed|searched|consulted)\b.{0,80}\b(?:live|online|web|today|202\d-\d\d-\d\d)\b/i.test(compact) ||
+    /\b(?:checked|verified|accessed|searched|consulted)\b.{0,120}\b(?:live|online|web)\b.{0,120}\bofficial (?:sources?|authorit(?:y|ies)|legislation|pages?|URLs?)\b/i.test(compact) ||
+    /\b(?:web_search|web_fetch|web source ingestion|Harness web).{0,160}\b(?:policy-blocked|blocked by policy)\b.{0,160}\b(?:live|official|URL|source|legislation|authority)\b/i.test(compact);
+  const citesExternalUrlAsSource =
+    /https?:\/\/\S+/i.test(compact) &&
+    /\b(?:official|source|accessed|checked|verified|live|legislation\.gov\.uk|napier\.ac\.uk|spso\.org\.uk|gov\.uk)\b/i.test(compact);
+
+  if (!claimsLiveOfficialSource && !citesExternalUrlAsSource) return [];
+  return ['Worker output appears to rely on live/external web sources while autonomy.autoApproveWeb=false'];
+}
+
+function hasUnnegatedPolicyClaim(content: string, pattern: RegExp): boolean {
+  for (const match of content.matchAll(pattern)) {
+    const index = match.index ?? 0;
+    const before = content.slice(Math.max(0, index - 32), index);
+    if (/\b(?:no|not|without|never)\b.{0,24}$/i.test(before)) continue;
+    return true;
+  }
+  return false;
+}
+
+function isJsonLike(content: string): boolean {
+  const trimmed = content.trim();
+  if (trimmed.length === 0) return false;
+  if (trimmed === '(no response)') return false;
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (fenced) {
+      try { JSON.parse(fenced[1].trim()); return true; } catch { }
+    }
+    const objMatch = trimmed.match(/\{[\s\S]*\}/);
+    if (objMatch) {
+      try { JSON.parse(objMatch[0]); return true; } catch { }
+    }
+    return false;
+  }
+}
+
+function buildNonJsonRetryFeedback(previousContent: string): string {
+  return [
+    'Your last response was not valid JSON. You MUST return a valid JSON object.',
+    'Do NOT include markdown code fences, explanations, or any text outside the JSON object.',
+    previousContent
+      ? `Your previous response was: ${previousContent.slice(0, 200)}${previousContent.length > 200 ? '...' : ''}`
+      : 'Your previous response was empty.',
+    'Return ONLY the JSON object now, starting with { and ending with }.',
+  ].join('\n');
 }

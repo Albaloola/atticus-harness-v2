@@ -8,6 +8,17 @@ export interface OrchestrationCheckpoint {
   objective?: string;
   currentPhaseIndex?: number;
   currentPhaseId?: string;
+  completedPhaseIds?: string[];
+  blockedPhaseIds?: string[];
+  failedPhaseIds?: string[];
+  phaseSummaries?: Array<{
+    phaseId: string;
+    phaseName: string;
+    status: 'completed' | 'failed' | 'blocked';
+    summary: string;
+  }>;
+  supervisorStopReason?: string;
+  resumeFromRunId?: string;
   updatedAt: string;
   caseMemorySummary?: string;
   lastCandidateId?: string;

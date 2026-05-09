@@ -137,7 +137,11 @@ export class CodexSdkClient implements LLMClient {
       usesHarnessToolLoop ? 'harness' : usesMcpToolLoop ? 'mcp' : 'none',
     );
     return this.withTimeout(async (signal) => {
-      const codexConfig = this.buildCodexConfig(usesMcpToolLoop ? request.tools : undefined);
+      const codexConfig = this.buildCodexConfig(
+        usesMcpToolLoop ? request.tools : undefined,
+        request.config.mcpContext,
+      );
+      const nativeWebEnabled = usesMcpToolLoop && Boolean(this.autonomy?.autoApproveWeb);
       const codex = new Codex({
         codexPathOverride: this.codexExecutablePath(usesMcpToolLoop),
         env: buildCodexEnv(process.env),
@@ -148,9 +152,9 @@ export class CodexSdkClient implements LLMClient {
         sandboxMode: usesMcpToolLoop ? 'workspace-write' : 'read-only',
         workingDirectory: this.workingDirectory,
         modelReasoningEffort: mapReasoningEffort(request.config.reasoningEffort),
-        networkAccessEnabled: usesMcpToolLoop,
-        webSearchMode: usesMcpToolLoop ? 'live' : 'disabled',
-        webSearchEnabled: usesMcpToolLoop,
+        networkAccessEnabled: nativeWebEnabled,
+        webSearchMode: nativeWebEnabled ? 'live' : 'disabled',
+        webSearchEnabled: nativeWebEnabled,
         approvalPolicy: 'never',
         additionalDirectories: [],
       });
@@ -224,7 +228,10 @@ export class CodexSdkClient implements LLMClient {
     return true;
   }
 
-  private buildCodexConfig(tools: ToolDefinition[] | undefined): CodexOptions['config'] | undefined {
+  private buildCodexConfig(
+    tools: ToolDefinition[] | undefined,
+    mcpContext: Record<string, string> | undefined,
+  ): CodexOptions['config'] | undefined {
     if (!this.agentMode || !tools?.length) return undefined;
     return {
       mcp_servers: {
@@ -235,6 +242,8 @@ export class CodexSdkClient implements LLMClient {
             workingDirectory: this.workingDirectory,
             matterName: this.matterName,
             autonomy: this.autonomy,
+            tools,
+            context: mcpContext,
           }),
         },
       },
@@ -281,9 +290,18 @@ export class CodexSdkClient implements LLMClient {
 
   private async withTimeout<T>(operation: (signal: AbortSignal) => Promise<T>): Promise<T> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeoutMs);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const operationPromise = operation(controller.signal);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        controller.abort();
+        reject(new LLMError(`Request timed out after ${this.timeoutMs}ms`, 408, this.providerName));
+      }, this.timeoutMs);
+    });
+    operationPromise.catch(() => {});
+
     try {
-      return await operation(controller.signal);
+      return await Promise.race([operationPromise, timeoutPromise]);
     } catch (error) {
       if (error instanceof LLMError) throw error;
       const err = error as Error;
@@ -292,7 +310,7 @@ export class CodexSdkClient implements LLMClient {
       }
       throw new LLMError(`Codex SDK error: ${err.message}`, 0, this.providerName);
     } finally {
-      clearTimeout(timeoutId);
+      if (timeoutId) clearTimeout(timeoutId);
     }
   }
 
@@ -336,7 +354,7 @@ function buildPrompt(
     : '';
 
   const toolSection = toolMode === 'mcp' && tools?.length
-    ? `\n\n## HARNESS MCP TOOLS\nThe Harness exposes case tools through the MCP server named "harness". Use those MCP tools directly when they are useful. Do not emit OpenAI-style function calls; Codex owns tool execution in this provider mode.\n\n${serializedTools}`
+    ? `\n\n## HARNESS MCP TOOLS\nThe Harness exposes case tools through the MCP server named "harness". Use those MCP tools directly when they are useful. Do not emit OpenAI-style function calls; Codex owns tool execution in this provider mode.\n\nDo not use Codex native web/search, shell commands, or direct file edits as substitutes for Harness tools. If a Harness MCP tool is blocked by policy or unavailable, report that as a gap instead of bypassing the Harness policy surface.\n\n${serializedTools}`
     : toolMode === 'harness' && tools?.length
       ? `\n\n## HARNESS-OWNED TOOL PROTOCOL\nHarness owns tool execution in this provider mode. Do not run shell commands, make MCP calls, edit files, or use native web/search tools. Request Harness tools only by returning one valid JSON object.\n\nAvailable Harness tools:\n${serializedTools}\n\nWhen you need tool output, return exactly:\n{"type":"tool_calls","toolCalls":[{"name":"tool_name","args":{}}]}\n\nWhen your task is complete, return exactly:\n{"type":"final","content":"final answer"}\n\nIf the required final answer is itself a JSON object, put that object in "result" instead of stringifying it:\n{"type":"final","result":{"status":"completed","summary":"..."}}`
     : '';
@@ -453,16 +471,22 @@ function buildHarnessMcpEnv(input: {
   workingDirectory: string;
   matterName?: string;
   autonomy?: AutonomyPolicy;
+  tools?: ToolDefinition[];
+  context?: Record<string, string>;
 }): Record<string, string> {
   const env: Record<string, string> = {
     ATTICUS_HARNESS_MCP: '1',
     ATTICUS_HARNESS_CWD: input.workingDirectory,
+    ...(input.context ?? {}),
   };
   if (input.matterName) {
     env.ATTICUS_HARNESS_MATTER_NAME = input.matterName;
   }
   if (input.autonomy) {
     env.ATTICUS_HARNESS_MCP_AUTONOMY = JSON.stringify(input.autonomy);
+  }
+  if (input.tools?.length) {
+    env.ATTICUS_HARNESS_MCP_TOOLS = JSON.stringify(input.tools.map((tool) => tool.name));
   }
   return env;
 }

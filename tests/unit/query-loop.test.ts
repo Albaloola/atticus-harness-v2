@@ -9,6 +9,7 @@ import type { LLMResponse, LLMRequest } from '../../src/types/llm.ts';
 import { initMatter, deleteMatter } from '../../src/storage/matter.ts';
 import { closeAllStateDbs } from '../../src/state/store.ts';
 import { TokenLimitError } from '../../src/llm/errors.ts';
+import { DEFAULTS } from '../../src/config/schema.ts';
 
 class FakeLLMClient {
   capabilities?: { tools: boolean; jsonSchema?: boolean; agentMode?: boolean; nativeMcpTools?: boolean };
@@ -182,6 +183,102 @@ describe('QueryLoop', () => {
       expect(result.finalContent).toBe('Native agent handled it');
       expect(result.turns).toHaveLength(0);
       expect(fakeClient.requests[0].tools?.some((tool) => tool.name === 'search_tool')).toBe(true);
+    });
+
+    it('records native web policy violations for master supervision', async () => {
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(new FakeTool('matter_inventory', makeSuccessToolResult('manifest')));
+      const fakeClient = new FakeLLMClient(
+        [makeResponse({
+          content: JSON.stringify({
+            status: 'completed',
+            summary: 'Official sources checked live on legislation.gov.uk.',
+            findings: [],
+            risks: [],
+            proposedTasks: [],
+            artifactIds: [],
+            nextActions: [],
+          }),
+          nativeActions: [{
+            id: 'native-1',
+            type: 'web_search',
+            status: 'completed',
+            label: 'legislation.gov.uk student accommodation',
+          }],
+        })],
+        { tools: false, jsonSchema: true, agentMode: true, nativeMcpTools: true },
+      );
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Use Harness tools only.',
+          tools: toolRegistry,
+          providerName: 'codex-sdk',
+          quietMode: true,
+          autonomy: {
+            ...DEFAULTS.autonomy,
+            autoApproveWeb: false,
+          },
+        },
+        fakeClient,
+      );
+
+      const result = await loop.run('Check the matter');
+
+      expect(result.status).toBe('completed');
+      expect(result.nativeActions?.[0].type).toBe('web_search');
+      expect(result.policyViolations).toEqual(expect.arrayContaining([
+        expect.stringContaining('web_search'),
+        expect.stringContaining('live/external web sources'),
+      ]));
+      expect(result.history.at(-1)?.nativeActions?.[0].type).toBe('web_search');
+    });
+
+    it('allows future-facing live-source verification caveats without treating them as current web reliance', async () => {
+      const toolRegistry = new ToolRegistry();
+      const fakeClient = new FakeLLMClient(
+        [makeResponse({
+          content: JSON.stringify({
+            status: 'completed',
+            summary: 'Assessed urgency and deadlines from persisted evidence only; no live or external web sources were used.',
+            findings: [],
+            risks: [],
+            proposedTasks: [],
+            artifactIds: [],
+            nextActions: [
+              'Before final legal advice is issued, verify the relevant procedure from live official sources.',
+            ],
+          }),
+          nativeActions: [{
+            id: 'native-1',
+            type: 'mcp_tool_call',
+            status: 'completed',
+            label: 'harness.evidence_search',
+            data: { server: 'harness' },
+          }],
+        })],
+        { tools: false, jsonSchema: true, agentMode: true, nativeMcpTools: true },
+      );
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Use Harness tools only.',
+          tools: toolRegistry,
+          providerName: 'codex-sdk',
+          quietMode: true,
+          autonomy: {
+            ...DEFAULTS.autonomy,
+            autoApproveWeb: false,
+          },
+        },
+        fakeClient,
+      );
+
+      const result = await loop.run('Check the matter');
+
+      expect(result.status).toBe('completed');
+      expect(result.nativeActions?.[0].type).toBe('mcp_tool_call');
+      expect(result.policyViolations).toBeUndefined();
     });
 
     it('executes tool calls and continues the loop', async () => {

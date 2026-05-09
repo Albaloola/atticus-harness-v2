@@ -50,6 +50,7 @@ export type MatterEventType =
   | 'agent.run.max_turns'
   | 'agent.turn.completed'
   | 'agent.output.synthesized'
+  | 'agent.policy_violation'
   | 'agent.spawned'
   | 'agent.completed'
   | 'llm.retry.scheduled'

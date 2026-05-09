@@ -4,6 +4,7 @@ import type { CandidateArtifact, CitationRef } from '../types/artifact.js';
 import type { CitationCheck, CitationResult, CitationSupportStatus } from '../types/citation.js';
 
 const INLINE_CITATION_REGEX = /\[([A-Z][A-Z0-9_-]*-\d+)\]/g;
+const PROSE_CITATION_REGEX = /\b([A-Z][A-Z0-9_-]*-\d+)(?:\s+chunks?\s+\d+(?:\s*[-,]\s*\d+)*)?\b/g;
 const CONTEXT_CHARS = 240;
 
 interface CitationCandidate {
@@ -72,6 +73,19 @@ export function collectCitationCandidates(
     citations.set(`${citationId}:${citationId}:${quote}`, {
       citationId,
       evidenceId: citationId,
+      quote,
+    });
+  }
+
+  while ((match = PROSE_CITATION_REGEX.exec(candidate.content)) !== null) {
+    const citationId = match[0];
+    const evidenceId = match[1];
+    if (isBracketedCitation(candidate.content, match.index, evidenceId.length)) continue;
+
+    const quote = extractCitationContextAt(candidate.content, match.index, citationId.length);
+    citations.set(`${citationId}:${evidenceId}:${quote}`, {
+      citationId,
+      evidenceId,
       quote,
     });
   }
@@ -165,6 +179,10 @@ function extractCitationContextAt(content: string, index: number, citationLength
   const start = Math.max(0, index - CONTEXT_CHARS);
   const end = Math.min(content.length, index + citationLength + CONTEXT_CHARS);
   return content.slice(start, end).replace(content.slice(index, index + citationLength), '').trim();
+}
+
+function isBracketedCitation(content: string, index: number, evidenceIdLength: number): boolean {
+  return content[index - 1] === '[' && content[index + evidenceIdLength] === ']';
 }
 
 function makeCheck(

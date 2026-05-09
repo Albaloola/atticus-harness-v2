@@ -35,7 +35,7 @@ export class VerifyCitationsTool implements Tool<{ candidatePath: string }, unkn
         return {
           success: true,
           data: { status: 'no_citations', checks: [] },
-          output: 'No citations found in format [EVIDENCE_ID]. Use [NAP-SRC-0001] format.',
+          output: 'No citations found. Use bracketed evidence IDs such as [ANF-SRC-0001], or clear evidence IDs with chunk locators such as ANF-SRC-0001 chunk 0.',
         };
       }
 

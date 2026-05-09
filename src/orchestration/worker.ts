@@ -10,6 +10,7 @@ import { selectModelForTask } from '../config/model-routing.js';
 import { loadMatter } from '../storage/matter.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
 import { applyWorkerQualityGate, synthesizeWorkerOutput, type WorkerSynthesisClient } from './worker-synthesis.js';
+import { applySourceDisciplineGate } from './source-discipline.js';
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
 import type { QueryLoopConfig, QueryLoopResult } from '../agent/query-loop.js';
 import type { AgentRun } from '../types/state.js';
@@ -122,7 +123,10 @@ export class WorkerAgent {
       const parsed = parseStructuredResult(loopResult.finalContent);
 
       if (parsed) {
-        const gated = applyWorkerQualityGate(parsed, this.spawn, loopResult);
+        const gated = applySourceDisciplineGate(
+          this.spawn.matterName,
+          applyWorkerQualityGate(parsed, this.spawn, loopResult),
+        );
 
         updateRun(this.spawn.matterName, this.run.id, {
           status: this.mapStatus(gated.status),
@@ -149,7 +153,7 @@ export class WorkerAgent {
       }
 
       const resolvedConfig = await resolveConfig({ matterName: this.spawn.matterName });
-      const rawResult = await synthesizeWorkerOutput({
+      const rawResult = applySourceDisciplineGate(this.spawn.matterName, await synthesizeWorkerOutput({
         spawn: this.spawn,
         loopResult,
         model: selectModelForTask({
@@ -160,7 +164,7 @@ export class WorkerAgent {
           objective: this.spawn.objective,
         }),
         client: this.config.synthesisClient,
-      });
+      }));
 
       updateRun(this.spawn.matterName, this.run.id, {
         status: this.mapStatus(rawResult.status),

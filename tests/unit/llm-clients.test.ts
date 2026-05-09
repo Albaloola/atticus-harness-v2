@@ -12,6 +12,7 @@ vi.mock('@openai/codex-sdk', () => ({
 import { OpenAICompatibleClient, AnthropicClient, CodexSdkClient, createLLMClient } from '../../src/llm/index.ts';
 import type { RateLimitError } from '../../src/llm/errors.ts';
 import { buildModelDelegationPrompt, selectModelForTask } from '../../src/llm/prompt-builder.ts';
+import { DEFAULTS } from '../../src/config/schema.ts';
 
 describe('OpenAICompatibleClient', () => {
   let fetchMock: ReturnType<typeof vi.fn>;
@@ -527,6 +528,30 @@ describe('CodexSdkClient', () => {
     });
   });
 
+  it('hard-times out streamed SDK calls when the stream ignores abort', async () => {
+    vi.useFakeTimers();
+    try {
+      const runStreamed = vi.fn(async () => ({
+        events: neverEventStream(),
+      }));
+      codexSdkMock.startThread.mockReturnValue({ runStreamed });
+      const client = new CodexSdkClient({ timeoutMs: 10 });
+
+      const response = client.chat({
+        messages: [{ role: 'user', content: 'hang' }],
+        config: { model: 'gpt-5.5' },
+      });
+      const assertion = expect(response).rejects.toThrow('Request timed out after 10ms');
+
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(10);
+
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('configures the Harness MCP server when tools are provided', async () => {
     const runStreamed = mockCodexRun([
       { type: 'item.completed', item: { id: 'msg-1', type: 'agent_message', text: 'used tools' } },
@@ -561,9 +586,45 @@ describe('CodexSdkClient', () => {
       },
     }));
     const mcpEnv = codexSdkMock.Codex.mock.calls[0][0].config.mcp_servers.harness.env;
-    expect(mcpEnv.ATTICUS_HARNESS_MCP_TOOLS).toBeUndefined();
+    expect(JSON.parse(mcpEnv.ATTICUS_HARNESS_MCP_TOOLS)).toEqual(['search']);
+    expect(codexSdkMock.startThread).toHaveBeenCalledWith(expect.objectContaining({
+      sandboxMode: 'workspace-write',
+      networkAccessEnabled: false,
+      webSearchMode: 'disabled',
+      webSearchEnabled: false,
+    }));
     expect(runStreamed.mock.calls[0][0]).toContain('HARNESS MCP TOOLS');
+    expect(runStreamed.mock.calls[0][0]).toContain('Do not use Codex native web/search');
     expect(runStreamed.mock.calls[0][0]).toContain('"name": "search"');
+  });
+
+  it('enables native Codex web only when autonomy approves web in MCP mode', async () => {
+    mockCodexRun([
+      { type: 'item.completed', item: { id: 'msg-1', type: 'agent_message', text: 'used tools' } },
+    ]);
+    const client = new CodexSdkClient({
+      workingDirectory: '/tmp/harness-test',
+      matterName: 'case-1',
+      harnessMcpServerPath: '/tmp/harness-mcp.js',
+      codexToolStrategy: 'mcp',
+      autonomy: {
+        ...DEFAULTS.autonomy,
+        autoApproveWeb: true,
+      },
+    });
+
+    await client.chatWithTools({
+      messages: [{ role: 'user', content: 'use a tool' }],
+      tools: [{ name: 'search', description: 'Search', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    });
+
+    expect(codexSdkMock.startThread).toHaveBeenCalledWith(expect.objectContaining({
+      sandboxMode: 'workspace-write',
+      networkAccessEnabled: true,
+      webSearchMode: 'live',
+      webSearchEnabled: true,
+    }));
   });
 
   it('uses Harness-owned JSON tool calls by default instead of configuring MCP', async () => {
@@ -794,4 +855,8 @@ async function* eventStream(events: Array<Record<string, unknown>>): AsyncGenera
   for (const event of events) {
     yield event;
   }
+}
+
+async function* neverEventStream(): AsyncGenerator<Record<string, unknown>> {
+  await new Promise(() => {});
 }

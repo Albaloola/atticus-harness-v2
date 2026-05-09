@@ -1,8 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WorkerAgent } from '../../src/orchestration/worker.js';
 import { initMatter, deleteMatter } from '../../src/storage/matter.js';
+import { getDb, closeAllDbs } from '../../src/storage/sqlite/index.js';
+import { insertEvidenceItemV2 } from '../../src/storage/sqlite/evidence.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
 import { listEvents } from '../../src/state/events.js';
+import { hashText } from '../../src/extraction/hash.js';
 import type { QueryLoopConfig, QueryLoopResult } from '../../src/agent/query-loop.js';
 import type { LLMRequest, LLMResponse } from '../../src/types/llm.js';
 
@@ -14,6 +17,7 @@ describe('WorkerAgent structured synthesis', () => {
   });
 
   afterEach(async () => {
+    closeAllDbs();
     closeAllStateDbs();
     await deleteMatter(matterName);
   });
@@ -229,6 +233,123 @@ describe('WorkerAgent structured synthesis', () => {
     expect(result.status).toBe('needs_followup');
     expect(result.summary).toContain('List next recommended actions');
     expect(synthesisClient.chat).not.toHaveBeenCalled();
+    expect(eventTypes).toContain('agent.run.blocked');
+    expect(eventTypes).not.toContain('agent.run.completed');
+  });
+
+  it('quarantines completed worker JSON when runtime policy violations are present', async () => {
+    const worker = new WorkerAgent({
+      spawn: {
+        matterName,
+        parentRunId: 'master-1',
+        taskId: 'task-policy',
+        role: 'worker',
+        title: 'Research applicable legislation',
+        objective: 'Research applicable legislation',
+        allowedTools: [],
+        phaseId: 'law_and_policy_research',
+      },
+      model: 'gpt-5.5',
+      quietMode: true,
+      queryLoopFactory: (_config: QueryLoopConfig) => ({
+        run: async (): Promise<QueryLoopResult> => ({
+          turns: [],
+          finalContent: JSON.stringify({
+            status: 'completed',
+            summary: 'Official legislation was checked live on legislation.gov.uk.',
+            findings: [{ claim: 'Live official authority supports the route.', support: 'https://legislation.gov.uk/example', confidence: 'high' }],
+            risks: [],
+            proposedTasks: [],
+            artifactIds: [],
+            nextActions: ['Use live authority'],
+          }),
+          status: 'completed',
+          history: [
+            { role: 'user', content: 'Research applicable legislation' },
+            { role: 'assistant', content: 'Official legislation was checked live on legislation.gov.uk.' },
+          ],
+          nativeActions: [{ type: 'web_search', status: 'completed', label: 'legislation.gov.uk' }],
+          policyViolations: ['Native Codex web_search used while autonomy.autoApproveWeb=false (legislation.gov.uk)'],
+        }),
+      }),
+    });
+
+    const result = await worker.execute();
+    const eventTypes = listEvents(matterName).map((event) => event.type);
+
+    expect(result.status).toBe('needs_followup');
+    expect(result.summary).toContain('quarantined');
+    expect(result.risks.some((risk) => risk.severity === 'high')).toBe(true);
+    expect(result.nextActions.join('\n')).toContain('Rerun worker task under policy supervision');
+    expect(eventTypes).toContain('agent.run.blocked');
+    expect(eventTypes).not.toContain('agent.run.completed');
+  });
+
+  it('quarantines primary findings supported only by case-preparation work product', async () => {
+    const db = getDb(matterName);
+    insertEvidenceItemV2(db, {
+      evidenceId: 'ANF-SRC-0027',
+      matterName,
+      sha256: hashText('call-script'),
+      originalPath: '/tmp/Atticus Call Script.pdf',
+      internalPath: 'ANF-SRC-0027.pdf',
+      originalFilename: 'Atticus call script.pdf',
+      canonicalFilename: 'atticus-call-script.pdf',
+      sourceType: 'upload',
+      mimeType: 'application/pdf',
+      format: 'pdf',
+      status: 'approved',
+      ingestedAt: new Date().toISOString(),
+      sizeBytes: 123,
+      metadata: {},
+    });
+
+    const worker = new WorkerAgent({
+      spawn: {
+        matterName,
+        parentRunId: 'master-1',
+        taskId: 'task-source-discipline',
+        role: 'worker',
+        title: 'Determine procedural deadline',
+        objective: 'Determine procedural deadline',
+        allowedTools: [],
+        phaseId: 'procedural_route_planning',
+      },
+      model: 'gpt-5.5',
+      quietMode: true,
+      queryLoopFactory: (_config: QueryLoopConfig) => ({
+        run: async (): Promise<QueryLoopResult> => ({
+          turns: [],
+          finalContent: JSON.stringify({
+            status: 'completed',
+            summary: 'The procedural deadline was identified.',
+            findings: [{
+              kind: 'procedural_fact',
+              claim: 'The complaint deadline is ten working days.',
+              support: 'ANF-SRC-0027 says the complaint deadline is ten working days.',
+              confidence: 'high',
+            }],
+            risks: [],
+            proposedTasks: [],
+            artifactIds: [],
+            nextActions: ['Use the deadline'],
+          }),
+          status: 'completed',
+          history: [
+            { role: 'user', content: 'Determine procedural deadline' },
+            { role: 'assistant', content: 'ANF-SRC-0027 says the complaint deadline is ten working days.' },
+          ],
+        }),
+      }),
+    });
+
+    const result = await worker.execute();
+    const eventTypes = listEvents(matterName).map((event) => event.type);
+
+    expect(result.status).toBe('needs_followup');
+    expect(result.summary).toContain('source-discipline');
+    expect(result.risks.some((risk) => risk.risk.includes('work product'))).toBe(true);
+    expect(result.nextActions.join('\n')).toContain('source-record-only support');
     expect(eventTypes).toContain('agent.run.blocked');
     expect(eventTypes).not.toContain('agent.run.completed');
   });

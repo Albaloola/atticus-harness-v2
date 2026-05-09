@@ -1,5 +1,21 @@
 import type { GlobalHarnessConfig, ProviderConfig, ProviderPolicy, ProviderProfile } from './schema.js';
 
+/**
+ * Provider Profiles
+ *
+ * All profiles below are supported by the UnifiedMasterOrchestrator. The
+ * orchestrator uses provider-agnostic JSON retry (retryNonJson on QueryLoop)
+ * — it works through prompt feedback, not provider-specific API parameters
+ * (response_format, outputSchema). No profile-specific code changes are
+ * required for orchestrator compatibility.
+ *
+ * The active profile controls the model used for the master orchestrator
+ * role via the 'reasoning' slot. Change providers with:
+ *
+ *   harness control-panel provider select <profile>
+ *   harness control-panel model set reasoning <model-id>
+ */
+
 export const DEFAULT_ACTIVE_PROVIDER = 'openrouter-deepseek';
 
 export const MODEL_ROLES = [

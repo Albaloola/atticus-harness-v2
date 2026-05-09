@@ -124,6 +124,26 @@ export function applyWorkerQualityGate(
   spawn: AgentSpawnInput,
   loopResult: QueryLoopResult,
 ): AgentStructuredResult {
+  if (loopResult.policyViolations?.length) {
+    return {
+      ...result,
+      status: 'needs_followup',
+      summary: `Worker output quarantined for "${spawn.title}": ${loopResult.policyViolations.join('; ')}. Prior summary: ${result.summary}`,
+      risks: [
+        ...result.risks,
+        {
+          risk: 'Worker used or relied on a source/tool surface forbidden by the active autonomy policy.',
+          severity: 'high',
+          mitigation: 'Rerun the worker under the current Harness policy and accept only evidence-backed output from approved tools.',
+        },
+      ],
+      nextActions: [
+        ...result.nextActions,
+        `Rerun worker task under policy supervision: ${spawn.title}`,
+      ],
+    };
+  }
+
   if (result.status !== 'completed' || loopResult.status !== 'completed') return result;
 
   const hasReducerOutput = result.findings.length > 0 ||

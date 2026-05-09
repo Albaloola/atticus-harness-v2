@@ -23,6 +23,9 @@ export class MiniOrchestrator {
     const { matterName, phase, objective, maxDepth, maxConcurrency, parentRunId, phaseTaskId, runtime } = this.input;
     const phaseName = phase?.id || 'unknown';
     const providerPolicy = this.input.providerPolicy ?? DEFAULTS.providerPolicy;
+    const phaseAllowedTools = allowedToolsForPhase(phaseName, {
+      allowNetwork: Boolean(this.input.autonomy?.autoApproveWeb),
+    });
     const miniModel = selectModelForTask({
       providerPolicy,
       role: 'mini_orchestrator',
@@ -86,7 +89,7 @@ export class MiniOrchestrator {
                 title: w.title,
                 objective: w.title,
                 contextPack: this.phaseContextPack(phaseName, objective, w.title),
-                allowedTools: allowedToolsForPhase(phaseName),
+                allowedTools: phaseAllowedTools,
                 maxTurns: 15,
                 maxDepth: childMaxDepth,
                 depth: 2,
@@ -300,7 +303,9 @@ export class MiniOrchestrator {
         title: `Retry: ${input.originalTitle}`,
         objective: retryObjective,
         contextPack: this.phaseContextPack(input.phaseName, retryObjective, input.originalTitle),
-        allowedTools: allowedToolsForPhase(input.phaseName),
+        allowedTools: allowedToolsForPhase(input.phaseName, {
+          allowNetwork: Boolean(this.input.autonomy?.autoApproveWeb),
+        }),
         maxTurns: 10,
         maxDepth: input.childMaxDepth,
         depth: 3,

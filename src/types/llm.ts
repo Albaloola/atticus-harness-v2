@@ -17,6 +17,7 @@ export interface LLMConfig {
   disableThinking?: boolean;
   maxRetries?: number;
   timeoutMs?: number;
+  mcpContext?: Record<string, string>;
 }
 
 export interface LLMRequest {

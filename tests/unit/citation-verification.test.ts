@@ -74,4 +74,24 @@ describe('citation collection', () => {
 
     expect(citations.map((citation) => citation.evidenceId)).toEqual(['EV-001', 'NAP-SRC-0001']);
   });
+
+  it('collects prose evidence IDs with chunk locators', () => {
+    const citations = collectCitationCandidates({
+      content: 'The tenancy began on 16 Sep 2025. ANF-SRC-0050 chunk 0; evidence_fact. Later support is ANF-SRC-0073 chunks 1-2.',
+      metadata: {},
+    });
+
+    expect(citations.map((citation) => citation.evidenceId)).toEqual(['ANF-SRC-0050', 'ANF-SRC-0073']);
+    expect(citations.map((citation) => citation.citationId)).toEqual(['ANF-SRC-0050 chunk 0', 'ANF-SRC-0073 chunks 1-2']);
+  });
+
+  it('does not duplicate bracketed citations when scanning prose IDs', () => {
+    const citations = collectCitationCandidates({
+      content: 'This sentence cites [ANF-SRC-0050] once.',
+      metadata: {},
+    });
+
+    expect(citations).toHaveLength(1);
+    expect(citations[0]).toMatchObject({ evidenceId: 'ANF-SRC-0050', citationId: 'ANF-SRC-0050' });
+  });
 });

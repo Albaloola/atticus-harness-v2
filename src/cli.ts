@@ -876,6 +876,7 @@ program
   .option('--json', 'JSON output')
   .option('--max-depth <n>', 'Maximum agent depth', String(DEFAULT_MAX_DEPTH))
   .option('--concurrency <n>', 'Maximum concurrent agents', String(DEFAULT_MAX_CONCURRENCY))
+  .option('--resume', 'Resume from the latest completed/blocked orchestration checkpoint or ledger')
   .action(async (matterName, options) => {
     const { default: handler } = await import('./commands/orchestrate.js');
     await handler(matterName, options);

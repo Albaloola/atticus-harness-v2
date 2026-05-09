@@ -6,12 +6,14 @@ import { listTasks, updateTask } from './tasks.js';
 export interface RuntimeRecoveryOptions {
   now?: Date;
   staleAfterMs?: number;
+  preserveInterruptedTasks?: boolean;
 }
 
 export interface RuntimeRecoveryResult {
   staleRuns: StaleRunRecovery[];
   expiredLeases: number;
   failedTasks: string[];
+  interruptedTasks: string[];
   recoveryDecisions: RuntimeRecoveryDecision[];
 }
 
@@ -56,6 +58,7 @@ export async function recoverStaleRuntimeState(
   const activeRunIds = new Set(activeRuns.map((run) => run.id));
   const staleRunIds = new Set(staleRuns.map((run) => run.runId));
   const failedTasks: string[] = [];
+  const interruptedTasks: string[] = [];
   const taskRecoveryDecisions = new Map<string, RuntimeRecoveryDecision>();
 
   for (const task of listTasks(matterName, { status: 'in_progress' })) {
@@ -69,12 +72,14 @@ export async function recoverStaleRuntimeState(
         : 'task has no owning run';
     const decision = buildTaskRecoveryDecision(task, reason, now);
     updateTask(matterName, task.id, {
-      status: 'failed',
+      status: options.preserveInterruptedTasks ? 'blocked' : 'failed',
       data: {
         runtimeRecovery: decision,
+        interruptedByResume: options.preserveInterruptedTasks ? true : undefined,
       },
     });
-    failedTasks.push(task.id);
+    if (options.preserveInterruptedTasks) interruptedTasks.push(task.id);
+    else failedTasks.push(task.id);
     taskRecoveryDecisions.set(task.id, decision);
   }
 
@@ -102,12 +107,25 @@ export async function recoverStaleRuntimeState(
         ...taskRecoveryDecisions.get(taskId),
       },
     }).catch((error: unknown) => reportRecoveryEventFailure('stale task', taskId, error))),
+    ...interruptedTasks.map((taskId) => appendEvent({
+      matterName,
+      type: 'agent.run.blocked' as const,
+      taskId,
+      source: 'system',
+      data: {
+        recovery: 'interrupted_task',
+        reason: taskRecoveryDecisions.get(taskId)?.staleReason ?? 'in-progress task was interrupted before resume',
+        interrupted: true,
+        ...taskRecoveryDecisions.get(taskId),
+      },
+    }).catch((error: unknown) => reportRecoveryEventFailure('interrupted task', taskId, error))),
   ]);
 
   return {
     staleRuns,
     expiredLeases: expiredLeases.length,
     failedTasks,
+    interruptedTasks,
     recoveryDecisions: [...runRecoveryDecisions, ...taskRecoveryDecisions.values()],
   };
 }

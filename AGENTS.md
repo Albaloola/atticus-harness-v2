@@ -16,6 +16,7 @@
 
 ## Architecture
 - CLI: commander (not yargs)
+- Orchestration: UnifiedMasterOrchestrator wraps a long-lived QueryLoop agent with orchestration tools (run_phase, get_orchestration_state), full harness editing authority, and provider-agnostic JSON retry (retryNonJson). Replaces the former MasterOrchestrator + MasterSupervisor split.
 - Storage: flat file JSON + better-sqlite3 for FTS
 - LLM: provider-routed clients for OpenAI-compatible/OpenRouter/DeepSeek direct, Anthropic, Codex SDK, and local profiles; use structured output, tool calling, and provider-native reasoning controls according to the selected provider profile
 - Tools: Tool<I,O> interface with call() + inputSchema

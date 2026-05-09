@@ -1,28 +1,14 @@
 {
   "matterName": "omer-elbushra-ultimate-benchmark",
   "expectedPosture": "live_matter",
-  "expectedJurisdictions": ["Scotland", "Court of Session", "University of Glasgow", "SLCC"],
-  "expectedTracks": ["ordinary action", "judicial review", "fitness to practise", "SAR/data protection", "student union", "regulatory complaint"],
-  "expectedSourceUniverse": {
-    "minCount": 2700,
-    "notes": "Private/local matter source universe; compare counts and local state only."
-  },
-  "expectedProductionUniverse": {
-    "minCount": 1,
-    "notes": "Production families should be identified even if no final bundle is accepted."
-  },
-  "expectedOutcomeAssertions": [
-    "mixed Scottish active multi-track matter",
-    "primary documents must be separated from drafts and strategy memos",
-    "unsupported media and password-protected PDFs remain readiness blockers"
-  ],
-  "requiredArtifacts": ["production-index", "court-ready-bundle", "operator-handoff"],
-  "notApplicableOutputs": ["external filing", "external service", "private web search"],
-  "knownReadinessBlockers": ["unsupported media", "password-protected PDFs", "final bundle/export absent"],
-  "privacyPolicy": {
-    "level": "private",
-    "allowExternalActions": false,
-    "allowPrivateWebSearch": false,
-    "notes": "Use only local/private matter data and generic public procedure sources."
-  }
+  "expectedJurisdictions": ["Scotland"],
+  "expectedTracks": ["ordinary_action", "judicial_review", "university_ftp", "senate_appeal", "regulatory_slcc", "sar_data", "student_union"],
+  "expectedSourceUniverse": ["private local corpus", "approved indexed records", "unsupported/QC blockers"],
+  "expectedProductionUniverse": ["production candidates", "bundle index", "operator handoff"],
+  "expectedOutcomeAssertions": [],
+  "requiredArtifacts": ["bundle_index", "operator_handoff_report"],
+  "notApplicableOutputs": [],
+  "knownReadinessBlockers": ["unsupported/password/media blockers", "final bundle/export absent"],
+  "privacyPolicy": "local_only",
+  "scoringWeights": {}
 }

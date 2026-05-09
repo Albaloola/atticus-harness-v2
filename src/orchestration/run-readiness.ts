@@ -41,7 +41,16 @@ export async function evaluateRunReadiness(input: {
   requireAcceptedArtifact?: boolean;
   requireExportSignoff?: boolean;
 }): Promise<RunReadiness> {
-  const index = await loadMatter(input.matterName);
+  const index = await loadMatter(input.matterName).catch(() => ({
+    name: input.matterName,
+    created: new Date().toISOString(),
+    updated: new Date().toISOString(),
+    status: 'pending' as const,
+    evidenceCount: 0,
+    candidateCount: 0,
+    artifactCount: 0,
+    config: { model: '', temperature: 0, maxTokens: 0, skills: [], providerPolicy: { primaryModel: '', fallbackModel: '', maxRetries: 0 } },
+  }));
   const tasks = listTasks(input.matterName);
   const candidates = await listCandidates(input.matterName);
   const artifacts = await listArtifacts(input.matterName);

@@ -474,6 +474,7 @@ function buildSchemaGuide(): MatterInventoryResult['schemaGuide'] {
       'Use evidence_items_v2 as the canonical manifest when present; legacy evidence is included for backwards compatibility.',
       'Use extraction_chunks for indexed text search chunks and evidence_chunks_v2 for page-aware v2 chunks.',
       'Do not guess old tables such as evidence_index, findings_core, review_tasks, matter_kv, or productions.',
+      'JSON files in _candidates are candidate artifacts; transcript-*.md files in _candidates are agent telemetry and are intentionally not counted as candidates.',
     ],
     exampleQueries: [
       'SELECT evidence_id, original_filename, source_type, status FROM evidence_items_v2 ORDER BY evidence_id',

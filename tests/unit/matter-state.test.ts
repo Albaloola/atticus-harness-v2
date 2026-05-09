@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFile, rm } from 'fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { getStateDb, closeStateDb } from '../../src/state/index.js';
 import { appendEvent, listEvents, getEventCount } from '../../src/state/events.js';
 import { createTask, updateTask, getTask, listTasks } from '../../src/state/tasks.js';
@@ -627,6 +627,34 @@ describe('Snapshot', () => {
     expect(snapshot.taskCounts.total).toBe(3);
     expect(snapshot.taskCounts.pending).toBe(2);
     expect(snapshot.taskCounts.completed).toBe(1);
+  });
+
+
+
+  it('reports candidate/artifact store telemetry without counting transcripts as candidates', async () => {
+    await saveCandidate(matterName, {
+      id: 'candidate-json-1',
+      matterName,
+      type: 'draft',
+      title: 'JSON candidate',
+      content: 'candidate content',
+      status: 'candidate',
+      created: new Date().toISOString(),
+      metadata: {},
+    });
+    await writeFile(getMatterPath(matterName, '_candidates', 'transcript-2026-05-09.md'), 'agent transcript', 'utf-8');
+    await mkdir(getMatterPath(matterName, '_artifacts'), { recursive: true });
+    await writeFile(getMatterPath(matterName, '_artifacts', 'notes.md'), 'non-json artifact sidecar', 'utf-8');
+
+    const snapshot = await deriveSnapshot(matterName);
+
+    expect(snapshot.storeTelemetry?.candidateSummary.jsonCount).toBe(1);
+    expect(snapshot.storeTelemetry?.candidateSummary.transcriptCount).toBe(1);
+    expect(snapshot.storeTelemetry?.candidateSummary.nonJsonCount).toBe(1);
+    expect(snapshot.storeTelemetry?.artifactSummary.nonJsonCount).toBe(1);
+    expect(snapshot.storeTelemetry?.reconciliation.notes).toEqual(
+      expect.arrayContaining([expect.stringContaining('transcript file')]),
+    );
   });
 
   it('costs have expected shape', async () => {

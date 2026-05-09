@@ -124,6 +124,7 @@ describe('deep read tools', () => {
 
       expect(blocked.success).toBe(false);
       expect(blocked.error).toContain('read-only SELECT');
+      expect(blocked.error).toContain('matter_inventory');
       expect(allowed.success).toBe(true);
     } finally {
       closeDb(matterName);
@@ -141,6 +142,7 @@ describe('deep read tools', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('SQL error');
+      expect(result.error).toContain('matter_inventory');
       expect(result.error).toContain('Available schema');
       expect(result.error).toContain('evidence(');
       expect(result.error).toContain('original_path');
@@ -270,6 +272,7 @@ describe('deep read tools', () => {
       });
       expect(manifest.data?.items[0].readHint).toContain('evidence_chunk_read');
       expect(schemaGuide.output).toContain('Do not guess old tables');
+      expect(schemaGuide.output).toContain('transcript-*.md files');
       expect(schemaGuide.data?.schemaGuide.canonicalTables).toContain('evidence_items_v2');
     } finally {
       closeDb(matterName);

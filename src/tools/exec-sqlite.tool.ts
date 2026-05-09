@@ -3,7 +3,7 @@ import { getDb } from '../storage/sqlite/index.js';
 
 export class ExecSqliteTool implements Tool<{ sql: string; params?: unknown[] }, unknown[]> {
   readonly name = 'exec_sqlite';
-  readonly description = 'Execute a SQL query on the evidence database. Use SELECT only (read-only). Returns rows as arrays.';
+  readonly description = 'Execute a read-only SQL query on the evidence database. Use matter_inventory first for manifest, production-candidate, bundle-index, and schema-guide work; SELECT and safe metadata PRAGMAs only.';
   readonly inputSchema = {
     type: 'object',
     properties: {
@@ -15,7 +15,7 @@ export class ExecSqliteTool implements Tool<{ sql: string; params?: unknown[] },
 
   async call(args: { sql: string; params?: unknown[] }, context: ToolUseContext): Promise<ToolResult<unknown[]>> {
     if (!isAllowedReadOnlySql(args.sql)) {
-      return { success: false, error: 'Only read-only SELECT queries and safe metadata PRAGMAs are allowed' };
+      return { success: false, error: 'Only read-only SELECT queries and safe metadata PRAGMAs are allowed. Use matter_inventory({ view: "schema_guide" }) before guessing table or column names.' };
     }
 
     if (!context.matterName) {
@@ -30,7 +30,7 @@ export class ExecSqliteTool implements Tool<{ sql: string; params?: unknown[] },
       return { success: true, data: rows as unknown[], output: output.length > 5000 ? output.substring(0, 5000) + '\n... [truncated]' : output };
     } catch (err: unknown) {
       const schemaHint = buildSchemaHint(db);
-      return { success: false, error: `SQL error: ${(err as Error).message}${schemaHint ? `\n${schemaHint}` : ''}` };
+      return { success: false, error: `SQL error: ${(err as Error).message}\nUse matter_inventory({ view: "schema_guide" }) for canonical manifest and production queries.${schemaHint ? `\n${schemaHint}` : ''}` };
     }
   }
 

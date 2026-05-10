@@ -15,10 +15,11 @@ import { acceptCandidate, saveCandidate } from '../../src/storage/candidate.js';
 import { deleteMatter, initMatter } from '../../src/storage/matter.js';
 
 describe('document output pipeline', () => {
-  const matterName = 'test-document-output-pipeline';
+  let matterName: string;
   let scotCourtsDir: string;
 
   beforeEach(async () => {
+    matterName = `test-document-output-pipeline-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     await initMatter(matterName);
     scotCourtsDir = await mkdtemp(join(tmpdir(), 'atticus-scotcourts-'));
   });
@@ -58,6 +59,35 @@ describe('document output pipeline', () => {
       source: 'orchestrator',
     });
     expect(contract.formQuery).toBe('witness statement');
+  });
+
+  it('formats review-required candidate outputs when acceptance has not happened yet', async () => {
+    await saveCandidate(matterName, {
+      id: 'jr-draft',
+      matterName,
+      type: 'draft',
+      title: 'Draft Judicial Review Petition',
+      content: 'Petition body tied to OME-SRC-0001.',
+      status: 'candidate',
+      created: '2026-05-09T09:00:00.000Z',
+      metadata: {
+        phase: 'document_production',
+        citations: [{ citationId: 'C1', evidenceId: 'OME-SRC-0001', quote: 'petition body' }],
+      },
+    });
+
+    const result = await runDocumentOutputPipeline({
+      matterName,
+      generatedAt: new Date('2026-05-10T09:00:00.000Z'),
+    });
+
+    expect(result.produced).toHaveLength(1);
+    expect(result.blockers[0]).toContain('review-required outputs from unaccepted candidate drafts');
+    const zip = await JSZip.loadAsync(await readFile(result.produced[0].path));
+    const documentXml = await zip.file('word/document.xml')?.async('string');
+    expect(documentXml).toContain('REVIEW REQUIRED');
+    expect(documentXml).toContain('has not passed reducer acceptance');
+    await expect(getDocumentOutputBundle(matterName)).resolves.toBeUndefined();
   });
 
   it('creates polished docx/txt outputs, archives superseded files, and writes a manifest', async () => {

@@ -5,6 +5,7 @@ import { getDocumentOutputBundle, type DocumentOutputBundleSummary } from '../ex
 import type { Artifact, ArtifactType, CandidateArtifact } from '../types/artifact.js';
 import type { LegalArtifactType } from '../legal/artifact-types.js';
 import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
+import { requiredOutputsForPhase } from '../legal/phase-contracts.js';
 
 export type GapAssetSource = 'artifact' | 'candidate' | 'output';
 export type GapAssetCategory = 'draft' | 'report' | 'task' | 'communication';
@@ -30,6 +31,8 @@ export interface GapRequirement {
   reason: string;
   phaseId?: string;
   outputType?: LegalArtifactType | string;
+  acceptedArtifactRequired?: boolean;
+  outputBundleRequired?: boolean;
 }
 
 export interface GapMatch {
@@ -217,21 +220,30 @@ export async function buildCaseGapAnalysis(input: CaseGapAnalysisInput): Promise
 
 export async function buildOrchestrationGapAnalysis(input: OrchestrationGapAnalysisInput): Promise<GapAnalysisResult> {
   const phases = input.phases ?? getDefaultPhases();
-  const [artifacts, candidates, evidence] = await Promise.all([
+  const [artifacts, candidates, evidence, outputBundle] = await Promise.all([
     listArtifacts(input.matterName).catch(() => []),
     listCandidates(input.matterName).catch(() => []),
     listEvidence(input.matterName).catch(() => []),
+    getDocumentOutputBundle(input.matterName).catch(() => undefined),
   ]);
   const latestEvidenceIngested = latestTimestamp(evidence.map((record) => record.ingested));
-  const requirements = phases.flatMap((phase) => phase.expectedOutputTypes.map((outputType) => ({
-    id: `${phase.id}:${outputType}`,
-    label: readableLabel(outputType),
-    category: categoryForLegalOutput(outputType),
-    aliases: aliasesForLegalOutput(outputType),
-    reason: `${phase.name} expects ${readableLabel(outputType)}.`,
-    phaseId: phase.id,
-    outputType,
-  } satisfies GapRequirement)));
+  const requirements = phases.flatMap((phase) => {
+    const contractsByType = new Map(requiredOutputsForPhase(phase).map((output) => [output.outputType, output]));
+    return phase.expectedOutputTypes.map((outputType) => {
+      const contract = contractsByType.get(outputType);
+      return {
+        id: `${phase.id}:${outputType}`,
+        label: readableLabel(outputType),
+        category: categoryForLegalOutput(outputType),
+        aliases: aliasesForLegalOutput(outputType),
+        reason: `${phase.name} expects ${readableLabel(outputType)}.`,
+        phaseId: phase.id,
+        outputType,
+        acceptedArtifactRequired: contract?.acceptedArtifactRequired ?? false,
+        outputBundleRequired: phase.id === 'document_output_pipeline',
+      } satisfies GapRequirement;
+    });
+  });
 
   return analyzeRequirements({
     matterName: input.matterName,
@@ -240,6 +252,7 @@ export async function buildOrchestrationGapAnalysis(input: OrchestrationGapAnaly
     inventoryInput: {
       artifacts,
       candidates,
+      outputBundles: outputBundle ? [outputBundle] : [],
       latestEvidenceIngested,
     },
   });
@@ -282,7 +295,7 @@ function analyzeRequirements(input: {
   const gaps: GapRequirement[] = [];
 
   for (const requirement of input.requirements) {
-    const matches = inventory.filter((asset) => assetMatchesRequirement(asset, requirement));
+    const matches = inventory.filter((asset) => assetMatchesRequirement(asset, requirement) && assetSatisfiesReadiness(asset, requirement));
     const freshMatch = bestAsset(matches.filter((asset) => !asset.stale));
     if (freshMatch) {
       complete.push(toMatch(requirement, freshMatch));
@@ -356,7 +369,7 @@ function buildInventory(input: InventoryInput): GapInventoryAsset[] {
       return {
         id: candidate.id,
         source: 'candidate' as const,
-        status: 'candidate' as const,
+        status: candidate.status === 'accepted' ? 'accepted' as const : 'candidate' as const,
         type: candidate.type,
         category: classifyCategory(candidate.type, candidate.title),
         title: candidate.title,
@@ -388,6 +401,16 @@ function buildInventory(input: InventoryInput): GapInventoryAsset[] {
     const bTime = b.timestamp ?? '';
     return aTime.localeCompare(bTime);
   });
+}
+
+function assetSatisfiesReadiness(asset: GapInventoryAsset, requirement: GapRequirement): boolean {
+  if (requirement.outputBundleRequired) {
+    return asset.source === 'output';
+  }
+  if (requirement.acceptedArtifactRequired) {
+    return asset.status === 'accepted';
+  }
+  return true;
 }
 
 function deriveCaseRequirements(input: CaseGapAnalysisInput): GapRequirement[] {

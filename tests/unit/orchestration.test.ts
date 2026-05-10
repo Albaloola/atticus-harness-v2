@@ -665,6 +665,28 @@ async function seedAllDefaultPhaseDeliverables(matterName: string): Promise<void
       );
     }
   }
+  await mkdir(getMatterPath(matterName, '_output'), { recursive: true });
+  await writeFile(getMatterPath(matterName, '_output', 'manifest.json'), JSON.stringify({
+    version: 1,
+    matterName,
+    generatedAt: new Date().toISOString(),
+    phaseId: 'document_output_pipeline',
+    sourceCount: 1,
+    producedCount: 1,
+    archivedCount: 0,
+    blockers: [],
+    outputs: [{
+      id: 'existing-output',
+      sourceId: 'existing-document-output-bundle',
+      source: 'artifact',
+      title: 'Document Output Bundle',
+      kind: 'report',
+      format: 'docx',
+      formatGuideline: 'Existing output bundle for no-new-work test.',
+      path: getMatterPath(matterName, '_output', 'existing-output.docx'),
+    }],
+    summary: 'Existing accepted document output bundle.',
+  }), 'utf-8');
 }
 
 function makeToolContext(matterName: string): ToolUseContext {

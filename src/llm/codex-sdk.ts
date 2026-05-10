@@ -46,13 +46,6 @@ const NATIVE_ACTION_TYPES = new Set([
   'web_search',
 ]);
 
-const DEFAULT_HARNESS_MCP_SERVER_PATH = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'mcp',
-  'harness-server.js',
-);
-
 const HARNESS_TOOL_RESPONSE_SCHEMA = {
   type: 'object',
   additionalProperties: false,
@@ -66,16 +59,23 @@ const HARNESS_TOOL_RESPONSE_SCHEMA = {
         properties: {
           id: { type: 'string' },
           name: { type: 'string' },
-          args: { type: 'object', additionalProperties: true },
+          argsJson: { type: 'string' },
         },
-        required: ['name', 'args'],
+        required: ['id', 'name', 'argsJson'],
       },
     },
     content: { type: 'string' },
-    result: { type: 'object', additionalProperties: true },
+    resultJson: { type: 'string' },
   },
-  required: ['type'],
+  required: ['type', 'toolCalls', 'content', 'resultJson'],
 } as const;
+
+const DEFAULT_HARNESS_MCP_SERVER_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'mcp',
+  'harness-server.js',
+);
 
 export interface CodexSdkClientOptions {
   providerName?: string;
@@ -158,6 +158,10 @@ export class CodexSdkClient implements LLMClient {
         approvalPolicy: 'never',
         additionalDirectories: [],
       });
+      // Harness tool arguments are arbitrary JSON objects whose shape depends on
+      // the selected tool. The Codex Responses API requires strict object
+      // schemas, so the structured-output schema carries arguments as JSON text
+      // (`argsJson`) and the Harness parses them back before tool execution.
       const outputSchema = usesHarnessToolLoop
         ? HARNESS_TOOL_RESPONSE_SCHEMA
         : request.config.jsonSchema?.schema;
@@ -356,7 +360,7 @@ function buildPrompt(
   const toolSection = toolMode === 'mcp' && tools?.length
     ? `\n\n## HARNESS MCP TOOLS\nThe Harness exposes case tools through the MCP server named "harness". Use those MCP tools directly when they are useful. Do not emit OpenAI-style function calls; Codex owns tool execution in this provider mode.\n\nDo not use Codex native web/search, shell commands, or direct file edits as substitutes for Harness tools. If a Harness MCP tool is blocked by policy or unavailable, report that as a gap instead of bypassing the Harness policy surface.\n\n${serializedTools}`
     : toolMode === 'harness' && tools?.length
-      ? `\n\n## HARNESS-OWNED TOOL PROTOCOL\nHarness owns tool execution in this provider mode. Do not run shell commands, make MCP calls, edit files, or use native web/search tools. Request Harness tools only by returning one valid JSON object.\n\nAvailable Harness tools:\n${serializedTools}\n\nWhen you need tool output, return exactly:\n{"type":"tool_calls","toolCalls":[{"name":"tool_name","args":{}}]}\n\nWhen your task is complete, return exactly:\n{"type":"final","content":"final answer"}\n\nIf the required final answer is itself a JSON object, put that object in "result" instead of stringifying it:\n{"type":"final","result":{"status":"completed","summary":"..."}}`
+      ? `\n\n## HARNESS-OWNED TOOL PROTOCOL\nHarness owns tool execution in this provider mode. Do not run shell commands, make MCP calls, edit files, or use native web/search tools. Request Harness tools only by returning one valid JSON object.\n\nAvailable Harness tools:\n${serializedTools}\n\nWhen you need tool output, return exactly this shape. Put the tool arguments in argsJson as a JSON-encoded object string:\n{"type":"tool_calls","toolCalls":[{"id":"call_1","name":"tool_name","argsJson":"{}"}],"content":"","resultJson":""}\n\nWhen your task is complete, return exactly:\n{"type":"final","toolCalls":[],"content":"final answer","resultJson":""}\n\nIf the required final answer is itself a JSON object, put that object in resultJson as a JSON-encoded string instead of stringifying it in content:\n{"type":"final","toolCalls":[],"content":"","resultJson":"{\\"status\\":\\"completed\\",\\"summary\\":\\"...\\"}"}`
     : '';
 
   return forceJsonInstruction
@@ -372,16 +376,25 @@ function parseHarnessToolResponse(text: string): { content: string; toolCalls?: 
     const calls = Array.isArray(parsed.toolCalls) ? parsed.toolCalls : [];
     const toolCalls = calls.flatMap((call, index): ToolCall[] => {
       if (!isRecord(call) || typeof call.name !== 'string') return [];
+      const args = isRecord(call.args)
+        ? call.args
+        : typeof call.argsJson === 'string'
+          ? parseJsonRecord(call.argsJson) ?? {}
+          : {};
       return [{
         id: typeof call.id === 'string' && call.id ? call.id : `codex_tool_${index + 1}`,
         name: call.name,
-        args: isRecord(call.args) ? call.args : {},
+        args,
       }];
     });
     return { content: '', toolCalls };
   }
 
   if (parsed.type === 'final') {
+    if (typeof parsed.resultJson === 'string' && parsed.resultJson.trim()) {
+      const result = parseJsonObject(parsed.resultJson);
+      return { content: result ? JSON.stringify(result) : parsed.resultJson };
+    }
     if (parsed.result !== undefined) {
       return { content: JSON.stringify(parsed.result) };
     }
@@ -393,6 +406,15 @@ function parseHarnessToolResponse(text: string): { content: string; toolCalls?: 
   }
 
   return undefined;
+}
+
+function parseJsonRecord(text: string): Record<string, unknown> | undefined {
+  try {
+    const parsed = JSON.parse(text);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function parseJsonObject(text: string): Record<string, unknown> | undefined {

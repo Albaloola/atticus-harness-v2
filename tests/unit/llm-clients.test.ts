@@ -720,6 +720,7 @@ describe('CodexSdkClient', () => {
     expect(runStreamed.mock.calls[0][0]).toContain('HARNESS-OWNED TOOL PROTOCOL');
     expect(runStreamed.mock.calls[0][0]).not.toContain('HARNESS MCP TOOLS');
     expect(runStreamed.mock.calls[0][1].outputSchema.properties.type.enum).toEqual(['tool_calls', 'final']);
+    expect(runStreamed.mock.calls[0][1].outputSchema.properties.toolCalls.items.properties.argsJson.type).toBe('string');
   });
 
   it('unwraps Harness-owned final result objects for downstream structured parsing', async () => {
@@ -746,6 +747,52 @@ describe('CodexSdkClient', () => {
       summary: 'done',
     });
     expect(response.toolCalls).toBeUndefined();
+  });
+
+  it('parses strict Harness-owned argsJson and resultJson envelopes', async () => {
+    const runStreamed = mockCodexRun([
+      {
+        type: 'item.completed',
+        item: {
+          id: 'msg-1',
+          type: 'agent_message',
+          text: '{"type":"tool_calls","toolCalls":[{"id":"call_1","name":"matter_inventory","argsJson":"{\\"view\\":\\"manifest\\",\\"limit\\":1}"}],"content":"","resultJson":""}',
+        },
+      },
+    ]);
+    const client = new CodexSdkClient();
+
+    const response = await client.chatWithTools({
+      messages: [{ role: 'user', content: 'inspect' }],
+      tools: [{ name: 'matter_inventory', description: 'Inventory', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    });
+
+    expect(response.toolCalls?.[0]).toMatchObject({
+      id: 'call_1',
+      name: 'matter_inventory',
+      args: { view: 'manifest', limit: 1 },
+    });
+    expect(runStreamed.mock.calls[0][1].outputSchema.required).toEqual(['type', 'toolCalls', 'content', 'resultJson']);
+
+    mockCodexRun([
+      {
+        type: 'item.completed',
+        item: {
+          id: 'msg-2',
+          type: 'agent_message',
+          text: '{"type":"final","toolCalls":[],"content":"","resultJson":"{\\"status\\":\\"completed\\",\\"summary\\":\\"done\\"}"}',
+        },
+      },
+    ]);
+
+    const finalResponse = await client.chatWithTools({
+      messages: [{ role: 'user', content: 'finish' }],
+      tools: [{ name: 'matter_inventory', description: 'Inventory', inputSchema: { type: 'object' } }],
+      config: { model: 'gpt-5.5' },
+    });
+
+    expect(JSON.parse(finalResponse.content)).toMatchObject({ status: 'completed', summary: 'done' });
   });
 
   it('rejects native Codex actions in Harness-owned tool mode', async () => {

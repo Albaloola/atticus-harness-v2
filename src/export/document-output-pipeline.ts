@@ -100,6 +100,7 @@ interface AcceptedWorkProduct {
   content: string;
   acceptedAt: string;
   citations: CitationRef[];
+  reviewRequired?: boolean;
 }
 
 interface DocxParagraph {
@@ -163,7 +164,7 @@ export async function runDocumentOutputPipeline(
   const manifestPath = join(outputDir, OUTPUT_MANIFEST);
   await mkdir(outputDir, { recursive: true });
 
-  const sources = await loadAcceptedWorkProducts(input.matterName);
+  const { products: sources, reviewRequiredFallback } = await loadWorkProductsForOutput(input.matterName);
   if (sources.length === 0) {
     const result: DocumentOutputPipelineResult = {
       matterName: input.matterName,
@@ -181,7 +182,9 @@ export async function runDocumentOutputPipeline(
 
   const produced: ProducedDocumentOutput[] = [];
   const archived: string[] = [];
-  const blockers: string[] = [];
+  const blockers: string[] = reviewRequiredFallback
+    ? ['No reducer-accepted artifacts or accepted candidates were available; produced review-required outputs from unaccepted candidate drafts.']
+    : [];
   const contracts = input.outputContracts ?? deriveOutputContracts(input.objective);
 
   for (const source of sources) {
@@ -214,7 +217,10 @@ export async function runDocumentOutputPipeline(
     const archivedPreviousPath = await archiveExistingOutput(outputPath, generatedAt);
     if (archivedPreviousPath) archived.push(archivedPreviousPath);
 
-    const cleanBody = humanize(source.content);
+    const reviewWarning = source.reviewRequired
+      ? 'REVIEW REQUIRED: This output was formatted from an unaccepted candidate draft. It has not passed reducer acceptance, hostile review, or final legal-readiness gates.\n\n'
+      : '';
+    const cleanBody = `${reviewWarning}${humanize(source.content)}`;
     const outputSource = { ...source, title };
     if (format === 'txt') {
       await writeFile(outputPath, renderEmailText(outputSource, cleanBody, generatedIso), 'utf-8');
@@ -302,6 +308,7 @@ export async function getDocumentOutputBundle(matterName: string): Promise<Docum
     const manifest = JSON.parse(content) as DocumentOutputManifest;
     if (manifest.phaseId !== 'document_output_pipeline') return undefined;
     if (!Array.isArray(manifest.outputs) || manifest.outputs.length === 0) return undefined;
+    if (Array.isArray(manifest.blockers) && manifest.blockers.length > 0) return undefined;
     return {
       id: 'document_output_bundle',
       title: 'Document Output Bundle',
@@ -598,6 +605,17 @@ export function humanize(text: string): string {
     .trim();
 }
 
+async function loadWorkProductsForOutput(matterName: string): Promise<{ products: AcceptedWorkProduct[]; reviewRequiredFallback: boolean }> {
+  const accepted = await loadAcceptedWorkProducts(matterName);
+  if (accepted.length > 0) return { products: accepted, reviewRequiredFallback: false };
+
+  const candidates = await listCandidates(matterName).catch(() => []);
+  const fallback = candidates
+    .filter((candidate) => candidate.status === 'candidate' && isOutputWorthyCandidate(candidate))
+    .map((candidate) => ({ ...fromCandidate(candidate), reviewRequired: true }));
+  return { products: dedupeAndSortWorkProducts(fallback), reviewRequiredFallback: fallback.length > 0 };
+}
+
 async function loadAcceptedWorkProducts(matterName: string): Promise<AcceptedWorkProduct[]> {
   const [artifacts, candidates] = await Promise.all([
     listArtifacts(matterName).catch(() => []),
@@ -611,6 +629,10 @@ async function loadAcceptedWorkProducts(matterName: string): Promise<AcceptedWor
     products.push(fromCandidate(candidate));
   }
 
+  return dedupeAndSortWorkProducts(products);
+}
+
+function dedupeAndSortWorkProducts(products: AcceptedWorkProduct[]): AcceptedWorkProduct[] {
   const seen = new Set<string>();
   return products
     .filter((product) => {
@@ -624,6 +646,17 @@ async function loadAcceptedWorkProducts(matterName: string): Promise<AcceptedWor
       if (kindOrder !== 0) return kindOrder;
       return a.acceptedAt.localeCompare(b.acceptedAt) || a.title.localeCompare(b.title);
     });
+}
+
+function isOutputWorthyCandidate(candidate: CandidateArtifact): boolean {
+  const phase = typeof candidate.metadata.phase === 'string' ? candidate.metadata.phase : '';
+  if (phase === 'document_production' || phase === 'bundle_and_war_room_assembly' || phase === 'operator_handoff') {
+    return true;
+  }
+  if (candidate.type === 'draft' || candidate.type === 'email' || candidate.type === 'communication' || candidate.type === 'task') {
+    return true;
+  }
+  return false;
 }
 
 function fromArtifact(artifact: Artifact): AcceptedWorkProduct {

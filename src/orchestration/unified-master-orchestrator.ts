@@ -773,26 +773,28 @@ async function runDeterministicPhaseDriver(input: {
     (requiredPhaseIds.size === 0 || requiredPhaseIds.has(phase.id)) &&
     (
       input.resumePlan
-        ? !isRecoveredPhaseCompleteEnough(phase.id, recoveredResultByPhase.get(phase.id))
+        ? !isRecoveredPhaseCompleteEnough(phase.id, recoveredResultByPhase.get(phase.id), input.gapAnalysis)
         : (input.gapAnalysis.force || index >= 0)
     )
   );
   const phaseResults: OrchestratorResult['phaseResults'] = [
-    ...(input.resumePlan?.phaseResults.map(({ phase, result }) => ({
-      phaseId: phase.id,
-      phaseName: phase.name,
-      status: result.status === 'completed' ? 'completed' as const : result.status === 'failed' ? 'failed' as const : 'blocked' as const,
-      summary: result.summary,
-      findings: result.findings.map((finding) => ({
-        claim: finding.claim,
-        support: finding.support,
-        confidence: finding.confidence,
-        kind: finding.kind,
-      })),
-      risks: result.risks,
-      artifactIds: result.artifactIds,
-      workerResults: [],
-    })) ?? []),
+    ...(input.resumePlan?.phaseResults
+      .filter(({ phase, result }) => isRecoveredPhaseCompleteEnough(phase.id, result, input.gapAnalysis))
+      .map(({ phase, result }) => ({
+        phaseId: phase.id,
+        phaseName: phase.name,
+        status: result.status === 'completed' ? 'completed' as const : result.status === 'failed' ? 'failed' as const : 'blocked' as const,
+        summary: result.summary,
+        findings: result.findings.map((finding) => ({
+          claim: finding.claim,
+          support: finding.support,
+          confidence: finding.confidence,
+          kind: finding.kind,
+        })),
+        risks: result.risks,
+        artifactIds: result.artifactIds,
+        workerResults: [],
+      })) ?? []),
   ];
 
   for (const phase of phasesToRun) {
@@ -891,8 +893,13 @@ async function runDeterministicPhaseDriver(input: {
   };
 }
 
-function isRecoveredPhaseCompleteEnough(phaseId: string, result: AgentStructuredResult | undefined): boolean {
+function isRecoveredPhaseCompleteEnough(
+  phaseId: string,
+  result: AgentStructuredResult | undefined,
+  gapAnalysis: GapAnalysisResult,
+): boolean {
   if (result?.status !== 'completed') return false;
+  if (gapAnalysis.toProduce.some((requirement) => requirement.phaseId === phaseId)) return false;
   if ((phaseId === 'document_production' || phaseId === 'bundle_and_war_room_assembly') && result.artifactIds.length === 0) return false;
   return true;
 }

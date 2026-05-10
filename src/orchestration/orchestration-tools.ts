@@ -7,6 +7,8 @@ import { loadOrchestrationCheckpoint, saveOrchestrationCheckpoint } from './chec
 import { resolveConfig } from '../config/loader.js';
 import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
 import { buildMatterStoreTelemetry } from '../observability/store-telemetry.js';
+import { buildOrchestrationGapAnalysis, type GapAnalysisResult } from './gap-analysis.js';
+import { runDocumentOutputPipeline } from '../export/document-output-pipeline.js';
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
 import type { AgentStructuredResult } from './types.js';
 import type { OrchestrationRuntime } from './runtime.js';
@@ -22,6 +24,8 @@ export interface PhaseToolsConfig {
   providerPolicy?: ProviderPolicy;
   runtime?: OrchestrationRuntime;
   resumePlan?: ProviderAgnosticResumePlan;
+  force?: boolean;
+  gapAnalysis?: GapAnalysisResult;
 }
 
 interface RunPhaseArgs {
@@ -61,6 +65,15 @@ interface OrchestrationStateResult {
     diagnostics: ProviderAgnosticResumePlan['diagnostics'];
   };
   telemetry?: Record<string, unknown>;
+  gapAnalysis?: {
+    summary: string;
+    force: boolean;
+    noNewWorkNeeded: boolean;
+    skipped: number;
+    stale: number;
+    missing: number;
+    toProduce: string[];
+  };
 }
 
 export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs, RunPhaseResult> {
@@ -96,6 +109,13 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
         }
 
         const phaseIndex = allPhases.findIndex((p) => p.id === phase.id);
+        const dependencyBlocker = phaseDependencyBlocker(config.matterName, allPhases, phaseIndex, config.resumePlan, config.gapAnalysis);
+        if (dependencyBlocker) {
+          return {
+            success: false,
+            error: dependencyBlocker,
+          };
+        }
         const recovered = config.resumePlan?.phaseResults.find((item) => item.phase.id === phase.id);
         if (config.resumePlan && phaseIndex >= 0 && phaseIndex < config.resumePlan.startIndex && recovered) {
           return {
@@ -109,6 +129,79 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
               findingCount: recovered.result.findings.length,
               riskCount: recovered.result.risks.length,
               artifactIds: recovered.result.artifactIds,
+            },
+          };
+        }
+
+        const phaseGapAnalysis = await buildOrchestrationGapAnalysis({
+          matterName: config.matterName,
+          objective: args.objective,
+          phases: [phase],
+          force: config.force,
+        });
+        if (phaseGapAnalysis.noNewWorkNeeded) {
+          const task = createTask({
+            matterName: config.matterName,
+            runId: config.masterRunId,
+            kind: 'mini_orchestrator',
+            type: phase.id,
+            title: `Phase: ${phase.name}`,
+            priority: 'high',
+            depth: 1,
+            assignedAgent: 'mini_orchestrator',
+            data: {
+              phaseId: phase.id,
+              objective: args.objective,
+              skippedByGapAnalysis: true,
+              gapAnalysis: summarizeGapAnalysisForState(phaseGapAnalysis),
+            },
+          });
+          const result = buildSkippedPhaseResult(phase, phaseGapAnalysis);
+          updateTask(config.matterName, task.id, {
+            status: 'completed',
+            data: {
+              phaseId: phase.id,
+              resultStatus: result.status,
+              summary: result.summary,
+              skippedByGapAnalysis: true,
+              artifactIds: result.artifactIds,
+              gapAnalysis: summarizeGapAnalysisForState(phaseGapAnalysis),
+            },
+          } as Parameters<typeof updateTask>[2]);
+          await appendEvent({
+            matterName: config.matterName,
+            type: 'orchestration.phase.skipped',
+            runId: config.masterRunId,
+            taskId: task.id,
+            data: {
+              role: 'mini_orchestrator',
+              phaseId: phase.id,
+              status: result.status,
+              summary: result.summary,
+              skippedByGapAnalysis: true,
+              skippedDeliverables: phaseGapAnalysis.skipped.length,
+            },
+            source: 'orchestration',
+          });
+          if (result.status === 'completed') {
+            persistPhaseCheckpoint(config, phase, result);
+          }
+
+          return {
+            success: true,
+            output: [
+              `Phase ${phase.name} skipped by smart gap analysis.`,
+              result.summary,
+              `Existing deliverables: ${phaseGapAnalysis.skipped.map((match) => `${match.requirementLabel} (${match.assetId})`).join(', ') || '(none)'}.`,
+            ].join('\n'),
+            data: {
+              phaseId: phase.id,
+              phaseName: phase.name,
+              status: result.status,
+              summary: result.summary,
+              findingCount: result.findings.length,
+              riskCount: result.risks.length,
+              artifactIds: result.artifactIds,
             },
           };
         }
@@ -135,6 +228,7 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
               resultStatus: result.status,
               summary: result.summary,
               deterministic: true,
+              artifactIds: result.artifactIds,
             },
           } as Parameters<typeof updateTask>[2]);
           await appendEvent({
@@ -153,7 +247,9 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
             },
             source: 'orchestration',
           });
-          persistPhaseCheckpoint(config, phase, result);
+          if (result.status === 'completed') {
+            persistPhaseCheckpoint(config, phase, result);
+          }
 
           return {
             success: true,
@@ -162,6 +258,60 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
               result.summary,
               `Findings: ${result.findings.length}. Risks: ${result.risks.length}.`,
               `Artifacts: ${result.artifactIds.join(', ') || '(none)'}.`,
+              `Next actions: ${result.nextActions.join(' | ')}`,
+            ].join('\n'),
+            data: {
+              phaseId: phase.id,
+              phaseName: phase.name,
+              status: result.status,
+              summary: result.summary,
+              findingCount: result.findings.length,
+              riskCount: result.risks.length,
+              artifactIds: result.artifactIds,
+            },
+          };
+        }
+
+        if (phase.id === 'document_output_pipeline') {
+          const result = await buildDocumentOutputPhase(config, phase, task.id, args.objective);
+          updateTask(config.matterName, task.id, {
+            status: result.status === 'completed' ? 'completed' : 'blocked',
+            blockedReason: result.status === 'completed' ? null : result.summary,
+            data: {
+              phaseId: phase.id,
+              resultStatus: result.status,
+              summary: result.summary,
+              deterministic: true,
+              artifactIds: result.artifactIds,
+              blocker: result.status === 'completed' ? undefined : buildPhaseBlocker(phase, result),
+            },
+          } as Parameters<typeof updateTask>[2]);
+          await appendEvent({
+            matterName: config.matterName,
+            type: result.status === 'completed' ? 'agent.run.completed' : 'agent.run.blocked',
+            runId: config.masterRunId,
+            taskId: task.id,
+            data: {
+              role: 'mini_orchestrator',
+              phaseId: phase.id,
+              status: result.status,
+              summary: result.summary,
+              findingCount: result.findings.length,
+              riskCount: result.risks.length,
+              deterministic: true,
+            },
+            source: 'orchestration',
+          });
+          if (result.status === 'completed') {
+            persistPhaseCheckpoint(config, phase, result);
+          }
+
+          return {
+            success: true,
+            output: [
+              `Phase ${phase.name} completed with status: ${result.status}.`,
+              result.summary,
+              `Outputs: ${result.artifactIds.join(', ') || '(none)'}.`,
               `Next actions: ${result.nextActions.join(' | ')}`,
             ].join('\n'),
             data: {
@@ -185,22 +335,25 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
           maxConcurrency: config.maxConcurrency,
           parentRunId: config.masterRunId,
           providerPolicy: resolvedConfig.providerPolicy,
-          autonomy: resolvedConfig.autonomy,
+          autonomy: config.autonomy ?? resolvedConfig.autonomy,
           phaseTaskId: task.id,
           runtime: config.runtime,
         });
 
         const result = await mini.execute();
+        const taskStatus = taskStatusForPhaseResult(phase, result);
+        const blocker = taskStatus === 'completed'
+          ? undefined
+          : buildPhaseBlocker(phase, result);
         updateTask(config.matterName, task.id, {
-          status: result.status === 'failed'
-            ? 'failed'
-            : result.status === 'blocked' || result.status === 'needs_followup'
-              ? 'blocked'
-              : 'completed',
+          status: taskStatus,
+          blockedReason: taskStatus === 'completed' ? null : result.summary,
           data: {
             phaseId: phase.id,
             resultStatus: result.status,
             summary: result.summary,
+            artifactIds: result.artifactIds,
+            blocker,
           },
         } as Parameters<typeof updateTask>[2]);
 
@@ -229,6 +382,133 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
       return true;
     },
   };
+}
+
+function buildSkippedPhaseResult(
+  phase: PhaseDefinition,
+  gapAnalysis: GapAnalysisResult,
+): AgentStructuredResult {
+  return {
+    status: 'completed',
+    summary: `Skipped ${phase.name}: smart gap analysis found ${gapAnalysis.skipped.length} existing fresh deliverable(s) and no missing or stale work for this phase.`,
+    findings: gapAnalysis.skipped.map((match) => ({
+      claim: `${match.requirementLabel} already exists as ${match.assetSource}:${match.assetId}.`,
+      support: match.assetTitle,
+      confidence: 'high',
+      kind: 'procedural_fact',
+    })),
+    risks: [],
+    proposedTasks: [],
+    artifactIds: [...new Set(gapAnalysis.skipped.map((match) => match.assetId))],
+    nextActions: ['Use --force to re-produce this phase despite existing deliverables.'],
+  };
+}
+
+function summarizeGapAnalysisForState(gapAnalysis: GapAnalysisResult): Record<string, unknown> {
+  return {
+    force: gapAnalysis.force,
+    summary: gapAnalysis.summary,
+    existingDeliverables: gapAnalysis.inventory.length,
+    skipped: gapAnalysis.skipped.length,
+    stale: gapAnalysis.stale.length,
+    missing: gapAnalysis.gaps.length,
+    toProduce: gapAnalysis.toProduce.map((requirement) => requirement.label),
+    noNewWorkNeeded: gapAnalysis.noNewWorkNeeded,
+  };
+}
+
+function phaseDependencyBlocker(
+  matterName: string,
+  phases: PhaseDefinition[],
+  phaseIndex: number,
+  resumePlan: ProviderAgnosticResumePlan | undefined,
+  gapAnalysis: GapAnalysisResult | undefined,
+): string | undefined {
+  if (phaseIndex <= 0) return undefined;
+  const phase = phases[phaseIndex];
+  if (!phase) return undefined;
+  const recoveredCompleted = new Set(
+    (resumePlan?.phaseResults ?? [])
+      .filter(({ result }) => result.status === 'completed')
+      .map(({ phase: recoveredPhase }) => recoveredPhase.id),
+  );
+  const tasks = listTasks(matterName).filter((task) => task.kind === 'mini_orchestrator');
+
+  for (const priorPhase of phases.slice(0, phaseIndex)) {
+    if (recoveredCompleted.has(priorPhase.id)) continue;
+    if (phaseSatisfiedByGapAnalysis(priorPhase.id, gapAnalysis)) continue;
+    const latestPriorTask = tasks
+      .filter((task) => task.type === priorPhase.id)
+      .sort((a, b) => b.updated.localeCompare(a.updated))[0];
+    if (!latestPriorTask) {
+      return `Cannot run ${phase.id} before dependency phase ${priorPhase.id} has completed. Run ${priorPhase.id} first or resume from a checkpoint that records it as completed.`;
+    }
+    if (latestPriorTask.status !== 'completed') {
+      return `Cannot run ${phase.id} because dependency phase ${priorPhase.id} is ${latestPriorTask.status}: ${latestPriorTask.blockedReason ?? stringData(latestPriorTask.data, 'summary', 'no structured blocker recorded')}`;
+    }
+    if (stringData(latestPriorTask.data, 'resultStatus') !== 'completed') {
+      return `Cannot run ${phase.id} because dependency phase ${priorPhase.id} did not return a completed phase result: ${stringData(latestPriorTask.data, 'summary', 'no summary recorded')}`;
+    }
+  }
+
+  if (phase.id === 'verification_and_hostile_review' || phase.id === 'bundle_and_war_room_assembly' || phase.id === 'operator_handoff' || phase.id === 'document_output_pipeline') {
+    if (phaseSatisfiedByGapAnalysis('document_production', gapAnalysis)) return undefined;
+    const documentProduction = tasks
+      .filter((task) => task.type === 'document_production')
+      .sort((a, b) => b.updated.localeCompare(a.updated))[0];
+    if (documentProduction && documentProduction.status === 'completed') {
+      const artifactIds = Array.isArray(documentProduction.data.artifactIds)
+        ? documentProduction.data.artifactIds.filter((id): id is string => typeof id === 'string')
+        : [];
+      if (artifactIds.length === 0) {
+        return `Cannot run ${phase.id} because document_production completed without reducer-visible artifactIds. Rerun document_production with submit_candidate output first.`;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function phaseSatisfiedByGapAnalysis(phaseId: string, gapAnalysis: GapAnalysisResult | undefined): boolean {
+  if (!gapAnalysis || gapAnalysis.force) return false;
+  const requirements = gapAnalysis.requirements.filter((requirement) => requirement.phaseId === phaseId);
+  if (requirements.length === 0) return false;
+  const satisfied = new Set(gapAnalysis.skipped.map((match) => match.requirementId));
+  return requirements.every((requirement) => satisfied.has(requirement.id));
+}
+
+function taskStatusForPhaseResult(
+  phase: PhaseDefinition,
+  result: AgentStructuredResult,
+): 'completed' | 'failed' | 'blocked' {
+  if (result.status === 'failed') return 'failed';
+  if (result.status === 'blocked' || result.status === 'needs_followup') return 'blocked';
+  if (requiresReducerVisibleArtifacts(phase) && result.artifactIds.length === 0) return 'blocked';
+  return 'completed';
+}
+
+function requiresReducerVisibleArtifacts(phase: PhaseDefinition): boolean {
+  return phase.id === 'document_production' || phase.id === 'bundle_and_war_room_assembly';
+}
+
+function buildPhaseBlocker(phase: PhaseDefinition, result: AgentStructuredResult): Record<string, unknown> {
+  const missingArtifact = result.status === 'completed' && requiresReducerVisibleArtifacts(phase) && result.artifactIds.length === 0;
+  return {
+    type: missingArtifact ? 'missing_reducer_artifact' : `phase_${result.status}`,
+    objectId: phase.id,
+    reason: missingArtifact
+      ? `${phase.name} completed worker activity but produced no reducer-visible artifactIds`
+      : result.summary,
+    severity: missingArtifact || result.status === 'failed' ? 'high' : 'medium',
+    remediation: missingArtifact
+      ? 'Rerun the phase and require workers to call submit_candidate for each deliverable before downstream verification or bundle phases.'
+      : 'Inspect worker events and resolve the blocker before running downstream phases.',
+  };
+}
+
+function stringData(data: Record<string, unknown>, key: string, fallback = ''): string {
+  const value = data[key];
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
 }
 
 async function buildFastOperatorHandoff(
@@ -335,6 +615,97 @@ async function buildFastOperatorHandoff(
       'Do not treat witness statements as ready; use the non-applicability artifact unless signed statements are later obtained.',
       'Prioritise the 18 May 2026 accommodation deadline, complaint acknowledgement, hardship/SAAS outcome, and housing fallback evidence.',
       'Resume from this checkpoint if more work is needed; do not replay earlier recovered phases.',
+    ],
+  };
+}
+
+async function buildDocumentOutputPhase(
+  config: PhaseToolsConfig,
+  _phase: PhaseDefinition,
+  taskId: string,
+  objective?: string,
+): Promise<AgentStructuredResult> {
+  const result = await runDocumentOutputPipeline({
+    matterName: config.matterName,
+    objective,
+    allowRemoteFormDownload: true,
+    runId: config.masterRunId,
+    taskId,
+  });
+
+  if (result.produced.length === 0) {
+    return {
+      status: 'needs_followup',
+      summary: result.summary,
+      findings: result.blockers.map((blocker) => ({
+        claim: blocker,
+        support: `Matter ${config.matterName} has no accepted work product available for _output generation.`,
+        confidence: 'high',
+        kind: 'gap',
+      })),
+      risks: [
+        {
+          risk: 'The operator still lacks human-friendly files if no accepted artifacts are available to format.',
+          severity: 'medium',
+          mitigation: 'Accept at least one candidate or rerun the missing production phases, then rerun document_output_pipeline.',
+        },
+      ],
+      proposedTasks: ['Accept candidate deliverables before running Phase 11.'],
+      artifactIds: [],
+      nextActions: ['Accept or produce the missing deliverables, then rerun Phase 11.'],
+    };
+  }
+
+  if (result.blockers.length > 0) {
+    return {
+      status: 'needs_followup',
+      summary: result.summary,
+      findings: result.blockers.map((blocker) => ({
+        claim: blocker,
+        support: `Phase 11 produced ${result.produced.length} output file(s), but at least one requested exact form could not be resolved.`,
+        confidence: 'high',
+        kind: 'gap',
+      })),
+      risks: [
+        {
+          risk: 'At least one requested official form output is missing, so the operator bundle is incomplete.',
+          severity: 'medium',
+          mitigation: 'Add the official form to the ScotCourts corpus or allow remote form download, then rerun Phase 11.',
+        },
+      ],
+      proposedTasks: result.blockers.map((blocker) => `Resolve Phase 11 output blocker: ${blocker}`),
+      artifactIds: [result.manifestPath, ...result.produced.map((output) => output.path)],
+      nextActions: [
+        `Review ${result.manifestPath} for produced files and blockers.`,
+        ...result.blockers.map((blocker) => `Resolve blocker: ${blocker}`),
+      ],
+    };
+  }
+
+  return {
+    status: 'completed',
+    summary: result.summary,
+    findings: [
+      {
+        claim: `${result.produced.length} human-friendly document output(s) were produced in ${result.outputDir}.`,
+        support: result.produced.map((output) => `${output.format}:${output.path}`).join(', '),
+        confidence: 'high',
+        kind: 'procedural_fact',
+      },
+      {
+        claim: `${result.archived.length} superseded output file(s) were archived before replacement.`,
+        support: result.archived.length > 0 ? result.archived.join(', ') : 'No prior output files were present for the generated names.',
+        confidence: 'high',
+        kind: 'procedural_fact',
+      },
+    ],
+    risks: [],
+    proposedTasks: [],
+    artifactIds: [result.manifestPath, ...result.produced.map((output) => output.path)],
+    nextActions: [
+      `Review ${result.manifestPath} for the generated output list.`,
+      `Pick up operator-ready files from ${result.outputDir}.`,
+      ...result.blockers.map((blocker) => `Resolve blocker: ${blocker}`),
     ],
   };
 }
@@ -446,6 +817,15 @@ export function createGetOrchestrationStateTool(config: PhaseToolsConfig): Tool<
               artifactCount: telemetry.artifactSummary.jsonCount,
               candidateDrift: telemetry.reconciliation.candidateDrift,
               artifactDrift: telemetry.reconciliation.artifactDrift,
+            } : undefined,
+            gapAnalysis: config.gapAnalysis ? {
+              summary: config.gapAnalysis.summary,
+              force: config.gapAnalysis.force,
+              noNewWorkNeeded: config.gapAnalysis.noNewWorkNeeded,
+              skipped: config.gapAnalysis.skipped.length,
+              stale: config.gapAnalysis.stale.length,
+              missing: config.gapAnalysis.gaps.length,
+              toProduce: config.gapAnalysis.toProduce.map((requirement) => requirement.label),
             } : undefined,
           },
         };

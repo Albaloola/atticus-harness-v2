@@ -31,7 +31,7 @@ export function searchEvidence(matterName: string, query: string, options?: Sear
       LIMIT ?
     `).all(sanitized, topK) as Record<string, unknown>[];
 
-    return rows.map(row => ({
+    const results = rows.map(row => ({
       evidenceId: row.evidence_id as string,
       originalPath: row.original_path as string,
       sha256: row.sha256 as string,
@@ -39,9 +39,11 @@ export function searchEvidence(matterName: string, query: string, options?: Sear
       score: 1.0 / (1.0 + (row.rank as number)), // Convert rank to score (higher is better)
       chunkIndex: row.chunk_index as number | undefined,
     }));
+    return results.length > 0 ? results : filenameFallbackSearch(matterName, query, topK);
   } catch {
     // If FTS5 query fails (bad syntax), fall back to LIKE search
-    return fallbackSearch(matterName, query, topK);
+    const results = fallbackSearch(matterName, query, topK);
+    return results.length > 0 ? results : filenameFallbackSearch(matterName, query, topK);
   }
 }
 
@@ -83,6 +85,62 @@ function fallbackSearch(matterName: string, query: string, topK: number): Search
     score: 0.5,
     chunkIndex: row.chunk_index as number | undefined,
   }));
+}
+
+function filenameFallbackSearch(matterName: string, query: string, topK: number): SearchResult[] {
+  const db = getDb(matterName);
+  const terms = query.toLowerCase().split(/\s+/).filter((term) => term.length >= 3);
+  if (terms.length === 0) return [];
+  const likeConditions = terms.map(() => 'LOWER(search_text) LIKE ?').join(' OR ');
+  const params = terms.map((term) => `%${term}%`);
+
+  try {
+    const rows = db.prepare(`
+      SELECT evidence_id, original_path, sha256, original_filename, canonical_filename, status
+      FROM (
+        SELECT
+          evidence_id,
+          original_path,
+          sha256,
+          original_filename,
+          canonical_filename,
+          status,
+          COALESCE(original_filename, '') || ' ' || COALESCE(canonical_filename, '') || ' ' || COALESCE(original_path, '') AS search_text
+        FROM evidence_items_v2
+        WHERE matter_name = ?
+        UNION ALL
+        SELECT
+          id AS evidence_id,
+          original_path,
+          sha256,
+          NULL AS original_filename,
+          NULL AS canonical_filename,
+          status,
+          original_path AS search_text
+        FROM evidence
+        WHERE matter_name = ?
+          AND NOT EXISTS (SELECT 1 FROM evidence_items_v2 v2 WHERE v2.evidence_id = evidence.id)
+      )
+      WHERE status IN ('registered', 'copied_unindexed', 'extracted', 'indexed', 'approved')
+        AND (${likeConditions})
+      ORDER BY evidence_id
+      LIMIT ?
+    `).all(matterName, matterName, ...params, topK) as Record<string, unknown>[];
+
+    return rows.map((row) => {
+      const filename = String(row.original_filename ?? row.canonical_filename ?? row.original_path ?? '');
+      return {
+        evidenceId: row.evidence_id as string,
+        originalPath: row.original_path as string,
+        sha256: row.sha256 as string,
+        snippet: `Filename/manifest match: ${filename}. Text chunks did not match; read with evidence_chunk_read if chunks exist, or inspect the manifest path.`,
+        score: 0.25,
+        chunkIndex: 0,
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 export type { FtsMatch, SearchResult };

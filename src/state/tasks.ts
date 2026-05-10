@@ -79,7 +79,7 @@ export function createTask(params: CreateTaskParams): TaskDagNode {
 export function updateTask(
   matterName: string,
   taskId: string,
-  updates: { status?: TaskStatus; title?: string; runId?: string; data?: Record<string, unknown> },
+  updates: { status?: TaskStatus; title?: string; runId?: string; data?: Record<string, unknown>; blockedReason?: string | null },
 ): TaskDagNode | null {
   const db = getStateDb(matterName);
   const existing = getTask(matterName, taskId);
@@ -92,12 +92,13 @@ export function updateTask(
     ...(updates.title !== undefined ? { title: updates.title } : {}),
     ...(updates.runId !== undefined ? { runId: updates.runId } : {}),
     ...(updates.data ? { data: { ...existing.data, ...updates.data } } : {}),
+    ...(updates.blockedReason !== undefined ? { blockedReason: updates.blockedReason ?? undefined } : {}),
     updated: now,
   };
 
   db.prepare(
-    `UPDATE tasks SET status = ?, title = ?, run_id = ?, data_json = ?, updated = ? WHERE id = ? AND matter_name = ?`
-  ).run(updated.status, updated.title, updated.runId ?? null, JSON.stringify(updated.data), updated.updated, taskId, matterName);
+    `UPDATE tasks SET status = ?, title = ?, run_id = ?, data_json = ?, blocked_reason = ?, updated = ? WHERE id = ? AND matter_name = ?`
+  ).run(updated.status, updated.title, updated.runId ?? null, JSON.stringify(updated.data), updated.blockedReason ?? null, updated.updated, taskId, matterName);
 
   return updated;
 }

@@ -37,6 +37,7 @@ const SCOTS_WORKFLOW_PHASES = new Set([
   'verification_and_hostile_review',
   'bundle_and_war_room_assembly',
   'operator_handoff',
+  'document_output_pipeline',
 ]);
 
 export type ScotCourtsDocumentKind = 'form' | 'rule' | 'guidance' | 'fee' | 'other';
@@ -521,6 +522,7 @@ function deriveStageIds(categoryPath: string, title: string, kind: ScotCourtsDoc
     stages.add('verification_and_hostile_review');
     stages.add('bundle_and_war_room_assembly');
     stages.add('operator_handoff');
+    stages.add('document_output_pipeline');
   }
   if (/\b(intimation|citation|service|summons|petition|minute|notice|application|warrant|order|appeal|ordinary cause|simple procedure|summary cause|small claim|criminal procedure|solemn|summary complaint)\b/.test(lower)) {
     stages.add('intake_and_normalization');

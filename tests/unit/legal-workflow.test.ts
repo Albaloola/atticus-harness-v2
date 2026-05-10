@@ -37,8 +37,8 @@ function skillDef(
 
 describe('workflow', () => {
   describe('PHASES', () => {
-    it('has exactly 10 phases', () => {
-      expect(PHASES).toHaveLength(10);
+    it('has exactly 11 phases', () => {
+      expect(PHASES).toHaveLength(11);
     });
 
     it('each phase has id, name, description, expectedOutputTypes, suggestedSkills', () => {
@@ -70,6 +70,7 @@ describe('workflow', () => {
       expect(ids).toContain('verification_and_hostile_review');
       expect(ids).toContain('bundle_and_war_room_assembly');
       expect(ids).toContain('operator_handoff');
+      expect(ids).toContain('document_output_pipeline');
     });
 
     it('suggestedSkills reference actual skill names', () => {
@@ -142,9 +143,9 @@ describe('workflow', () => {
 
 describe('artifact types', () => {
   describe('LegalArtifactType', () => {
-    it('has exactly 24 values', () => {
+    it('has exactly 25 values', () => {
       const values = Object.values(LegalArtifactType);
-      expect(values).toHaveLength(24);
+      expect(values).toHaveLength(25);
     });
 
     it('starts with case_theory', () => {
@@ -187,6 +188,7 @@ describe('artifact types', () => {
       expect(artifactTypeCategories[LegalArtifactType.filing_checklist]).toBe('prepare_only');
       expect(artifactTypeCategories[LegalArtifactType.operator_handoff_report]).toBe('prepare_only');
       expect(artifactTypeCategories[LegalArtifactType.war_room_pack]).toBe('prepare_only');
+      expect(artifactTypeCategories[LegalArtifactType.document_output_bundle]).toBe('prepare_only');
     });
   });
 
@@ -199,9 +201,9 @@ describe('artifact types', () => {
 });
 
 describe('templates', () => {
-  it('has exactly 14 template entries', () => {
+  it('has exactly 15 template entries', () => {
     const keys = Object.keys(TEMPLATES);
-    expect(keys).toHaveLength(14);
+    expect(keys).toHaveLength(15);
   });
 
   it('templates are strings with placeholder markers', () => {
@@ -239,6 +241,13 @@ describe('templates', () => {
     expect(tpl).toBeDefined();
     expect(tpl).toContain('## Executive Summary');
     expect(tpl).toContain('[DECISION_REQUIRED]');
+  });
+
+  it('returns the document_output_bundle template', () => {
+    const tpl = getArtifactTemplate(LegalArtifactType.document_output_bundle);
+    expect(tpl).toBeDefined();
+    expect(tpl).toContain('## Produced Documents');
+    expect(tpl).toContain('[OUTPUT_DIRECTORY]');
   });
 
   it('returns undefined for non-template types', () => {

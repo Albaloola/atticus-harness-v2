@@ -39,6 +39,7 @@ const READ_TOOL_NAMES = new Set([
   'evidence_search',
   'evidence_chunk_read',
   'matter_inventory',
+  'submit_candidate',
 ]);
 
 export async function executeToolCalls(options: ExecuteToolCallsOptions): Promise<ExecutedToolCall[]> {

@@ -387,6 +387,23 @@ program
       })
   );
 
+program.commands.find((command) => command.name() === 'export')!
+  .addCommand(
+    new Command('documents')
+      .description('Produce human-friendly _output documents from accepted work products')
+      .argument('<matter-name>', 'Matter name')
+      .option('--objective <text>', 'Output request for Phase 11, for example an exact form or a specific document kind')
+      .option('--allow-remote-forms', 'Allow Phase 11 to download missing official ScotCourts forms')
+      .option('--scotcourts-source-dir <path>', 'Local ScotCourts corpus directory for exact form lookup')
+      .option('--scotcourts-cache-path <path>', 'ScotCourts corpus index cache path')
+      .option('--official-form-search-base-url <url>', 'Official ScotCourts search URL for remote form lookup')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleExportDocuments } = await import('./commands/export.js');
+        await handleExportDocuments(matterName, options);
+      })
+  );
+
 // Output acceptance
 program.command('accept')
   .description('Accept or auto-accept a candidate output')
@@ -877,6 +894,7 @@ program
   .option('--max-depth <n>', 'Maximum agent depth', String(DEFAULT_MAX_DEPTH))
   .option('--concurrency <n>', 'Maximum concurrent agents', String(DEFAULT_MAX_CONCURRENCY))
   .option('--resume', 'Resume from the latest completed/blocked orchestration checkpoint or ledger')
+  .option('--force', 'Force reproduction even when smart gap analysis finds existing deliverables')
   .action(async (matterName, options) => {
     const { default: handler } = await import('./commands/orchestrate.js');
     await handler(matterName, options);
@@ -895,6 +913,7 @@ program
       .option('--source <source>', 'Instruction source', 'hermes')
       .option('--auto-accept', 'Evaluate auto-acceptance after producing the candidate')
       .option('--background', 'Run in background mode')
+      .option('--force', 'Force reproduction even when smart gap analysis finds existing deliverables')
       .option('--json', 'JSON output')
       .action(async (matterName, instruction, options) => {
         const { handleCaseManage } = await import('./commands/case.js');

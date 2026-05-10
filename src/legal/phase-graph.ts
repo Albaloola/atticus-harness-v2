@@ -54,7 +54,7 @@ export function buildPhaseGraph(input: {
       dependencies: index === 0 ? [] : [phases[index - 1]!.id],
       readinessPolicy: disabled
         ? 'not_applicable'
-        : phase.id === 'operator_handoff'
+        : phase.id === 'operator_handoff' || phase.id === 'document_output_pipeline'
           ? 'export_readiness'
           : requiredOutputs.some((output) => output.acceptedArtifactRequired)
             ? 'legal_readiness'

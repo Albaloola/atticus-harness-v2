@@ -1,11 +1,11 @@
-# Harness v2 — Legal Operations Agent CLI
+# Harness v2 - Legal Operations Agent CLI
 
 Standalone terminal-native agent for legal work. Ingests evidence, runs unified agent-driven orchestration with tool-calling, drafts documents, verifies citations, manages matter workflows, schedules recurring jobs, and auto-accepts gated outputs. Built in TypeScript on Node.js.
 
 
 ## Current status and architecture research
 
-Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, provider-routed tool-calling, hierarchical 10-phase orchestration, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, 900+ bundled legal/writing skills, and harness-owned Scotland court corpora.
+Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, provider-routed tool-calling, hierarchical 11-phase orchestration, smart gap analysis, Phase 11 document output, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, 900+ bundled legal/writing skills, and harness-owned Scotland court corpora.
 
 The architecture papers now separate the legacy control-plane reference from the current TypeScript agent architecture:
 
@@ -92,7 +92,10 @@ examples, not as a Hermes execution allowlist. Hermes direct execution is
 limited to the no-write inspection and briefing runbook in
 [`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md); all mutating,
 repairing, or long-running commands must be briefed to Codex or escalated as a
-bug report.
+bug report. Briefing Codex is the operator workflow surface, not a provider
+selection instruction. The Harness remains provider-agnostic and the active
+Harness provider profile decides the model lane unless the operator explicitly
+asks to change or test a provider.
 
 ## Usage
 
@@ -130,9 +133,25 @@ harness run my-case --background                 # Run asynchronously
 harness orchestrate my-case --objective "Analyze housing disrepair claim"
 harness orchestrate my-case --objective "..." --max-depth 3 --concurrency 15
 harness orchestrate my-case --background --json
+harness orchestrate my-case --objective "..." --force --json
 ```
 
-The orchestrator is a unified agent-driven loop (`UnifiedMasterOrchestrator`) that replaces the former split master-orchestrator + master-supervisor design. It wraps a single long-lived QueryLoop agent with orchestration tools (`run_phase`, `get_orchestration_state`), full harness editing authority (read/write/edit files, bash, grep, SQLite), and provider-agnostic JSON retry. The agent controls which phases to run, monitors worker output, detects harness bugs, and can patch harness source code when the harness itself is broken. It runs across all 10 legal workflow phases: intake, evidence, issue spotting, legal research, merits/risk, procedural planning, document production, verification, bundle assembly, and operator handoff.
+The orchestrator is a unified agent-driven loop (`UnifiedMasterOrchestrator`) that replaces the former split master-orchestrator + master-supervisor design. It wraps a single long-lived QueryLoop agent with orchestration tools (`run_phase`, `get_orchestration_state`), full harness editing authority (read/write/edit files, bash, grep, SQLite), and provider-agnostic JSON retry. The agent controls which phases to run, monitors worker output, detects harness bugs, and can patch harness source code when the harness itself is broken. It runs across all 11 legal workflow phases: intake, evidence, issue spotting, legal research, merits/risk, procedural planning, document production, verification, bundle assembly, operator handoff, and document output.
+
+Smart gap analysis runs before production work. Existing fresh accepted artifacts and candidates satisfy matching requirements, stale work is flagged, and missing deliverables are produced. Use `--force` only when you intentionally want to reproduce existing deliverables.
+
+### Smart gap analysis and Phase 11 output
+
+Phase 11 turns reducer-accepted artifacts and accepted candidates into human-friendly files under `matters/<matter>/_output/`. It classifies the requested output as a letter, email, form, report, action plan, script, or reference guide, strips common AI prose artifacts, writes `.docx` or `.txt` files, archives superseded outputs, and records everything in `_output/manifest.json`.
+
+```bash
+harness export documents my-case --json
+harness export documents my-case --objective "Produce a polished report for the operator" --json
+harness export documents my-case --objective "Produce the exact ScotCourts witness statement form" --scotcourts-source-dir legal-corpora/scotcourts --json
+harness export documents my-case --objective "Produce the exact ScotCourts witness statement form" --allow-remote-forms --json
+```
+
+The orchestrator can also choose the Phase 11 output contract when it calls `run_phase`. If an exact official form is requested, Phase 11 searches the local ScotCourts corpus first. If remote form lookup is explicitly allowed, it may download a matching official ScotCourts form into `_output/forms/`. If no exact form source can be resolved, Phase 11 reports a blocker instead of inventing a generic substitute. All outputs remain prepare-only.
 
 ### Ongoing case management
 
@@ -283,8 +302,9 @@ converted non-form originals.
 Scots workflow phases automatically add `atticus-scotcourts-corpus` and focused
 `atticus-sheriff-court-rules` / `atticus-court-of-session-rules` skill context
 so procedural route planning, drafting, verification, proof/evidence work,
-bundle checks, and operator handoff receive only the relevant local document
-shortlist.
+bundle checks, operator handoff, and Phase 11 document output receive only the
+relevant local document shortlist. Exact official form output uses the same
+corpus before falling back to an explicitly enabled remote official form lookup.
 
 ### Scheduling
 
@@ -334,12 +354,12 @@ harness skill use contract-review-anthropic  # Display a skill's prompt
 ## Workflow
 
 ```
-init → ingest (×N) → search → run/orchestrate → draft → verify → gate → review → accept
+init → ingest (×N) → search → run/orchestrate → draft → verify → gate → review → accept → export documents
 ```
 
 For full orchestration:
 ```
-orchestrate → [intake → evidence → issue-spot → research → merits → procedure → draft → verify → bundle → handoff]
+orchestrate → [intake → evidence → issue-spot → research → merits → procedure → draft → verify → bundle → handoff → output]
                └── master → mini-orchestrators → workers (parallel, depth-limited)
 ```
 
@@ -359,7 +379,8 @@ src/
 ├── daemon/             # Background process manager, supervisor, control queue
 ├── research/           # Web search/fetch, source snapshots, citation verification
 ├── rules/              # Local legal rule corpus discovery, indexing, search, and prompt context
-├── legal/              # 10-phase workflow, 24 artifact types, templates, skills router
+├── export/             # Prepare-only bundles and Phase 11 document output
+├── legal/              # 11-phase workflow, 25 artifact types, templates, skills router
 ├── acceptance/         # 10-gate scoring, auto-acceptance, review quorum
 ├── reducer/            # Reducer packets + canonical writer boundary
 ├── extraction/         # PDF/DOCX/DOC/image/text extraction pipeline
@@ -377,7 +398,7 @@ tests/                  # Unit coverage for CLI, state, tools, orchestration, ex
 ### Key architecture principles
 
 - **Event-sourced**: Every agent thought, tool call, candidate, gate, reviewer result, source snapshot, reducer decision, lease transition, and acceptance decision is recorded as an event or durable state row. Status is derived from state, not inferred from model output.
-- **Hierarchical**: Unified Master Orchestrator wraps a single long-lived QueryLoop agent with orchestration tools (`run_phase`, `get_orchestration_state`) and full harness editing authority. The agent controls mini-orchestrator spawns, inspects worker output, and runs phases across all 10 legal workflow stages. Depth-limited recursion with configurable concurrency.
+- **Hierarchical**: Unified Master Orchestrator wraps a single long-lived QueryLoop agent with orchestration tools (`run_phase`, `get_orchestration_state`) and full harness editing authority. The agent controls mini-orchestrator spawns, inspects worker output, and runs phases across all 11 legal workflow stages. Depth-limited recursion with configurable concurrency.
 - **Autonomy-configurable**: Safety is policy, not hard-coded. Five autonomy modes from `operator_safe` to `full_local_autonomy`. External dispatch is always prepare-only in this version.
 - **Daemon-capable, CLI-controlled**: Run work asynchronously, inspect state without interrupting inference, and use `control-panel`/`monitor` for read-only supervision.
 - **Reducer-governed**: Candidate artifacts cross an explicit reducer packet and canonical writer boundary before becoming accepted artifacts.
@@ -399,11 +420,13 @@ npm run dev          # Watch mode
 - ✅ CLI-first, daemon-capable, event-sourced legal orchestration
 - ✅ Unified master orchestrator (agent-driven, self-healing) replacing the former split design
 - ✅ Mini-orchestrator → worker hierarchical pipeline with orchestrator oversight
+- ✅ Smart gap analysis that skips fresh existing deliverables unless `--force` is used
 - ✅ Scheduled recurring/one-shot jobs with cron expressions
 - ✅ Non-interrupting status snapshots and event streaming
 - ✅ Evidence-grade web research with source snapshots and citation verification
 - ✅ Harness-owned Scotland court corpora with stage/skill-scoped lookup
-- ✅ 10-phase legal workflow (intake through operator handoff)
+- ✅ 11-phase legal workflow (intake through document output)
+- ✅ Phase 11 human-friendly `.docx`/`.txt` output with official form source checks
 - ✅ 10-gate quality scoring with policy-controlled auto-acceptance
 - ✅ Review quorum with hostile reviewer agent
 - ✅ 900+ bundled legal and writing skills, including UK/Scots refined skills
@@ -416,8 +439,8 @@ npm run dev          # Watch mode
 
 ## What it doesn't do
 
-- No web UI — operator supervision remains CLI-first through status, watch, control-panel, and monitor commands
-- No external legal dispatch — all outputs are prepare-only
+- No web UI - operator supervision remains CLI-first through status, watch, control-panel, and monitor commands
+- No external legal dispatch - all outputs are prepare-only
 - No cloud bridge, no remote sessions
 - No plugin marketplace install UI
 
@@ -431,7 +454,13 @@ The former split design of `MasterOrchestrator` (deterministic phase loop) + `Ma
 - Uses `run_phase` and `get_orchestration_state` as agent-callable tools
 - Has full harness editing authority (file writes, bash, SQLite, grep)
 - Can detect harness bugs and patch source code when the harness itself is broken
-- Uses provider-agnostic JSON retry (`retryNonJson` on QueryLoop) — works with DeepSeek, GPT, Claude, and all supported provider profiles without relying on provider-specific `response_format` parameters
+- Uses provider-agnostic JSON retry (`retryNonJson` on QueryLoop) - works with DeepSeek, GPT, Claude, and all supported provider profiles without relying on provider-specific `response_format` parameters
 - Replaces the deterministic `parseMasterSupervisorResult` trap that caused infinite `retry_phase` loops on non-JSON output
 
 The old `MasterOrchestrator` and `MasterSupervisor` classes are preserved for backward compatibility (tests still use them directly) but marked as deprecated. The CLI `harness orchestrate` command now routes through `UnifiedMasterOrchestrator`.
+
+### Smart Gap Analysis And Phase 11 Output (2026-05-10)
+
+The orchestrator now inventories accepted artifacts, accepted candidates, evidence freshness, and the Phase 11 output manifest before producing new work. When existing fresh deliverables satisfy the objective, matching phases are skipped. `--force` overrides that skip behavior.
+
+Phase 11 adds a deterministic document output pipeline. It can infer output shape from accepted work products or accept an orchestrator-selected objective, then produce polished operator-ready files in `_output/`. Exact official form requests are source-checked against `legal-corpora/scotcourts`; missing exact forms block rather than falling back to a generic form layout.

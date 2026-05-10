@@ -3,7 +3,7 @@ import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH } from '../orchestration/lim
 
 export default async function orchestrateHandler(
   matterName: string,
-  options: { objective?: string; background?: boolean; json?: boolean; maxDepth?: string; concurrency?: string; resume?: boolean }
+  options: { objective?: string; background?: boolean; json?: boolean; maxDepth?: string; concurrency?: string; resume?: boolean; force?: boolean }
 ): Promise<void> {
   try {
     const maxDepth = parsePositiveIntegerOption('max depth', options.maxDepth, DEFAULT_MAX_DEPTH);
@@ -14,6 +14,7 @@ export default async function orchestrateHandler(
     console.log(chalk.gray(`  Max depth: ${maxDepth}`));
     console.log(chalk.gray(`  Concurrency: ${concurrency}`));
     if (options.resume) console.log(chalk.gray('  Resume: enabled'));
+    if (options.force) console.log(chalk.gray('  Force: enabled'));
 
     if (options.background) {
       const { spawnBackgroundHarness } = await import('../daemon/background.js');
@@ -21,6 +22,7 @@ export default async function orchestrateHandler(
       const args = ['orchestrate', matterName, '--max-depth', String(maxDepth), '--concurrency', String(concurrency)];
       if (options.objective) args.push('--objective', options.objective);
       if (options.resume) args.push('--resume');
+      if (options.force) args.push('--force');
       const background = spawnBackgroundHarness(args);
       await appendEvent({
         matterName,
@@ -51,6 +53,7 @@ export default async function orchestrateHandler(
       maxDepth,
       maxConcurrency: concurrency,
       resume: Boolean(options.resume),
+      force: Boolean(options.force),
     });
     const result = await orchestrator.run();
 

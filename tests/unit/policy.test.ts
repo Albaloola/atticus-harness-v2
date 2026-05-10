@@ -26,6 +26,18 @@ describe('tool policy classification', () => {
     expect(evaluateAutonomyPolicy(DEFAULTS.autonomy, 'draft')).toBe('allow');
   });
 
+  it('allows todo and candidate writes when autonomous file writes are enabled', () => {
+    const autonomy = {
+      ...DEFAULTS.autonomy,
+      autoApproveFileWrites: true,
+    };
+
+    expect(classifyToolCategory('todo_write')).toBe('matter_write');
+    expect(classifyToolCategory('submit_candidate')).toBe('matter_write');
+    expect(evaluateAutonomyPolicy(autonomy, 'todo_write')).toBe('allow');
+    expect(evaluateAutonomyPolicy(autonomy, 'submit_candidate')).toBe('allow');
+  });
+
   it('blocks tools outside a worker allow-list before execution', async () => {
     const registry = new ToolRegistry({ allowedTools: ['read_file'] });
     const result = await registry.execute('write_file', { path: '/tmp/x', content: 'nope' }, makeContext());

@@ -16,6 +16,7 @@ const COMMON_WORKER_TOOLS = [
   'matter_inventory',
   'draft',
   'verify_citations',
+  'submit_candidate',
 ] as const;
 
 const PHASE_TOOL_ADDITIONS: Record<string, readonly string[]> = {
@@ -26,6 +27,7 @@ const PHASE_TOOL_ADDITIONS: Record<string, readonly string[]> = {
   procedural_route_planning: ['web_search', 'web_fetch'],
   verification_and_hostile_review: ['hostile_review', 'quality_gate'],
   operator_handoff: ['quality_gate'],
+  document_output_pipeline: ['quality_gate'],
 };
 
 const NETWORK_TOOLS = new Set(['web_search', 'web_fetch']);

@@ -161,7 +161,7 @@ export const TEMPLATES: Partial<Record<LegalArtifactType, string>> = {
 
 ## Readiness Checklist
 
-- [ ] [ITEM] — [STATUS]
+- [ ] [ITEM] - [STATUS]
 `,
 
   [LegalArtifactType.risk_register]: `# Risk Register
@@ -351,7 +351,7 @@ Dated [DATE]
 
 ## Filing Requirements Checklist
 
-- [ ] [REQUIREMENT] — [STATUS]
+- [ ] [REQUIREMENT] - [STATUS]
 `,
 
   [LegalArtifactType.filing_checklist]: `# Filing Checklist
@@ -410,7 +410,7 @@ Dated [DATE]
 
 ## Outstanding Gaps
 
-1. [GAP] — [RECOMMENDED_ACTION]
+1. [GAP] - [RECOMMENDED_ACTION]
 
 ## Decisions Required from Operator
 
@@ -428,7 +428,29 @@ Dated [DATE]
 
 ## Next Steps
 
-1. [STEP] — [OWNER] — [DEADLINE]
+1. [STEP] - [OWNER] - [DEADLINE]
+`,
+
+  [LegalArtifactType.document_output_bundle]: `# Document Output Bundle
+
+## Matter
+- **Matter Scope**: [MATTER_SCOPE]
+- **Output Directory**: [OUTPUT_DIRECTORY]
+- **Date Produced**: [DATE]
+
+## Produced Documents
+
+| File | Source Artifact | Format | Notes |
+|------|-----------------|--------|-------|
+| [FILE_NAME] | [ARTIFACT_ID] | [FORMAT] | [NOTES] |
+
+## Archived Superseded Outputs
+
+1. [ARCHIVED_FILE]
+
+## Operator Summary
+
+[SUMMARY]
 `,
 };
 

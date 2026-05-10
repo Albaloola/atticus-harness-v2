@@ -127,4 +127,97 @@ describe('CaseManager', () => {
     const artifacts = await listArtifacts(matterName);
     expect(artifacts).toHaveLength(0);
   });
+
+  it('skips generation when a fresh existing deliverable satisfies the request', async () => {
+    let chatCalled = false;
+    await saveCandidate(matterName, {
+      id: 'existing-follow-up-email',
+      matterName,
+      type: 'email',
+      title: 'Follow-up email to accommodation office',
+      content: 'Dear Accommodation Team,\n\nPlease confirm the repair appointment.\n\nYours sincerely,',
+      status: 'candidate',
+      created: new Date().toISOString(),
+      metadata: { citations: [] },
+    });
+    await acceptCandidate(matterName, 'existing-follow-up-email');
+
+    const manager = new CaseManager({
+      client: {
+        chat: async (): Promise<LLMResponse> => {
+          chatCalled = true;
+          return { content: '{}' };
+        },
+      },
+    });
+    const result = await manager.handle({
+      matterName,
+      instruction: 'Draft a follow-up email to the accommodation office.',
+      source: 'hermes',
+      autoAccept: false,
+    });
+
+    expect(chatCalled).toBe(false);
+    expect(result.skipped).toBe(true);
+    expect(result.candidateId).toBeUndefined();
+    expect(result.summary).toContain('No new work needed');
+    expect(result.gapAnalysis?.skipped[0].assetId).toBe('existing-follow-up-email');
+
+    const candidates = await listCandidates(matterName);
+    expect(candidates).toHaveLength(1);
+    const events = listEvents(matterName);
+    expect(events.map((event) => event.type)).toContain('case.gap_analysis.completed');
+    expect(events.map((event) => event.type)).not.toContain('case.output.created');
+  });
+
+  it('honors force mode and reproduces a matched deliverable', async () => {
+    let chatCalled = false;
+    await saveCandidate(matterName, {
+      id: 'existing-action-plan',
+      matterName,
+      type: 'task',
+      title: 'Action plan',
+      content: '# Action plan\n\nExisting action plan.',
+      status: 'candidate',
+      created: new Date().toISOString(),
+      metadata: { citations: [] },
+    });
+    await acceptCandidate(matterName, 'existing-action-plan');
+
+    const manager = new CaseManager({
+      client: {
+        chat: async (): Promise<LLMResponse> => {
+          chatCalled = true;
+          return {
+            content: JSON.stringify({
+              title: 'Updated action plan',
+              type: 'task',
+              content: '# Updated action plan\n\nDo the urgent steps.',
+              summary: 'Prepared a forced update.',
+              nextActions: ['Review update'],
+              risks: [],
+              citations: [],
+            }),
+          };
+        },
+      },
+    });
+    const result = await manager.handle({
+      matterName,
+      instruction: 'Create an action plan.',
+      requestedType: 'task',
+      source: 'hermes',
+      autoAccept: false,
+      force: true,
+    });
+
+    expect(chatCalled).toBe(true);
+    expect(result.skipped).toBeUndefined();
+    expect(result.candidateId).toMatch(/^case-task-/);
+    expect(result.gapAnalysis?.force).toBe(true);
+    expect(result.gapAnalysis?.toProduce.map((requirement) => requirement.label)).toContain('action plan');
+
+    const candidates = await listCandidates(matterName);
+    expect(candidates).toHaveLength(2);
+  });
 });

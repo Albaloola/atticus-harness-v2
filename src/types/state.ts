@@ -70,8 +70,12 @@ export type MatterEventType =
   | 'inbox.message.received'
   | 'case.instruction.received'
   | 'case.memory.loaded'
+  | 'case.gap_analysis.completed'
   | 'case.output.created'
+  | 'output.documents.produced'
   | 'case.auto_accept.evaluated'
+  | 'orchestration.gap_analysis.completed'
+  | 'orchestration.phase.skipped'
   | 'case.quality_gate.feedback_created'
   | 'case.quality_gate.exception_recorded'
   | 'case.quality_gate.exception_reused'
@@ -191,7 +195,14 @@ export interface MatterRuntimeSnapshot {
   costs: RuntimeCosts;
   nextActions: string[];
   leases?: Array<{ taskId: string; leaseId: string; owner?: string; role?: string; expiresAt?: string; stale: boolean }>;
-  blockedReasons?: Array<{ taskId: string; reason: string }>;
+  blockedReasons?: Array<{
+    taskId: string;
+    reason: string;
+    type?: string;
+    objectId?: string;
+    severity?: string;
+    remediation?: string;
+  }>;
   runReadiness?: RunReadiness;
 }
 

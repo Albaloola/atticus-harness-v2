@@ -16,6 +16,7 @@ export interface OrchestratorConfig {
   autonomy?: Partial<AutonomyPolicy>;
   llmMode?: 'real' | 'fake';
   resume?: boolean;
+  force?: boolean;
 }
 
 export interface AgentSpawnInput {

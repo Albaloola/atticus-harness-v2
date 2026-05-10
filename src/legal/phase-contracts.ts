@@ -22,6 +22,7 @@ const COURT_READY_PHASES = new Set([
   'document_production',
   'bundle_and_war_room_assembly',
   'operator_handoff',
+  'document_output_pipeline',
 ]);
 
 export function requiredOutputsForPhase(phase: PhaseDefinition): RequiredOutput[] {

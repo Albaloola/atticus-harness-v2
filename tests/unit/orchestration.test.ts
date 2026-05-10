@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { writeFile } from 'fs/promises';
 import { initMatter, deleteMatter } from '../../src/storage/matter.js';
 import { loadMatter } from '../../src/storage/matter.js';
+import { acceptCandidate, saveCandidate } from '../../src/storage/candidate.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
 import { createRun, listRuns, updateRun } from '../../src/state/runs.js';
 import { createTask, listTasks, updateTask } from '../../src/state/tasks.js';
@@ -13,7 +14,9 @@ import { getDefaultPhases } from '../../src/legal/workflow.js';
 import { allowedToolsForPhase } from '../../src/orchestration/phase-tools.js';
 import { DEFAULT_MAX_CONCURRENCY } from '../../src/orchestration/limits.js';
 import { buildProviderAgnosticResumePlan } from '../../src/orchestration/resume-recovery.js';
+import { createRunPhaseTool } from '../../src/orchestration/orchestration-tools.js';
 import { ToolRegistry } from '../../src/tools/index.js';
+import type { ToolUseContext } from '../../src/types/tool.js';
 
 vi.mock('../../src/llm/client.js', () => ({
   OpenRouterClient: vi.fn().mockImplementation(() => ({
@@ -53,7 +56,9 @@ vi.mock('../../src/llm/client.js', () => ({
 import { OpenRouterClient, createLLMClient } from '../../src/llm/client.js';
 import type { OrchestratorConfig } from '../../src/orchestration/master-orchestrator.js';
 import { MasterOrchestrator } from '../../src/orchestration/master-orchestrator.js';
+import { UnifiedMasterOrchestrator } from '../../src/orchestration/unified-master-orchestrator.js';
 import { WorkerAgent } from '../../src/orchestration/worker.js';
+import type { ArtifactType } from '../../src/types/artifact.js';
 
 describe('phase tool contracts', () => {
   it('keeps evidence search follow-up tools available to every worker phase', () => {
@@ -62,6 +67,7 @@ describe('phase tool contracts', () => {
       expect(tools).toContain('evidence_search');
       expect(tools).toContain('evidence_chunk_read');
       expect(tools).toContain('matter_inventory');
+      expect(tools).toContain('submit_candidate');
       expect(new Set(tools).size).toBe(tools.length);
     }
   });
@@ -147,6 +153,7 @@ describe('phase tool contracts', () => {
 
       expect(capturedMessage).toContain('Retrospective appellate context marker.');
       expect(capturedMessage).toContain('Use matter_inventory before exec_sqlite');
+      expect(capturedMessage).toContain('Use submit_candidate for reducer-visible deliverables');
       expect(capturedMessage).toContain('keep paging evidence_chunk_read/read_file');
       expect(capturedMessage).toContain('write_file mode "append" and expectedContentHash');
       expect(capturedMessage).toContain('Each finding should include kind');
@@ -158,7 +165,147 @@ describe('phase tool contracts', () => {
       await deleteMatter(matterName);
     }
   });
+
+  it('skips a phase when smart gap analysis finds its output already exists', async () => {
+    const matterName = 'phase-gap-skip-test';
+    await initMatter(matterName);
+
+    try {
+      await saveAcceptedCandidate(matterName, 'existing-intake-summary', 'Intake Summary', 'report');
+      const masterRun = createRun({
+        matterName,
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      const tool = createRunPhaseTool({
+        matterName,
+        masterRunId: masterRun.id,
+        maxDepth: 1,
+        maxConcurrency: 1,
+      });
+
+      const result = await tool.call({
+        phaseId: 'intake_and_normalization',
+        objective: 'Handle the matter.',
+      }, makeToolContext(matterName));
+
+      expect(result.success).toBe(true);
+      expect(result.output).toContain('skipped by smart gap analysis');
+      expect(result.data?.artifactIds).toContain('existing-intake-summary');
+      expect(listRuns(matterName).filter((run) => run.role === 'mini_orchestrator')).toHaveLength(0);
+      const phaseTasks = listTasks(matterName).filter((task) => task.kind === 'mini_orchestrator');
+      expect(phaseTasks).toHaveLength(1);
+      expect(phaseTasks[0].status).toBe('completed');
+      expect(phaseTasks[0].data.skippedByGapAnalysis).toBe(true);
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('blocks downstream phases when document production has no reducer-visible artifact', async () => {
+    const matterName = 'phase-dependency-artifact-test';
+    await initMatter(matterName);
+
+    try {
+      const masterRun = createRun({
+        matterName,
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      for (const phase of getDefaultPhases().slice(0, 6)) {
+        updateTask(matterName, createTask({
+          matterName,
+          runId: masterRun.id,
+          kind: 'mini_orchestrator',
+          type: phase.id,
+          title: `Phase: ${phase.name}`,
+          data: { phaseId: phase.id, resultStatus: 'completed', artifactIds: ['accepted-artifact'] },
+        }).id, { status: 'completed' });
+      }
+      updateTask(matterName, createTask({
+        matterName,
+        runId: masterRun.id,
+        kind: 'mini_orchestrator',
+        type: 'document_production',
+        title: 'Phase: Document Production',
+        data: { phaseId: 'document_production', resultStatus: 'completed', artifactIds: [] },
+      }).id, { status: 'completed' });
+
+      const tool = createRunPhaseTool({
+        matterName,
+        masterRunId: masterRun.id,
+        maxDepth: 1,
+        maxConcurrency: 1,
+        force: true,
+      });
+
+      const result = await tool.call({
+        phaseId: 'verification_and_hostile_review',
+        objective: 'Verify produced documents.',
+      }, makeToolContext(matterName));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('document_production completed without reducer-visible artifactIds');
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
 });
+
+async function saveAcceptedCandidate(
+  matterName: string,
+  id: string,
+  title: string,
+  type: ArtifactType = 'report',
+): Promise<void> {
+  await saveCandidate(matterName, {
+    id,
+    matterName,
+    type,
+    title,
+    content: `# ${title}\n\nExisting accepted deliverable.`,
+    status: 'candidate',
+    created: new Date().toISOString(),
+    metadata: { citations: [] },
+  });
+  await acceptCandidate(matterName, id);
+}
+
+async function seedAllDefaultPhaseDeliverables(matterName: string): Promise<void> {
+  const seen = new Set<string>();
+  for (const phase of getDefaultPhases()) {
+    for (const outputType of phase.expectedOutputTypes) {
+      if (seen.has(outputType)) continue;
+      seen.add(outputType);
+      await saveAcceptedCandidate(
+        matterName,
+        `existing-${outputType}`,
+        readableLabel(outputType),
+        'report',
+      );
+    }
+  }
+}
+
+function makeToolContext(matterName: string): ToolUseContext {
+  return {
+    matterName,
+    getEvidencePath: (id: string) => id,
+    getExtractionPath: (id: string) => id,
+    getConfig: () => ({}),
+    log: () => {},
+  };
+}
+
+function readableLabel(value: string): string {
+  return value.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 function mockWorkerStatus(status: 'completed' | 'blocked' | 'needs_followup' | 'failed'): void {
   const fakeClient = {
@@ -236,7 +383,7 @@ describe('MasterOrchestrator', () => {
     try { await deleteMatter(matterName); } catch {}
   });
 
-  it('completes orchestration across all 10 phases', async () => {
+  it('completes orchestration across all 11 phases', async () => {
     const config: OrchestratorConfig = {
       matterName,
       objective: 'Test full orchestration',
@@ -254,7 +401,7 @@ describe('MasterOrchestrator', () => {
     expect(Array.isArray(result.findings)).toBe(true);
     expect(Array.isArray(result.risks)).toBe(true);
     expect(Array.isArray(result.phaseResults)).toBe(true);
-    expect(result.phaseResults.length).toBe(10);
+    expect(result.phaseResults.length).toBe(getDefaultPhases().length);
   }, 30000);
 
   it('closes master and mini runs and preserves task hierarchy', async () => {
@@ -269,7 +416,7 @@ describe('MasterOrchestrator', () => {
 
     const runs = listRuns(matterName);
     expect(runs.filter((run) => run.role === 'master' && run.status === 'running')).toHaveLength(0);
-    expect(runs.filter((run) => run.role === 'mini_orchestrator')).toHaveLength(10);
+    expect(runs.filter((run) => run.role === 'mini_orchestrator')).toHaveLength(getDefaultPhases().length);
     expect(runs.some((run) => run.role === 'master_supervisor')).toBe(true);
     expect(runs.filter((run) => run.role === 'master_supervisor' && run.status === 'running')).toHaveLength(0);
     const miniRunIds = new Set(runs.filter((run) => run.role === 'mini_orchestrator').map((run) => run.id));
@@ -306,7 +453,7 @@ describe('MasterOrchestrator', () => {
 
   it('creates phase results for each workflow phase', async () => {
     const phases = getDefaultPhases();
-    expect(phases.length).toBe(10);
+    expect(phases.length).toBe(11);
 
     const config: OrchestratorConfig = {
       matterName,
@@ -318,7 +465,7 @@ describe('MasterOrchestrator', () => {
     const orchestrator = new MasterOrchestrator(config);
     const result = await orchestrator.run();
 
-    expect(result.phaseResults.length).toBe(10);
+    expect(result.phaseResults.length).toBe(getDefaultPhases().length);
     for (const pr of result.phaseResults) {
       expect(pr.phaseId).toBeTruthy();
       expect(pr.phaseName).toBeTruthy();
@@ -352,6 +499,25 @@ describe('MasterOrchestrator', () => {
     )).toBe(true);
   }, 30000);
 
+  it('unified orchestration completes with no new work when all deliverables already exist', async () => {
+    await seedAllDefaultPhaseDeliverables(matterName);
+
+    const orchestrator = new UnifiedMasterOrchestrator({
+      matterName,
+      objective: 'Handle the case and produce what is needed.',
+      maxDepth: 1,
+      maxConcurrency: 1,
+    });
+    const result = await orchestrator.run();
+
+    expect(result.status).toBe('completed');
+    expect(result.summary).toContain('no phases were rerun');
+    expect(result.phaseResults).toHaveLength(getDefaultPhases().length);
+    expect(listRuns(matterName).filter((run) => run.role === 'mini_orchestrator')).toHaveLength(0);
+    expect(listTasks(matterName).filter((task) => task.kind === 'mini_orchestrator')).toHaveLength(0);
+    expect(listEvents(matterName).map((event) => event.type)).toContain('orchestration.gap_analysis.completed');
+  }, 30000);
+
   it('does not mark an aborted orchestration as completed', async () => {
     const orchestrator = new MasterOrchestrator({
       matterName,
@@ -376,7 +542,7 @@ describe('MasterOrchestrator', () => {
       event.type === 'run.partial' &&
       event.data.status === 'aborted' &&
       event.data.completedPhases === 0 &&
-      event.data.totalPhases === 10
+      event.data.totalPhases === getDefaultPhases().length
     )).toBe(true);
   }, 30000);
 
@@ -501,7 +667,7 @@ describe('MasterOrchestrator', () => {
 
     const result = await orchestrator.run();
 
-    expect(result.phaseResults).toHaveLength(10);
+    expect(result.phaseResults).toHaveLength(getDefaultPhases().length);
     expect(result.status).toBe('completed');
     expect(orchestrator.getActiveRunCount()).toBe(0);
   }, 30000);
@@ -827,8 +993,8 @@ describe('Orchestrator types', () => {
     expect(spawn.role).toBe('worker');
   });
 
-  it('has all 10 workflow phases', () => {
+  it('has all 11 workflow phases', () => {
     const phases = getDefaultPhases();
-    expect(phases.length).toBe(10);
+    expect(phases.length).toBe(11);
   });
 });

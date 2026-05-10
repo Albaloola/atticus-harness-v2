@@ -59,14 +59,21 @@ Hermes is responsible for the operator conversation and supervision. Codex is
 responsible for running mutating Harness CLI commands. Harness is the system of
 record for case state.
 
-**Orchestrator architecture**: The harness now uses a `UnifiedMasterOrchestrator`
-— a single agent-driven loop that merges the former master-orchestrator +
+**Orchestrator architecture**: The harness now uses a `UnifiedMasterOrchestrator`,
+a single agent-driven loop that merges the former master-orchestrator +
 master-supervisor split. The unified orchestrator wraps a long-lived QueryLoop
 agent with orchestration tools (`run_phase`, `get_orchestration_state`), full
 harness editing authority, and provider-agnostic JSON retry. The agent controls
 phase execution, monitors worker output, and can patch harness source code when
-it detects harness-level bugs. There is no separate "observer" role — the master
+it detects harness-level bugs. There is no separate "observer" role: the master
 orchestrator IS the observer.
+
+The unified orchestrator also performs smart gap analysis before production
+work. It should skip fresh existing deliverables unless `--force` is requested,
+and it can route Phase 11 document output with an explicit output objective.
+Phase 11 writes human-friendly prepare-only files into `_output/` and records a
+manifest. Exact official form requests must resolve a local or official remote
+form source before output is produced.
 
 Hermes may run no-write inspection commands directly. Hermes must brief Codex
 for commands that create, change, repair runtime state, accept, reject, schedule,
@@ -139,6 +146,7 @@ harness ingest <matter-name> <path>
 harness run <matter-name> [...]
 harness orchestrate <matter-name> [...]
 harness case manage <matter-name> [...]
+harness export documents <matter-name> [...]
 harness case reset <matter-name> [...]
 harness draft <matter-name> [...]
 harness verify <matter-name> <candidate-id>
@@ -231,6 +239,13 @@ The harness architecture is provider-agnostic: the unified orchestrator's
 API parameters (`response_format`, `outputSchema`). All supported provider
 profiles work with the unified orchestrator without code changes.
 
+Hermes should brief Codex as the execution supervisor, not as a provider choice.
+Normal briefs should ask Codex to run the Harness command without adding
+`--provider`. The active Harness profile decides whether the run uses DeepSeek,
+OpenRouter, Anthropic, OpenAI-compatible/custom, local, or Codex SDK. Include
+`--provider <name>` only when the operator explicitly asks to use that provider,
+or when the task is provider setup, diagnosis, or verification.
+
 Provider profile facts Hermes must preserve:
 
 - The operator-selected profile controls client kind, auth method, base URL, and
@@ -263,7 +278,8 @@ Provider profile facts Hermes must preserve:
 - Local/Ollama profiles do not require stored auth; tool behavior depends on the
   local server and selected model. Hermes must not claim a local model supports
   a reasoning toggle unless the configured local server/model does.
-- Codex SDK is a separate delegated-auth profile with a tool-free lane.
+- Codex SDK is a separate delegated-auth profile with native Harness-owned tool
+  support. `--no-tools` is the deliberate tool-free lane.
 
 Before any LLM-backed Harness work, Hermes should inspect provider readiness:
 
@@ -293,21 +309,29 @@ Codex SDK facts Hermes must preserve:
 - Auth is delegated to the local Codex CLI.
 - The setup command is `codex login`, outside Harness secrets.
 - Hermes must never paste `CODEX_TOKEN` or Codex cache contents into Harness.
-- Codex SDK support is tool-free.
-- Codex SDK runs should use `--provider codex-sdk --no-tools`.
-- Full Harness tool loops require a tool-capable provider profile. OpenRouter,
-  OpenAI-compatible/custom, and Anthropic profiles are the intended full-tool
-  lanes when configured; Codex SDK remains tool-free by provider capability.
+- Codex SDK is native in Harness through the Codex SDK provider.
+- Codex SDK can run with Harness-owned tools through the native MCP/tool bridge.
+- When Codex SDK itself is the requested provider, use `--provider codex-sdk`
+  for the native tool-capable lane.
+- Use `--provider codex-sdk --no-tools` only when the operator explicitly wants
+  a tool-free Codex run.
+- Full Harness tool loops can use OpenRouter, OpenAI-compatible/custom,
+  Anthropic, direct DeepSeek, or Codex SDK when the selected profile is
+  configured and authenticated.
 - The removed legacy profile name is `openai-codex-oauth`; Hermes must not tell
   anyone to use it.
 
-Codex command template for a tool-free Codex SDK run:
+Codex SDK command templates, only when the operator explicitly selects Codex SDK
+or the task is Codex SDK provider testing:
 
 ```bash
+harness run <matter-name> --provider codex-sdk --prompt "<prompt>"
 harness run <matter-name> --provider codex-sdk --no-tools --prompt "<prompt>"
 ```
 
-Hermes must brief Codex with that template rather than running it directly.
+Hermes must brief Codex with the appropriate template rather than running it
+directly. For ordinary case work, prefer the provider-neutral Harness command
+and let the selected Harness provider profile decide the model lane.
 
 ## How To Brief Codex
 
@@ -323,10 +347,14 @@ Suggested command: <exact command template>
 Safety constraints:
 - Do not send/file/serve/contact externally.
 - Preserve provider/model policy.
-- Do not edit Harness source unless the operator explicitly asked Codex to fix code.
+- Do not add `--provider` unless the operator requested a provider or the task
+  is provider setup/diagnosis.
+- Do not edit Harness source unless the operator explicitly asked Codex to fix
+  code.
 - If the Harness command fails because of a product issue, write a bug report.
 Expected output back to Hermes:
-- Candidate IDs, artifact IDs, run IDs, event IDs, status, risks, next operator action.
+- Candidate IDs, artifact IDs, run IDs, event IDs, status, risks, next operator
+  action.
 ```
 
 Hermes should then report Codex's result to the operator with the same IDs and
@@ -336,13 +364,14 @@ status evidence. Hermes must not fill in missing results from memory.
 
 Use this table to decide what to brief Codex to do.
 
-| Operator intent | Hermes direct inspection first | Codex action to request |
+| Operator intent | Hermes direct inspection first | Harness action to brief Codex for |
 | --- | --- | --- |
 | New matter | `harness control-panel status --json` | `harness init <matter-name>` |
 | Add evidence | `harness control-panel agent-packet <matter-name> --json` | `harness ingest <matter-name> <path>` |
 | Check evidence | `harness evidence <matter-name>` and `harness search <matter-name> "<query>"` | Usually none |
 | Full investigation | `harness control-panel agent-packet`, `harness events`, `harness case resume` | `harness orchestrate <matter-name> --objective "<objective>" --json` |
 | Long investigation | Same as full investigation | `harness orchestrate <matter-name> --objective "<objective>" --background --json` |
+| Force full reproduction | Same as full investigation | `harness orchestrate <matter-name> --objective "<objective>" --force --json` |
 | Follow-up email | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type email --source hermes --json` |
 | Letter or communication | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type communication --source hermes --json` |
 | Task list | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type task --source hermes --json` |
@@ -351,6 +380,8 @@ Use this table to decide what to brief Codex to do.
 | Candidate readiness | `harness control-panel agent-packet` and `harness events` | `harness verify`, `harness gate`, and `harness review` for the candidate |
 | Promote candidate | Inspect candidate ID and gates first | `harness accept manual` or `harness accept auto` |
 | Reject candidate | Inspect candidate ID and reason first | `harness reject <matter-name> <candidate-id> --reason "<reason>"` |
+| Human-friendly document outputs | `harness case resume`, `harness events`, and accepted candidate/artifact IDs | `harness export documents <matter-name> --objective "<output request>" --json` |
+| Exact official court form output | `harness rules scotcourts search "<form name>" --phase document_output_pipeline --json` | `harness export documents <matter-name> --objective "<exact form request>" --scotcourts-source-dir legal-corpora/scotcourts --json` |
 | Case memory stale | `harness case memory`, `harness case resume`, `harness events` | Only Codex may run `harness case reset` if needed |
 | Background progress | `harness control-panel agent-packet`, `harness events`, `harness daemon status` | Usually none |
 | Schedule monitoring | `harness schedule list <matter-name> --json` | `harness schedule create` or `harness schedule delete` |
@@ -390,6 +421,37 @@ If acceptance fails with a reducer-only, packet, lease, unsafe artifact ID, or
 candidate ownership error, Hermes must not suggest editing files. Hermes should
 write a bug report if Codex cannot resolve the failure through documented
 commands.
+
+## Phase 11 Document Output
+
+Phase 11 is a mutating prepare-only output workflow. Hermes must not run it
+directly. Hermes may inspect matter state and ScotCourts search results, then
+brief Codex to run one of these templates:
+
+```bash
+harness export documents <matter-name> --objective "<output request>" --json
+harness export documents <matter-name> --objective "<exact official form request>" --scotcourts-source-dir legal-corpora/scotcourts --json
+harness export documents <matter-name> --objective "<exact official form request>" --allow-remote-forms --json
+```
+
+Use the smallest truthful objective. Examples include:
+
+- `Produce a polished report for the operator`
+- `Produce a clean follow-up email`
+- `Produce the exact ScotCourts witness statement form`
+
+For exact official forms, Hermes should inspect the local corpus first with:
+
+```bash
+harness rules scotcourts search "<form name or purpose>" --phase document_output_pipeline --json
+```
+
+If the local corpus has no match, Hermes may brief Codex to use
+`--allow-remote-forms` only when the operator has asked for an exact form and
+remote official lookup is appropriate. Codex should return the output manifest
+path, produced file paths, form source path or URL, blockers, and next safe
+operator action. If Phase 11 reports that an exact form cannot be resolved,
+Hermes must report the blocker rather than suggesting a generic replacement.
 
 ## Background Work And Leases
 
@@ -493,6 +555,11 @@ Hermes should also search `court-session` before answering or briefing work.
 Reports and briefs should name the relevant document or chapter, local harness
 path, and whether the answer still needs current official-source verification
 before filing, service, or deadline reliance.
+
+For Phase 11 exact form output, use phase id `document_output_pipeline` in the
+ScotCourts search command. The official form source must be recorded in the
+Codex result. If no exact form source is found, the correct outcome is a blocker,
+not a hand-built substitute form.
 
 ## Anti-Hallucination Rules
 
@@ -636,6 +703,21 @@ harness review <matter-name> <candidate-id>
 
 Return candidate IDs, artifact IDs, event IDs, status, risks, and next operator
 action. Do not send or file anything externally.
+```
+
+When the follow-up is about making accepted outputs presentable, brief Codex to
+run Phase 11 instead:
+
+```text
+Please run:
+harness export documents <matter-name> --objective "<operator output request>" --json
+
+If the request is for an exact official form, inspect the ScotCourts corpus first
+and include `--scotcourts-source-dir legal-corpora/scotcourts`. Use
+`--allow-remote-forms` only when remote official lookup is appropriate.
+
+Return the manifest path, produced output paths, form source path or URL,
+blockers, and next safe operator action. Do not send or file anything externally.
 ```
 
 Hermes's final operator response should include only grounded status, IDs, risks,

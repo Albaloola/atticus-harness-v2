@@ -8,12 +8,13 @@ import { saveOrchestrationCheckpoint } from './checkpoint.js';
 import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH, normalizePositiveInteger, remainingDepth } from './limits.js';
 import { resolveConfig } from '../config/loader.js';
 import { selectModelForTask } from '../config/model-routing.js';
-import { getDefaultPhases } from '../legal/workflow.js';
+import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
 import { DEFAULTS, type AutonomyPolicy, type ResolvedHarnessConfig } from '../config/schema.js';
 import { buildUnifiedMasterOrchestratorPrompt } from './prompts.js';
 import { ToolRegistry } from '../tools/index.js';
 import { createRunPhaseTool, createGetOrchestrationStateTool, type PhaseToolsConfig } from './orchestration-tools.js';
 import { buildProviderAgnosticResumePlan } from './resume-recovery.js';
+import { buildOrchestrationGapAnalysis, formatGapAnalysisForPrompt, type GapAnalysisResult } from './gap-analysis.js';
 import type { OrchestratorConfig, OrchestratorResult } from './types.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
@@ -58,6 +59,56 @@ export class UnifiedMasterOrchestrator {
     try {
       await this.runtime.emitRunStarted(masterRun.id, objective);
 
+      const gapAnalysis = await buildOrchestrationGapAnalysis({
+        matterName,
+        objective,
+        phases,
+        force: this.config.force,
+      });
+      await appendEvent({
+        matterName,
+        type: 'orchestration.gap_analysis.completed',
+        runId: masterRun.id,
+        source: 'orchestration',
+        data: {
+          force: gapAnalysis.force,
+          existingDeliverables: gapAnalysis.inventory.length,
+          skipped: gapAnalysis.skipped.length,
+          stale: gapAnalysis.stale.length,
+          missing: gapAnalysis.gaps.length,
+          toProduce: gapAnalysis.toProduce.map((requirement) => requirement.label),
+          noNewWorkNeeded: gapAnalysis.noNewWorkNeeded,
+        },
+      });
+
+      if (gapAnalysis.noNewWorkNeeded) {
+        const noWorkResult = buildNoNewWorkResult(matterName, phases, gapAnalysis);
+        await this.runtime.emitRunCompleted(masterRun.id, noWorkResult.summary, {
+          status: 'completed',
+          completedPhases: phases.length,
+          totalPhases: phases.length,
+        });
+        updateRun(matterName, masterRun.id, {
+          status: 'completed',
+          summary: noWorkResult.summary,
+        });
+        saveOrchestrationCheckpoint(matterName, {
+          masterRunId: masterRun.id,
+          status: 'completed',
+          objective,
+          completedPhaseIds: phases.map((phase) => phase.id),
+          blockedPhaseIds: [],
+          failedPhaseIds: [],
+          phaseSummaries: noWorkResult.phaseResults.map((phaseResult) => ({
+            phaseId: phaseResult.phaseId,
+            phaseName: phaseResult.phaseName,
+            status: 'completed',
+            summary: phaseResult.summary,
+          })),
+        });
+        return noWorkResult;
+      }
+
       const resumePlan = this.config.resume
         ? buildProviderAgnosticResumePlan({ matterName, objective, phases })
         : undefined;
@@ -89,25 +140,6 @@ export class UnifiedMasterOrchestrator {
 
       const phaseMaxDepth = remainingDepth(maxDepth, DEFAULT_MAX_DEPTH);
       const phaseMaxConcurrency = normalizePositiveInteger(maxConcurrency, DEFAULT_MAX_CONCURRENCY);
-
-      const phaseToolsConfig: PhaseToolsConfig = {
-        matterName,
-        masterRunId: masterRun.id,
-        maxDepth: phaseMaxDepth,
-        maxConcurrency: phaseMaxConcurrency,
-        autonomy: resolvedConfig.autonomy,
-        providerPolicy: resolvedConfig.providerPolicy,
-        runtime: this.runtime,
-        resumePlan,
-      };
-
-      const toolRegistry = new ToolRegistry({
-        enforcePolicy: true,
-        includeResearchTools: Boolean(resolvedConfig.autonomy?.autoApproveWeb),
-      });
-      toolRegistry.register(createRunPhaseTool(phaseToolsConfig));
-      toolRegistry.register(createGetOrchestrationStateTool(phaseToolsConfig));
-
       const autonomy = resolvedConfig.autonomy ?? DEFAULTS.autonomy;
       const unifiedAutonomy: AutonomyPolicy = {
         ...autonomy,
@@ -120,6 +152,26 @@ export class UnifiedMasterOrchestrator {
         externalActionMode: 'prepare_only',
         allowExternalDispatch: false,
       };
+
+      const phaseToolsConfig: PhaseToolsConfig = {
+        matterName,
+        masterRunId: masterRun.id,
+        maxDepth: phaseMaxDepth,
+        maxConcurrency: phaseMaxConcurrency,
+        autonomy: unifiedAutonomy,
+        providerPolicy: resolvedConfig.providerPolicy,
+        runtime: this.runtime,
+        resumePlan,
+        force: Boolean(this.config.force),
+        gapAnalysis,
+      };
+
+      const toolRegistry = new ToolRegistry({
+        enforcePolicy: true,
+        includeResearchTools: Boolean(resolvedConfig.autonomy?.autoApproveWeb),
+      });
+      toolRegistry.register(createRunPhaseTool(phaseToolsConfig));
+      toolRegistry.register(createGetOrchestrationStateTool(phaseToolsConfig));
 
       const phaseIds = phases.map((p) => p.id).join(', ');
       const resumeLines = resumePlan && resumePlan.startIndex > 0
@@ -148,10 +200,14 @@ export class UnifiedMasterOrchestrator {
         'You are the Unified Master Orchestrator. Your job is to run legal matter phases and oversee the entire harness.',
         'Start by calling get_orchestration_state to understand the current matter state.',
         'Then use todo_write to plan which phases to run.',
-        'For each phase, call run_phase with the phase ID and a clear objective.',
+        'For each phase that has missing or stale deliverables, call run_phase with the phase ID and a clear objective. Do not intentionally re-produce complete deliverables unless force mode is enabled.',
         'Between phases, inspect results, diagnose issues, and if the harness itself is broken, fix the harness code using your editing tools.',
         'When all necessary phases are complete (or you decide to stop), return a JSON synthesis of the entire run.',
         ...resumeLines,
+        '',
+        formatGapAnalysisForPrompt(gapAnalysis),
+        '',
+        'Smart gap-analysis rule: produce only the deliverables listed under missing or stale work. Existing complete deliverables are skipped and should be referenced, not regenerated.',
         '',
         'Phase descriptions:',
         ...phases.map((phase) => `  - ${phase.id}: ${phase.name} — ${phase.description}`),
@@ -187,7 +243,11 @@ export class UnifiedMasterOrchestrator {
 
       const result = await loop.run(userMessage);
 
-      const parsed = parseOrchestratorResult(result.finalContent, matterName);
+      const parsed = reconcileOrchestratorResult(
+        parseOrchestratorResult(result.finalContent, matterName),
+        phases,
+        gapAnalysis,
+      );
       const terminalStatus = parsed.status;
 
       await this.runtime.emitRunCompleted(masterRun.id, parsed.summary, {
@@ -207,6 +267,7 @@ export class UnifiedMasterOrchestrator {
         objective,
         completedPhaseIds: phaseSummaries.filter((p) => p.status === 'completed').map((p) => p.phaseId),
         blockedPhaseIds: phaseSummaries.filter((p) => p.status === 'blocked' || p.status === 'failed').map((p) => p.phaseId),
+        failedPhaseIds: phaseSummaries.filter((p) => p.status === 'failed').map((p) => p.phaseId),
         phaseSummaries: phaseSummaries.map((p) => ({
           phaseId: p.phaseId,
           phaseName: p.phaseName,
@@ -273,6 +334,48 @@ export class UnifiedMasterOrchestrator {
   }
 }
 
+function buildNoNewWorkResult(
+  matterName: string,
+  phases: PhaseDefinition[],
+  gapAnalysis: GapAnalysisResult,
+): OrchestratorResult {
+  const artifactIds = [...new Set(gapAnalysis.skipped.map((match) => match.assetId))];
+  return {
+    matterName,
+    summary: `${gapAnalysis.summary} Smart gap analysis skipped ${gapAnalysis.skipped.length} existing deliverable(s); no phases were rerun.`,
+    status: 'completed',
+    artifacts: artifactIds,
+    findings: [{
+      claim: 'Smart gap analysis found every required deliverable already present and fresh.',
+      confidence: 1,
+    }],
+    risks: [],
+    phaseResults: phases.map((phase) => {
+      const phaseRequirementIds = new Set(
+        gapAnalysis.requirements
+          .filter((requirement) => requirement.phaseId === phase.id)
+          .map((requirement) => requirement.id),
+      );
+      const phaseMatches = gapAnalysis.skipped.filter((match) => phaseRequirementIds.has(match.requirementId));
+      return {
+        phaseId: phase.id,
+        phaseName: phase.name,
+        status: 'completed' as const,
+        summary: `Skipped by smart gap analysis: ${phaseMatches.length} existing deliverable(s) satisfy this phase.`,
+        findings: phaseMatches.map((match) => ({
+          claim: `${match.requirementLabel} already exists as ${match.assetSource}:${match.assetId}.`,
+          support: match.assetTitle,
+          confidence: 'high' as const,
+          kind: 'procedural_fact' as const,
+        })),
+        risks: [],
+        artifactIds: [...new Set(phaseMatches.map((match) => match.assetId))],
+        workerResults: [],
+      };
+    }),
+  };
+}
+
 function parseOrchestratorResult(content: string, matterName: string): OrchestratorResult {
   const parsed = tryParseJson(content);
   if (!parsed) {
@@ -315,6 +418,86 @@ function parseOrchestratorResult(content: string, matterName: string): Orchestra
     })),
     harnessPatchesApplied: stringArray(parsed.harnessPatchesApplied),
   };
+}
+
+function reconcileOrchestratorResult(
+  parsed: OrchestratorResult,
+  phases: PhaseDefinition[],
+  gapAnalysis: GapAnalysisResult,
+): OrchestratorResult {
+  const byPhase = new Map(parsed.phaseResults.map((phase) => [phase.phaseId, phase]));
+  const phaseResults = phases.map((phase) => {
+    const existing = byPhase.get(phase.id);
+    if (existing) return existing;
+    if (phaseSatisfiedByGapAnalysis(phase.id, gapAnalysis)) {
+      return {
+        phaseId: phase.id,
+        phaseName: phase.name,
+        status: 'completed' as const,
+        summary: 'Satisfied by existing fresh deliverables in smart gap analysis.',
+        findings: [],
+        risks: [],
+        artifactIds: gapAnalysis.skipped
+          .filter((match) => gapAnalysis.requirements.find((requirement) => requirement.id === match.requirementId)?.phaseId === phase.id)
+          .map((match) => match.assetId),
+        workerResults: [],
+      };
+    }
+    return {
+      phaseId: phase.id,
+      phaseName: phase.name,
+      status: 'blocked' as const,
+      summary: 'No phase result was returned by the master orchestrator.',
+      findings: [],
+      risks: [],
+      artifactIds: [],
+      workerResults: [],
+    };
+  });
+
+  const blocked = phaseResults.filter((phase) => phase.status !== 'completed');
+  const missingDocumentArtifacts = phaseResults.some((phase) =>
+    (phase.phaseId === 'document_production' || phase.phaseId === 'bundle_and_war_room_assembly') &&
+    phase.status === 'completed' &&
+    phase.artifactIds.length === 0 &&
+    !phaseSatisfiedByGapAnalysis(phase.phaseId, gapAnalysis)
+  );
+  if (blocked.length === 0 && !missingDocumentArtifacts) {
+    return { ...parsed, phaseResults };
+  }
+
+  return {
+    ...parsed,
+    status: parsed.status === 'failed' ? 'failed' : 'needs_followup',
+    summary: [
+      parsed.summary,
+      blocked.length > 0 ? `Reconciler found ${blocked.length} missing or blocked phase result(s).` : undefined,
+      missingDocumentArtifacts ? 'Reconciler found a production phase completed without reducer-visible artifactIds.' : undefined,
+    ].filter(Boolean).join(' '),
+    phaseResults: phaseResults.map((phase) => {
+      if (
+        (phase.phaseId === 'document_production' || phase.phaseId === 'bundle_and_war_room_assembly') &&
+        phase.status === 'completed' &&
+        phase.artifactIds.length === 0 &&
+        !phaseSatisfiedByGapAnalysis(phase.phaseId, gapAnalysis)
+      ) {
+        return {
+          ...phase,
+          status: 'blocked' as const,
+          summary: `${phase.summary} Missing reducer-visible artifactIds; rerun this phase and require submit_candidate output.`,
+        };
+      }
+      return phase;
+    }),
+  };
+}
+
+function phaseSatisfiedByGapAnalysis(phaseId: string, gapAnalysis: GapAnalysisResult): boolean {
+  if (gapAnalysis.force) return false;
+  const requirements = gapAnalysis.requirements.filter((requirement) => requirement.phaseId === phaseId);
+  if (requirements.length === 0) return false;
+  const satisfied = new Set(gapAnalysis.skipped.map((match) => match.requirementId));
+  return requirements.every((requirement) => satisfied.has(requirement.id));
 }
 
 function tryParseJson(content: string): Record<string, unknown> | undefined {

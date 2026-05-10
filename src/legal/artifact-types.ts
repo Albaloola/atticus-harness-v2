@@ -23,6 +23,7 @@ export const LegalArtifactType = {
   draft_document: 'draft_document',
   hostile_review_report: 'hostile_review_report',
   war_room_pack: 'war_room_pack',
+  document_output_bundle: 'document_output_bundle',
 } as const;
 
 export type LegalArtifactType = (typeof LegalArtifactType)[keyof typeof LegalArtifactType];
@@ -54,6 +55,7 @@ export const artifactTypeCategories: Record<LegalArtifactType, ArtifactCategory>
   [LegalArtifactType.filing_checklist]: 'prepare_only',
   [LegalArtifactType.operator_handoff_report]: 'prepare_only',
   [LegalArtifactType.war_room_pack]: 'prepare_only',
+  [LegalArtifactType.document_output_bundle]: 'prepare_only',
 };
 
 export function getArtifactTypeCategory(type: LegalArtifactType): ArtifactCategory {

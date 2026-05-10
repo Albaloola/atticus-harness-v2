@@ -12,7 +12,7 @@ import { clearOrchestrationCheckpoint, loadOrchestrationCheckpoint } from '../or
 export async function handleCaseManage(
   matterName: string,
   instruction: string,
-  options: { type?: string; source?: string; json?: boolean; autoAccept?: boolean; background?: boolean },
+  options: { type?: string; source?: string; json?: boolean; autoAccept?: boolean; background?: boolean; force?: boolean },
 ): Promise<void> {
   await assertMatter(matterName);
 
@@ -23,6 +23,7 @@ export async function handleCaseManage(
     if (options.type) args.push('--type', options.type);
     if (options.source) args.push('--source', options.source);
     if (options.autoAccept) args.push('--auto-accept');
+    if (options.force) args.push('--force');
     const background = spawnBackgroundHarness(args);
     await appendEvent({
       matterName,
@@ -55,6 +56,7 @@ export async function handleCaseManage(
     requestedType,
     source: options.source ?? 'hermes',
     autoAccept: options.autoAccept,
+    force: options.force,
   });
 
   if (options.json) {
@@ -62,7 +64,15 @@ export async function handleCaseManage(
     return;
   }
 
-  console.log(chalk.green('Case output created'), chalk.bold(result.candidateId));
+  if (result.skipped) {
+    console.log(chalk.green('No new case output needed'));
+    console.log(`  Summary: ${result.summary}`);
+    console.log(`  Skipped: ${result.gapAnalysis?.skipped.length ?? 0} existing deliverable(s)`);
+    console.log(chalk.gray('Next:'), chalk.cyan(`harness case manage ${matterName} "${instruction}" --force`));
+    return;
+  }
+
+  console.log(chalk.green('Case output created'), chalk.bold(result.candidateId ?? '(unknown candidate)'));
   console.log(`  Type: ${result.type}`);
   console.log(`  Title: ${result.title}`);
   console.log(`  Summary: ${result.summary}`);

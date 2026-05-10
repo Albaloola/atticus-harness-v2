@@ -29,6 +29,7 @@ const TOOL_TO_CATEGORY: Record<string, ToolCategory> = {
   quality_gate: 'read_only',
   hostile_review: 'agent_spawn',
   evidence_ingest: 'matter_write',
+  submit_candidate: 'matter_write',
   web_search: 'network',
   web_fetch: 'network',
 };
@@ -103,7 +104,7 @@ export function evaluateAutonomyPolicy(
     case 'read_only':
       return 'allow';
     case 'matter_write':
-      return 'ask';
+      return autonomy.autoApproveFileWrites ? 'allow' : 'ask';
     case 'network':
       return autonomy.autoApproveWeb ? 'allow_with_audit' : 'ask';
     case 'external_action':

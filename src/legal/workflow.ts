@@ -207,6 +207,20 @@ export const PHASES: PhaseDefinition[] = [
       'escalation-framework',
     ],
   },
+  {
+    id: 'document_output_pipeline',
+    name: 'Document Output Pipeline',
+    description:
+      'Convert reducer-accepted work products into human-friendly operator documents. Classify deliverables, humanise language, apply output templates, archive superseded files, and stage polished files in the matter _output directory.',
+    expectedOutputTypes: [AT.document_output_bundle],
+    suggestedSkills: [
+      'atticus-scotcourts-corpus',
+      'document-generation',
+      'docx-processing-anthropic',
+      'humanizer',
+      'scots-legal-humanizer',
+    ],
+  },
 ];
 
 export function getPhaseByName(name: string): PhaseDefinition | undefined {

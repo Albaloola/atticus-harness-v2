@@ -16,6 +16,7 @@ import type { QueryLoopConfig, QueryLoopResult } from '../agent/query-loop.js';
 import type { AgentRun } from '../types/state.js';
 import type { MatterEventType } from '../types/state.js';
 import type { OrchestrationRuntime } from './runtime.js';
+import type { AutonomyPolicy } from '../config/schema.js';
 
 export interface QueryLoopLike {
   run(userMessage: string): Promise<QueryLoopResult>;
@@ -32,6 +33,7 @@ export interface WorkerAgentConfig {
   queryLoopFactory?: QueryLoopFactory;
   synthesisClient?: WorkerSynthesisClient;
   runtime?: OrchestrationRuntime;
+  autonomy?: AutonomyPolicy;
 }
 
 export class WorkerAgent {
@@ -106,6 +108,7 @@ export class WorkerAgent {
         '',
         'Complete your assigned task using the available tools.',
         'Use matter_inventory before exec_sqlite/search_files for evidence manifests, production selection, bundle indexes, or schema guidance.',
+        'Use submit_candidate for reducer-visible deliverables; do not rely on transcript markdown or ad hoc _candidates files as the artifact output path.',
         'For long evidence, keep paging evidence_chunk_read/read_file with nextChunkIndex/nextOffset until you reach the relevant section or endReached/complete; do not treat one window as the whole document.',
         'For long deliverables, checkpoint sections with write_file mode "append" and expectedContentHash so later turns can continue without losing earlier work.',
         'If the task is not applicable to this matter after checking the evidence, return status "completed" with a finding that explains why; reserve "blocked" for missing authority or evidence that prevents any bounded output.',
@@ -278,6 +281,7 @@ export class WorkerAgent {
 
     const maxTurns = this.spawn.maxTurns ?? (this.config.spawn.allowedTools ? 15 : 25);
 
+    const effectiveAutonomy = this.config.autonomy ?? resolvedConfig.autonomy;
     const config: QueryLoopConfig = {
       model: this.config.model,
       temperature: this.config.temperature ?? resolvedConfig.temperature ?? 0.1,
@@ -289,7 +293,7 @@ export class WorkerAgent {
         model: this.config.model,
         providerName: resolvedConfig.providerName,
         providerPolicy: resolvedConfig.providerPolicy,
-        autonomy: resolvedConfig.autonomy,
+        autonomy: effectiveAutonomy,
         toolPolicy: resolvedConfig.toolPolicy,
         skillSection: skillContext.promptSection,
       }),
@@ -301,7 +305,7 @@ export class WorkerAgent {
       role: this.spawn.role,
       quietMode: this.config.quietMode,
       verbose: this.config.verbose,
-      autonomy: resolvedConfig.autonomy,
+      autonomy: effectiveAutonomy,
     };
 
     if (this.config.queryLoopFactory) {

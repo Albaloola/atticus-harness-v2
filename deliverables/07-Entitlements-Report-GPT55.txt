@@ -1,0 +1,169 @@
+Prepare-only report. No complaint, court claim, SPSO complaint, homelessness application, or external contact has been made by this report.
+
+1. Scope and source status
+
+This report concerns Anfal Elbushra, Edinburgh Napier University student number 40805511, in relation to accommodation arrears, threatened loss of university accommodation, disability-related vulnerability, safeguarding, hardship support, course withdrawal, and family vulnerability.
+
+Jurisdiction and forum are Scotland / UK. The immediate forum is Edinburgh Napier University's internal accommodation, student support, funding, safeguarding and complaints process. Possible later routes are SPSO complaint, Equality Act claim in the sheriff court where competent, and local authority homelessness assistance. No live court, SPSO, or council application is evidenced in the matter record.
+
+The legal source position is incomplete. The report relies on the persisted matter record and general UK/Scots legal framework. Statutes, statutory guidance, SPSO model complaints handling procedure, EHRC technical guidance, university policy and any current Edinburgh Council homelessness procedure should be live-checked before lodging or sending any final legal output.
+
+2. Key record facts
+
+The university recorded arrears of GBP5,526.66 at the 10 April 2026 arrears meeting. It said the missed rent covered monthly instalments from November 2025 to April 2026, each GBP921.11. The university said that, unless the debt was reduced below two months' rent before issue of the Notice to Quit, a 28 day Notice to Quit would be issued.
+
+The Notice to Quit was dated 20 April 2026. It stated that the university treated the tenancy as terminated as at 18 May 2026 and required Anfal to move from Bedroom B Flat 05 Castlelaw House. A related arrears letter stated rent arrears of GBP5,526.66, a payment required date of 9 May 2026, and that the university was writing to the guarantor and reserved the right to issue a writ in the Sheriff Court.
+
+On 1 May 2026 Anfal told the accommodation team that she would be withdrawing from the course, had no source of income, could not pay in full by 9 May, and wanted a manageable payment plan or release from future accommodation liability. The university replied that the current Notice to Quit would still end the contract at 10am on 18 May and that withdrawal from the course would not affect the Notice to Quit.
+
+On 8 May 2026 the university wrote to Leila Hassan stating that Anfal had been issued with a financial Notice to Quit, that her end of lease date would be 10am on Monday 18 May, and that Anfal would be expected to vacate by that date. The university said the debt accumulated up to 18 May would be GBP5,495.14 and that it would accept a payment plan of GBP150 per month, with external debt collection risk if more than two payments failed.
+
+Anfal asked for urgent support on 14 April 2026. She said the arrears were over GBP5,500, she may lose accommodation, her only income was SAAS bursary, she could not work due to health-related issues, her parents relied on benefits, commuting from Glasgow for nursing placement was not realistic, and returning home was not suitable due to personal circumstances. Student Funding replied that wellbeing was the primary concern, encouraged an ENU Accommodation Hardship Fund application, and asked for documents. On 21 April it asked for a full SAAS award letter, clarification of Chemist4U payments, and said the bank statements showed high non-essential expenditure.
+
+The accommodation hardship fund evidence is important but inadequate on its own. The 10 April university email said the Student Accommodation Hardship Scholarship Fund would open between 13 and 27 April 2026 and that any successful award was capped at GBP500 per student. That cap was far below the recorded arrears.
+
+The counselling service closed Anfal's file on 28 April 2026 because it had not heard from her. The email said she could re-enter the service, gave 9am to 5pm service hours, and signposted NHS 24, 999, Edinburgh Crisis Centre, Samaritans, HOPELINE247, Victim Support and Rape Crisis Centre.
+
+The record contains evidence that placement staff were concerned enough to ask Anfal to confirm she was safe and well after non-attendance. Anfal replied that she did not attend placement because of illness.
+
+The WhatsApp evidence records Anfal saying on 7 May 2026 that people from home were calling her a failure and calling her names for staying in Edinburgh. She said going home made it worse and later said that maybe going back home was not best for her. This supports a safeguarding concern, but it does not by itself prove domestic abuse in the legal sense. That point should be framed carefully unless further evidence is obtained.
+
+The bank statement records a GBP1.20 personal account balance and GBP0.00 pots for the statement ending 28 April 2026. It is sensitive financial evidence and should be redacted before external disclosure.
+
+There is an unresolved room inconsistency. The tenancy agreement identifies Bedroom E Flat 09 Castlelaw House, while the Notice to Quit identifies Bedroom B Flat 05 Castlelaw House. This should be resolved before any formal complaint, claim, or bundle is finalised.
+
+3. Equality Act 2010: reasonable adjustments
+
+The likely legal framework is Equality Act 2010, including disability under section 6, the duty to make reasonable adjustments under section 20, failure to comply under section 21, and the higher education provisions under Part 6. The responsible body for a university must not discriminate against a student in the way it provides education or access to benefits, facilities or services, or by subjecting the student to any other detriment. University accommodation, student funding administration, wellbeing processes, arrears management and course-related placement support may all be relevant benefits, facilities or services.
+
+Depression, suicidal ideation and agoraphobia can amount to disability if the statutory test is met: a physical or mental impairment with a substantial and long-term adverse effect on normal day-to-day activities. The record supports mental-health vulnerability and functional impact, but the disability element should be strengthened with medical evidence, GP records, counselling notes, or a disability support plan if available.
+
+For Anfal's circumstances, the reasonable adjustment duty should have required more than signposting. The university should have considered whether its standard arrears, Notice to Quit, hardship application, finance deadline and counselling closure processes placed Anfal at a substantial disadvantage because of her mental health, anxiety, agoraphobia, suicidal ideation, inability to work, and difficulty managing complex administrative demands during crisis.
+
+Reasonable adjustments that should have been considered include:
+
+1. Pausing or suspending the Notice to Quit and guarantor enforcement while a safeguarding and disability review took place.
+
+2. Appointing one named staff member to coordinate accommodation, finance, student funding, wellbeing, counselling, placements and complaints.
+
+3. Treating non-response to counselling emails as a possible crisis indicator, not simply as disengagement, where the university knew she was overwhelmed and at risk.
+
+4. Extending deadlines for hardship evidence, accepting alternative evidence where possible, and helping Anfal obtain missing SAAS, tenancy, bank and arrears documents.
+
+5. Considering emergency accommodation, temporary licence extension, managed room transfer, or a supported exit plan before requiring her to leave on 18 May.
+
+6. Considering an arrears remission, hardship award above the ordinary cap, emergency bridging grant, or debt write-off where the arrears were linked to disability, destitution, inability to work, and risk of homelessness.
+
+7. Avoiding reliance on a rigid GBP500 cap without an exceptional-case review.
+
+8. Adjusting placement and course processes so that housing crisis, mental-health crisis and absence from placement were managed together rather than separately.
+
+9. Allowing Anfal to communicate through Omar or another authorised supporter where she had difficulty engaging directly.
+
+10. Giving reasons in writing for any refusal to adjust the accommodation or arrears process.
+
+The strongest Equality Act point is not that the university was automatically required to write off all arrears. It is that, once it knew of serious mental-health and housing risk, it had to consider and record reasonable adjustments before applying a standard arrears and eviction pathway. The evidence presently suggests a procedural response with signposting and funding-document requests, but limited evidence of a joined-up adjustment decision.
+
+4. Duty of care and safeguarding
+
+A university does not automatically become a parent or general guarantor of a student's wellbeing. The common law duty of care is fact-sensitive. The stronger argument here is that the university had actual notice of a foreseeable risk: serious mental-health deterioration, possible suicidal ideation as instructed, inability to work, rent arrears over GBP5,500, likely loss of accommodation, placement disruption, and an asserted inability to return home safely.
+
+In those circumstances, a reasonable institutional response should have included active safeguarding coordination. The university had staff with mental health and suicide intervention training in the accommodation chain, and the correspondence itself signposted crisis services. That makes it harder for the university to say the issue was only rent collection.
+
+A safe response should have included:
+
+1. A welfare risk assessment before maintaining the 18 May requirement to vacate.
+
+2. Written escalation to safeguarding / wellbeing leadership, with a named owner.
+
+3. Direct coordination between counselling, accommodation, funding and academic staff.
+
+4. A check on whether Anfal had safe accommodation after 18 May.
+
+5. A plan for out-of-hours and crisis support, including GP, NHS 24, Edinburgh Crisis Centre and emergency services where appropriate.
+
+6. Careful handling of the guarantor issue, because pressure on a vulnerable family could increase risk.
+
+7. Documentation of the reasons for any decision not to pause enforcement.
+
+The closure of the counselling file on 28 April is a material concern. The email did provide routes back into support and crisis contacts. The issue is whether closure was appropriate where the wider university knew, or should have known, that Anfal was in an escalating accommodation and safeguarding crisis. That is a complaint point requiring the university to explain what information counselling had, what risk assessment was done, and whether there was an open safeguarding referral at the time.
+
+5. Accommodation hardship support beyond the GBP500 cap
+
+The evidence does not prove that Edinburgh Napier had a legal duty to pay all arrears. It does support a strong complaint that a GBP500 cap was inadequate for an imminent homelessness case involving disability-related vulnerability.
+
+A fair hardship process should have considered:
+
+1. Whether the GBP500 fund was the only available fund or whether discretionary, emergency, retention, accommodation, widening access, nursing-placement, or exceptional support funds existed.
+
+2. Whether the cap could be waived or supplemented in an exceptional safeguarding case.
+
+3. Whether the university could apply an internal arrears remission or hold enforcement while a funding decision was made.
+
+4. Whether SAAS, placement expenses, benefits advice, ENSA Advice, charitable funds, and nursing/student hardship routes could be coordinated urgently.
+
+5. Whether the university could avoid making the student homeless while assessing hardship.
+
+6. Whether criticism of non-essential expenditure was proportionate in light of mental-health evidence, low balance, lack of income and impending loss of accommodation.
+
+The practical entitlement is therefore to an individualised hardship assessment, not a mechanical cap-only response. The requested remedy should be an exceptional review, written reasons, suspension of enforcement during review, and consideration of arrears remission or emergency accommodation support.
+
+6. Refugee family background and protected characteristics
+
+Being the daughter of a refugee family is not itself a standalone protected characteristic under the Equality Act 2010. However, race includes colour, nationality, and ethnic or national origins. Religion or belief may also be relevant if evidenced. The university must not treat Anfal or her family unfavourably because of race, nationality, ethnic origin, religion, or related protected characteristics.
+
+Leila's disability is separately relevant if evidenced. A disabled guarantor may be protected from direct discrimination, harassment or victimisation because of disability. Reasonable adjustments are normally owed to disabled persons themselves where they are put at a substantial disadvantage, but Anfal cannot usually claim reasonable adjustments simply because her mother is disabled. She may, however, rely on her own disability and on the university's knowledge of family vulnerability when arguing that the arrears and guarantor process needed an exceptional welfare review.
+
+The refugee and family-reunion facts are strongest as vulnerability and hardship context unless there is evidence of differential treatment because of race, nationality, ethnic origin, immigration background, or religion. They should not be overstated as a free-standing legal entitlement to debt write-off.
+
+7. Domestic abuse and unsafe return home
+
+The record supports a concern that returning home may be unsafe or harmful, but more evidence is needed before making a firm allegation of domestic abuse. The WhatsApp messages support wording such as: Anfal has said that people at home call her a failure, call her names for staying in Edinburgh, and that going home makes things worse.
+
+For homelessness purposes in Scotland, the practical point is that a person should not be treated as having safe accommodation if it is not reasonable for them to occupy it because of violence, abuse, threats, or serious risk. That assessment is primarily for the local authority under homelessness legislation and guidance, not the university. The university should still treat the disclosure as a safeguarding factor when deciding whether to insist on vacating university accommodation.
+
+The university should have considered whether requiring Anfal to return to the family home would increase risk, whether specialist domestic abuse or victim support signposting was needed, and whether accommodation enforcement should be paused until safe housing was identified.
+
+8. Housing (Scotland) duties
+
+The main statutory homelessness duties sit with the local authority, not Edinburgh Napier University. The relevant framework is Housing (Scotland) Act 1987 homelessness duties as amended, rather than a direct university duty to provide permanent housing.
+
+Anfal appears likely to be threatened with homelessness because the university has required her to leave by 18 May 2026. If she has no safe accommodation after that date, she should be treated as needing urgent local authority homelessness advice and, depending on assessment, temporary accommodation. If returning to the family home is unsafe, that must be explained clearly to the council.
+
+The university's obligations are different. It must comply with its contract, avoid unlawful eviction, comply with equality duties, act fairly under its own student support and complaint procedures, and handle safeguarding risk properly. It should not present local authority duties as a reason to ignore its own role in creating or escalating the immediate housing risk.
+
+9. SPSO and complaint-handling standards
+
+SPSO is the likely external complaint route after the university's internal complaint process is exhausted, subject to eligibility and time limits. The record does not show that the internal complaint has been submitted or completed.
+
+The complaint should ask the university to apply fair complaint-handling standards:
+
+1. Treat the issue as urgent because of the 18 May housing deadline and safeguarding risk.
+
+2. Identify the complaint stage and the person responsible.
+
+3. Acknowledge the complaint promptly.
+
+4. Address each head of complaint: disability adjustments, safeguarding, counselling closure, hardship support, accommodation enforcement, guarantor pursuit, mould/damp, and course impact.
+
+5. Give reasons, not only outcomes.
+
+6. Preserve and review relevant records, including safeguarding referral CRM:00380000000541 if that reference is verified.
+
+7. Explain any policy relied on, including hardship fund rules and any discretion to exceed the GBP500 cap.
+
+8. Provide a clear remedy decision and escalation rights.
+
+9. Signpost SPSO if the university issues a final response.
+
+A complaint to SPSO should focus on administrative fault, unreasonable delay, failure to follow policy, failure to consider relevant vulnerability, poor communication, inadequate reasons, and failure to provide an appropriate remedy. SPSO is not a court and will not normally decide complex damages or discrimination claims in the same way as a sheriff court, but it can consider complaint handling, service failure and maladministration.
+
+10. Overall assessment
+
+Anfal's strongest immediate entitlement is to an urgent, joined-up, evidence-based welfare and equality review before any loss of accommodation or guarantor enforcement proceeds. The record supports a serious argument that the university knew this was not just a rent-arrears case. It involved mental-health crisis, inability to work, nursing placement disruption, destitution, possible unsafe return home, hardship funding limits, and imminent homelessness.
+
+The university should have considered reasonable adjustments to its accommodation, finance, funding and counselling processes. It should also have considered exceptional hardship support beyond a GBP500 cap or given clear reasons why no such discretion existed. It should have coordinated safeguarding and not left Anfal to manage separate finance, accommodation, funding, counselling and academic processes while in crisis.
+
+The safest remedies to request are: withdrawal or suspension of the Notice to Quit; no guarantor enforcement while the complaint and safeguarding review are ongoing; emergency accommodation or supported transition; exceptional hardship review; arrears remission or write-off consideration; reopening/escalation of wellbeing support; written reasons; and independent complaint review with SPSO signposting.
+
+This is wording and case-management analysis only. Check the current university complaints procedure, SPSO guidance, Equality Act 2010 technical guidance, Housing (Scotland) homelessness guidance, and any legal advice before lodging or sending.

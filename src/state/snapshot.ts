@@ -82,7 +82,17 @@ export async function deriveSnapshot(
 
   const blockedReasons = tasks
     .filter((task) => task.status === 'blocked' || task.blockedReason)
-    .map((task) => ({ taskId: task.id, reason: task.blockedReason || 'blocked' }));
+    .map((task) => {
+      const blocker = isRecord(task.data.blocker) ? task.data.blocker : undefined;
+      return {
+        taskId: task.id,
+        reason: task.blockedReason || stringValue(blocker?.reason) || 'blocked',
+        type: stringValue(blocker?.type),
+        objectId: stringValue(blocker?.objectId),
+        severity: stringValue(blocker?.severity),
+        remediation: stringValue(blocker?.remediation),
+      };
+    });
 
   const totalEvents = getEventCount(matterName);
   const costs: RuntimeCosts = {
@@ -199,4 +209,12 @@ function deriveNextActions(
 
 function mergeNextActions(...actionSets: string[][]): string[] {
   return [...new Set(actionSets.flat())];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }

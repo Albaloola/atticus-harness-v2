@@ -181,6 +181,7 @@ function isOutputRequiredForPosture(phaseId: string, posture: MatterPosture): bo
     'document_production',
     'bundle_and_war_room_assembly',
     'operator_handoff',
+    'document_output_pipeline',
   ]).has(phaseId);
 }
 

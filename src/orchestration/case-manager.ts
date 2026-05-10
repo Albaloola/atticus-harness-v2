@@ -10,6 +10,7 @@ import { tryAutoAccept, type AutoAcceptResult, type TryAutoAcceptContext } from 
 import { buildCaseManagerPrompt } from './prompts.js';
 import { buildCaseMemoryPack, summarizeCaseMemory, type CaseMemoryPack } from './case-memory.js';
 import { saveOrchestrationCheckpoint } from './checkpoint.js';
+import { buildCaseGapAnalysis, formatGapAnalysisForPrompt, type GapAnalysisResult } from './gap-analysis.js';
 import { loadHumanizerPrompt } from '../skills/humanizer.js';
 import { SkillSelectionWorker } from '../skills/selection-worker.js';
 import { verifyCandidateCitations } from '../citation/verify.js';
@@ -42,10 +43,11 @@ export interface CaseManagerRequest {
   requestedType?: CaseRequestType;
   source?: string;
   autoAccept?: boolean;
+  force?: boolean;
 }
 
 export interface CaseManagerResult {
-  candidateId: string;
+  candidateId?: string;
   title: string;
   type: CaseRequestType;
   content: string;
@@ -54,6 +56,8 @@ export interface CaseManagerResult {
   risks: Array<{ risk: string; severity: string; mitigation?: string }>;
   memorySummary: string;
   autoAccept?: AutoAcceptResult;
+  skipped?: boolean;
+  gapAnalysis?: GapAnalysisResult;
 }
 
 export interface CaseManagerOptions {
@@ -133,6 +137,64 @@ export class CaseManager {
         },
       });
 
+      const gapAnalysis = await buildCaseGapAnalysis({
+        matterName: request.matterName,
+        instruction: request.instruction,
+        requestedType,
+        force: request.force,
+      });
+      await appendEvent({
+        matterName: request.matterName,
+        type: 'case.gap_analysis.completed',
+        runId: run.id,
+        taskId: task.id,
+        source: 'orchestration',
+        data: {
+          force: gapAnalysis.force,
+          existingDeliverables: gapAnalysis.inventory.length,
+          skipped: gapAnalysis.skipped.length,
+          stale: gapAnalysis.stale.length,
+          missing: gapAnalysis.gaps.length,
+          toProduce: gapAnalysis.toProduce.map((requirement) => requirement.label),
+          noNewWorkNeeded: gapAnalysis.noNewWorkNeeded,
+        },
+      });
+
+      if (gapAnalysis.noNewWorkNeeded) {
+        saveOrchestrationCheckpoint(request.matterName, {
+          masterRunId: run.id,
+          status: 'completed',
+          objective: request.instruction,
+          currentPhaseId: 'case_management',
+          caseMemorySummary: memorySummary,
+        });
+        await updateTask(request.matterName, task.id, {
+          status: 'completed',
+          data: {
+            skippedByGapAnalysis: true,
+            gapAnalysis: summarizeGapAnalysisForState(gapAnalysis),
+          },
+        });
+        updateRun(request.matterName, run.id, {
+          status: 'completed',
+          summary: gapAnalysis.summary,
+        });
+
+        return {
+          title: 'No new work needed',
+          type: requestedType,
+          content: '',
+          summary: gapAnalysis.summary,
+          nextActions: [
+            `Skipped ${gapAnalysis.skipped.length} existing deliverable(s). Use --force to re-produce them.`,
+          ],
+          risks: [],
+          memorySummary,
+          skipped: true,
+          gapAnalysis,
+        };
+      }
+
       const humanizer = await loadHumanizerPrompt({
         objective: request.instruction,
         requestedType,
@@ -166,7 +228,7 @@ export class CaseManager {
           skillContext.promptSection,
         ].filter(Boolean).join('\n\n') || undefined,
       });
-      const response = await this.generate(request, requestedType, memory, systemPrompt, humanizer?.skillName, config);
+      const response = await this.generate(request, requestedType, memory, systemPrompt, humanizer?.skillName, config, gapAnalysis);
       const parsed = parseCaseManagerResponse(response.content);
       const title = parsed.title || defaultTitle(requestedType, request.instruction);
       const content = parsed.content || response.content;
@@ -196,6 +258,7 @@ export class CaseManager {
             skillId: skill.skillId,
             score,
           })),
+          gapAnalysis: summarizeGapAnalysisForState(gapAnalysis),
         },
       };
 
@@ -212,6 +275,8 @@ export class CaseManager {
           requestedType,
           outputType,
           prepareOnly: isPrepareOnlyType(outputType),
+          skippedExisting: gapAnalysis.skipped.length,
+          producedRequirements: gapAnalysis.toProduce.map((requirement) => requirement.label),
         },
       });
 
@@ -266,6 +331,7 @@ export class CaseManager {
         risks: parsed.risks || [],
         memorySummary,
         autoAccept,
+        gapAnalysis,
       };
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
@@ -290,6 +356,7 @@ export class CaseManager {
     systemPrompt: string,
     activeSkillName?: string,
     config?: Awaited<ReturnType<typeof resolveConfig>>,
+    gapAnalysis?: GapAnalysisResult,
   ): Promise<LLMResponse> {
     const activeSkillMarker = activeSkillName ? `Active Skill: ${activeSkillName}` : /Active Skill: [^\n]+/.exec(systemPrompt)?.[0];
     const resolvedConfig = config ?? await resolveConfig({ matterName: request.matterName });
@@ -304,6 +371,14 @@ export class CaseManager {
             `Requested output type: ${requestedType}`,
             ...(activeSkillMarker ? [activeSkillMarker] : []),
             `Instruction from ${request.source ?? 'hermes'}: ${request.instruction}`,
+            ...(gapAnalysis
+              ? [
+                  '',
+                  formatGapAnalysisForPrompt(gapAnalysis),
+                  '',
+                  'Gap-analysis directive: produce only the deliverables listed under "Produce only these missing or stale deliverables". Do not re-produce or consolidate skipped deliverables unless --force is active.',
+                ]
+              : []),
             '',
             'Persisted case memory pack:',
             JSON.stringify(memory),
@@ -457,4 +532,26 @@ function extractMaxReviewSeverity(content: string): ReviewSeverity {
 function countReviewFindings(content: string): number {
   const matches = content.match(/\b(CRITICAL|HIGH|MEDIUM|LOW)\b/gi);
   return matches?.length ?? 0;
+}
+
+function summarizeGapAnalysisForState(gapAnalysis: GapAnalysisResult): Record<string, unknown> {
+  return {
+    force: gapAnalysis.force,
+    summary: gapAnalysis.summary,
+    latestEvidenceIngested: gapAnalysis.latestEvidenceIngested,
+    existingDeliverables: gapAnalysis.inventory.length,
+    complete: gapAnalysis.complete.map((match) => ({
+      requirement: match.requirementLabel,
+      assetId: match.assetId,
+      source: match.assetSource,
+    })),
+    stale: gapAnalysis.stale.map((match) => ({
+      requirement: match.requirementLabel,
+      assetId: match.assetId,
+      reason: match.staleReason,
+    })),
+    missing: gapAnalysis.gaps.map((requirement) => requirement.label),
+    toProduce: gapAnalysis.toProduce.map((requirement) => requirement.label),
+    noNewWorkNeeded: gapAnalysis.noNewWorkNeeded,
+  };
 }

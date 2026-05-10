@@ -6,9 +6,10 @@ import { hashText } from '../../src/extraction/hash.js';
 import { initMatter, deleteMatter } from '../../src/storage/matter.js';
 import { closeDb, getDb } from '../../src/storage/sqlite/index.js';
 import { insertChunks } from '../../src/storage/sqlite/chunks.js';
-import { insertEvidence } from '../../src/storage/sqlite/evidence.js';
+import { insertEvidence, insertEvidenceItemV2 } from '../../src/storage/sqlite/evidence.js';
 import { searchEvidence } from '../../src/storage/sqlite/search.js';
 import { closeStateDb } from '../../src/state/store.js';
+import type { EvidenceItem } from '../../src/domain/evidence-item.js';
 import type { EvidenceRecord, EvidenceStatus } from '../../src/types/evidence.js';
 
 describe('fail-closed evidence search', () => {
@@ -47,6 +48,33 @@ describe('fail-closed evidence search', () => {
     insertIndexedChunk('EVI-APPROVED', 'approved', 'lease arrears repair obligation');
 
     expect(searchEvidence('search-matter', '   ', { topK: 10 })).toEqual([]);
+  });
+
+  it('falls back to manifest filename matches when chunk FTS has no hits', async () => {
+    await initMatter('search-matter');
+    const db = getDb('search-matter');
+    const item: EvidenceItem = {
+      evidenceId: 'OME-SRC-0026',
+      matterName: 'search-matter',
+      sha256: hashText('OME-SRC-0026'),
+      originalPath: '/tmp/CIVIL_CASE_WRIT_ACTION_PLAN.md',
+      internalPath: 'matters/search-matter/_evidence/OME-SRC-0026.md',
+      originalFilename: 'CIVIL_CASE_WRIT_ACTION_PLAN.md',
+      canonicalFilename: 'civil-case-writ-action-plan.md',
+      sourceType: 'upload',
+      mimeType: 'text/markdown',
+      format: 'text',
+      status: 'registered',
+      ingestedAt: new Date().toISOString(),
+      sizeBytes: 10,
+      metadata: {},
+    };
+    insertEvidenceItemV2(db, item);
+
+    const results = searchEvidence('search-matter', 'writ summons initial pleading filing sheriff court', { topK: 10 });
+
+    expect(results.map((result) => result.evidenceId)).toContain('OME-SRC-0026');
+    expect(results[0].snippet).toContain('Filename/manifest match');
   });
 });
 

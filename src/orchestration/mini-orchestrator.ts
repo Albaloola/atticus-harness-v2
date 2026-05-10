@@ -103,6 +103,7 @@ export class MiniOrchestrator {
                 objective: w.title,
               }),
               runtime,
+              autonomy: this.input.autonomy,
             });
 
             updateTask(matterName, task.id, {
@@ -142,6 +143,7 @@ export class MiniOrchestrator {
                     recoveryOutcome: 'recovered_by_retry',
                     retryTaskId,
                     maxRecoveryRetries,
+                    artifactIds: retryResult.artifactIds,
                   },
                 } as Parameters<typeof updateTask>[2]);
                 return retryResult;
@@ -153,27 +155,42 @@ export class MiniOrchestrator {
             if (result.status === 'failed') {
               updateTask(matterName, task.id, {
                 status: 'failed',
+                blockedReason: result.summary,
                 data: {
                   failureReason: result.summary,
                   phaseId: phaseName,
                   recoveryOutcome: 'spawn_replacement',
                   retryTaskId,
                   maxRecoveryRetries,
+                  artifactIds: result.artifactIds,
+                  blocker: buildTaskBlocker('worker_failed', task.id, result.summary, 'high'),
                 },
               } as Parameters<typeof updateTask>[2]);
             } else if (result.status === 'blocked' || result.status === 'needs_followup') {
               updateTask(matterName, task.id, {
                 status: 'blocked',
+                blockedReason: result.summary,
                 data: {
                   blockReason: result.summary,
                   phaseId: phaseName,
                   recoveryOutcome: 'spawn_replacement',
                   retryTaskId,
                   maxRecoveryRetries,
+                  artifactIds: result.artifactIds,
+                  blocker: buildTaskBlocker('worker_blocked', task.id, result.summary, 'medium'),
                 },
               } as Parameters<typeof updateTask>[2]);
             } else {
-              updateTask(matterName, task.id, { status: 'completed' } as Parameters<typeof updateTask>[2]);
+              updateTask(matterName, task.id, {
+                status: 'completed',
+                blockedReason: null,
+                data: {
+                  phaseId: phaseName,
+                  artifactIds: result.artifactIds,
+                  resultStatus: result.status,
+                  summary: result.summary,
+                },
+              } as Parameters<typeof updateTask>[2]);
             }
 
             return result;
@@ -319,6 +336,7 @@ export class MiniOrchestrator {
         objective: retryObjective,
       }),
       runtime: this.input.runtime,
+      autonomy: this.input.autonomy,
     });
 
     updateTask(input.matterName, input.retryTaskId, {
@@ -333,11 +351,16 @@ export class MiniOrchestrator {
         : retryResult.status === 'failed'
           ? 'failed'
           : 'blocked',
+      blockedReason: retryResult.status === 'completed' ? null : retryResult.summary,
       data: {
         phaseId: input.phaseName,
         retryStatus: retryResult.status,
         retrySummary: retryResult.summary,
         retryExecutionOutcome: retryResult.status === 'completed' ? 'recovered' : 'retry_unresolved',
+        artifactIds: retryResult.artifactIds,
+        blocker: retryResult.status === 'completed'
+          ? undefined
+          : buildTaskBlocker('worker_retry_unresolved', input.retryTaskId, retryResult.summary, retryResult.status === 'failed' ? 'high' : 'medium'),
       },
     } as Parameters<typeof updateTask>[2]);
 
@@ -415,6 +438,12 @@ export class MiniOrchestrator {
           { title: 'Identify remaining risks' },
           { title: 'List next recommended actions' },
         ];
+      case 'document_output_pipeline':
+        return [
+          { title: 'Classify accepted deliverables for operator-ready output formats' },
+          { title: 'Humanize and format accepted work products into _output documents' },
+          { title: 'Summarize generated files and archived superseded outputs' },
+        ];
       default:
         return [
           { title: objective.substring(0, 120) },
@@ -487,4 +516,19 @@ export class MiniOrchestrator {
 
 function isRecoverableWorkerStatus(status: AgentStructuredResult['status']): boolean {
   return status === 'failed' || status === 'blocked' || status === 'needs_followup';
+}
+
+function buildTaskBlocker(
+  type: string,
+  objectId: string,
+  reason: string,
+  severity: 'medium' | 'high',
+): Record<string, unknown> {
+  return {
+    type,
+    objectId,
+    reason,
+    severity,
+    remediation: 'Inspect the worker run events and rerun the task or phase after resolving the blocker.',
+  };
 }

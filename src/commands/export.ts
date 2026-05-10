@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import { loadMatter } from '../storage/matter.js';
 import { buildPrepareOnlyBundle } from '../export/bundle-builder.js';
+import { runDocumentOutputPipeline } from '../export/document-output-pipeline.js';
 import { recordExportSignoff } from '../export/export-store.js';
 import { checkExportReadiness } from '../export/readiness.js';
 
@@ -86,6 +87,50 @@ export async function handleExportBundle(
     console.log(`  Manifest: ${chalk.cyan(result.manifestPath ?? '')}`);
   } catch (err: unknown) {
     console.error(chalk.red('Export bundle failed:'), (err as Error).message);
+    process.exit(1);
+  }
+}
+
+export async function handleExportDocuments(
+  matterName: string,
+  options: {
+    json?: boolean;
+    objective?: string;
+    allowRemoteForms?: boolean;
+    scotcourtsSourceDir?: string;
+    scotcourtsCachePath?: string;
+    officialFormSearchBaseUrl?: string;
+  } = {},
+): Promise<void> {
+  try {
+    await loadMatter(matterName);
+    const result = await runDocumentOutputPipeline({
+      matterName,
+      objective: options.objective,
+      allowRemoteFormDownload: options.allowRemoteForms ?? false,
+      scotCourtsSourceDir: options.scotcourtsSourceDir,
+      scotCourtsCachePath: options.scotcourtsCachePath,
+      officialFormSearchBaseUrl: options.officialFormSearchBaseUrl,
+    });
+    if (options.json) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    if (result.produced.length === 0) {
+      console.log(chalk.yellow('NO OUTPUTS'), result.summary);
+      for (const blocker of result.blockers) {
+        console.log(`  - ${blocker}`);
+      }
+      return;
+    }
+    console.log(chalk.green('✓'), result.summary);
+    console.log(`  Output directory: ${chalk.cyan(result.outputDir)}`);
+    console.log(`  Manifest: ${chalk.cyan(result.manifestPath)}`);
+    for (const output of result.produced) {
+      console.log(`  - ${chalk.cyan(output.path)} (${output.kind}/${output.format})`);
+    }
+  } catch (err: unknown) {
+    console.error(chalk.red('Document output failed:'), (err as Error).message);
     process.exit(1);
   }
 }

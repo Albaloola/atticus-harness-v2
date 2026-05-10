@@ -71,10 +71,21 @@ export async function recoverStaleRuntimeState(
         ? `owning run ${task.runId} is not live`
         : 'task has no owning run';
     const decision = buildTaskRecoveryDecision(task, reason, now);
+    const terminalReason = `agent_orphaned: ${reason}`;
     updateTask(matterName, task.id, {
       status: options.preserveInterruptedTasks ? 'blocked' : 'failed',
+      blockedReason: options.preserveInterruptedTasks ? terminalReason : undefined,
       data: {
         runtimeRecovery: decision,
+        blocker: {
+          type: 'agent_orphaned',
+          objectId: task.id,
+          reason: terminalReason,
+          remediation: options.preserveInterruptedTasks
+            ? 'Resume or rerun this task with a new worker lease.'
+            : 'Rerun the phase or spawn a replacement worker before trusting downstream phase state.',
+          severity: 'high',
+        },
         interruptedByResume: options.preserveInterruptedTasks ? true : undefined,
       },
     });

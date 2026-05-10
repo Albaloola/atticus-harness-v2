@@ -21,6 +21,7 @@ import { VerifyCitationsTool } from './verify-citations.tool.js';
 import { EvidenceIngestTool } from './evidence-ingest.tool.js';
 import { HostileReviewTool } from './hostile-review.tool.js';
 import { QualityGateTool } from './quality-gate.tool.js';
+import { SubmitCandidateTool } from './submit-candidate.tool.js';
 import { WebSearchTool } from '../research/web-search.tool.js';
 import { WebFetchTool } from '../research/web-fetch.tool.js';
 import type { AutonomyPolicy } from '../config/schema.js';
@@ -76,6 +77,7 @@ export class ToolRegistry {
     this.register(new EvidenceIngestTool());
     this.register(new HostileReviewTool());
     this.register(new QualityGateTool());
+    this.register(new SubmitCandidateTool());
     if (this.includeResearchTools) {
       this.register(new WebSearchTool());
       this.register(new WebFetchTool());

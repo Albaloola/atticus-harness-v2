@@ -881,6 +881,9 @@ function phaseBlockedByHealth(
     if (issue.type === 'policy_block') return true;
     if (issue.type === 'phase_state_contradiction') return true;
     if (issue.type === 'orphaned_task') return true;
+    if (issue.type === 'repeated_tool_failure') return true;
+    if (issue.type === 'agent_error_burst') return true;
+    if (issue.type === 'agent_max_turns_exhausted') return true;
     if (issue.type === 'hollow_verification') {
       return phase.id === 'verification_and_hostile_review' ||
         phase.id === 'bundle_and_war_room_assembly' ||

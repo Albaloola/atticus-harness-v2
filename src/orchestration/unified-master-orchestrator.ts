@@ -20,6 +20,8 @@ import type { OrchestratorConfig, OrchestratorResult } from './types.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
 
+const ACTIVE_HEALTH_MONITOR_INTERVAL_MS = 5_000;
+
 export class UnifiedMasterOrchestrator {
   private config: OrchestratorConfig;
   private runtime: OrchestrationRuntime;
@@ -56,6 +58,7 @@ export class UnifiedMasterOrchestrator {
 
     this.runtime.trackRun(masterRun.id);
     const removeShutdownCleanup = this.installShutdownCleanup(masterRun.id);
+    let stopActiveHealthMonitor: (() => void) | undefined;
 
     try {
       await this.runtime.emitRunStarted(masterRun.id, objective);
@@ -173,6 +176,7 @@ export class UnifiedMasterOrchestrator {
       });
       toolRegistry.register(createRunPhaseTool(phaseToolsConfig));
       toolRegistry.register(createGetOrchestrationStateTool(phaseToolsConfig));
+      stopActiveHealthMonitor = this.startActiveHealthMonitor(masterRun.id, phases);
 
       const phaseIds = phases.map((p) => p.id).join(', ');
       const resumeLines = resumePlan && resumePlan.startIndex > 0
@@ -239,10 +243,45 @@ export class UnifiedMasterOrchestrator {
           ATTICUS_HARNESS_MAX_CONCURRENCY: String(phaseMaxConcurrency),
           ATTICUS_HARNESS_RESUME: this.config.resume ? '1' : '0',
         },
+        shouldStop: () => this.runtime.isAborted()
+          ? 'orchestration runtime aborted by active health monitor or operator control'
+          : undefined,
         retryNonJson: true,
       }, createLLMClient(resolvedConfig));
 
       const result = await loop.run(userMessage);
+      stopActiveHealthMonitor?.();
+      stopActiveHealthMonitor = undefined;
+
+      if (result.status === 'aborted') {
+        const finalHealth = await runOrchestrationHealthCheck(matterName, {
+          phases,
+          masterRunId: masterRun.id,
+          emitEvent: true,
+          intervene: true,
+          reconcileCheckpoint: true,
+        });
+        const abortedResult = reconcileOrchestratorHealth({
+          matterName,
+          summary: `Unified orchestration stopped by active monitor: ${result.error ?? 'runtime aborted'}`,
+          status: 'needs_followup',
+          artifacts: [],
+          findings: [],
+          risks: [],
+          phaseResults: [],
+        }, finalHealth);
+        await this.runtime.emitRunCompleted(masterRun.id, abortedResult.summary, {
+          status: 'needs_followup',
+          completedPhases: 0,
+          totalPhases: phases.length,
+        });
+        updateRun(matterName, masterRun.id, {
+          status: 'blocked',
+          summary: abortedResult.summary,
+          error: result.error,
+        });
+        return abortedResult;
+      }
 
       const initialParsed = reconcileOrchestratorResult(
         parseOrchestratorResult(result.finalContent, matterName),
@@ -310,6 +349,10 @@ export class UnifiedMasterOrchestrator {
       });
       return failureResult;
     } finally {
+      // The active monitor is normally stopped after the master loop returns. If the
+      // loop throws before then, the runtime cleanup below still must not leave a
+      // background interval inspecting old state.
+      stopActiveHealthMonitor?.();
       removeShutdownCleanup();
       this.runtime.untrackRun(masterRun.id);
     }
@@ -341,6 +384,68 @@ export class UnifiedMasterOrchestrator {
       for (const signal of signals) process.removeListener(signal, handler);
     };
   }
+
+  private startActiveHealthMonitor(masterRunId: string, phases: PhaseDefinition[]): () => void {
+    const { matterName } = this.config;
+    let stopped = false;
+    let running = false;
+
+    const tick = async (): Promise<void> => {
+      if (stopped || running || this.runtime.isAborted()) return;
+      running = true;
+      try {
+        const health = await runOrchestrationHealthCheck(matterName, {
+          phases,
+          masterRunId,
+          emitEvent: true,
+          intervene: true,
+          orphanAfterMs: 30_000,
+        });
+        if (health.shouldBlockAdvance) {
+          const summary = summarizeHealthForAbort(health);
+          this.runtime.abort(`active_health_monitor: ${summary}`, masterRunId);
+          updateRun(matterName, masterRunId, {
+            status: 'blocked',
+            summary: `Active health monitor stopped orchestration: ${summary}`,
+            error: summary,
+          });
+        }
+      } catch (error) {
+        await appendEvent({
+          matterName,
+          type: 'orchestration.health_check',
+          runId: masterRunId,
+          source: 'orchestration',
+          data: {
+            status: 'warning',
+            shouldBlockAdvance: false,
+            monitorError: error instanceof Error ? error.message : String(error),
+          },
+        }).catch(() => undefined);
+      } finally {
+        running = false;
+      }
+    };
+
+    const timer = setInterval(() => {
+      void tick();
+    }, ACTIVE_HEALTH_MONITOR_INTERVAL_MS);
+    timer.unref?.();
+    void tick();
+
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }
+}
+
+function summarizeHealthForAbort(health: OrchestrationHealthCheckResult): string {
+  return health.issues
+    .filter((issue) => issue.severity === 'critical' || issue.type === 'policy_block' || issue.type === 'orphaned_task')
+    .slice(0, 3)
+    .map((issue) => `${issue.type}: ${issue.summary}`)
+    .join(' | ') || `${health.issues.length} health issue(s)`;
 }
 
 function buildNoNewWorkResult(

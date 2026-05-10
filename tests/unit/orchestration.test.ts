@@ -439,6 +439,68 @@ describe('phase tool contracts', () => {
       await deleteMatter(matterName);
     }
   });
+
+  it('blocks on generic repeated tool failures while a run is active', async () => {
+    const matterName = 'orchestration-health-repeated-tool-failure-test';
+    await initMatter(matterName);
+
+    try {
+      createRun({
+        matterName,
+        id: 'master-run',
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      createRun({
+        matterName,
+        id: 'worker-run',
+        parentRunId: 'master-run',
+        model: 'test-model',
+        agentType: 'worker',
+        role: 'worker',
+        prompt: 'Use a flaky tool.',
+      });
+      const task = createTask({
+        matterName,
+        type: 'evidence_ingestion_and_fact_extraction',
+        title: 'Use a flaky tool',
+        runId: 'worker-run',
+        data: { phaseId: 'evidence_ingestion_and_fact_extraction' },
+      });
+      updateTask(matterName, task.id, { status: 'in_progress' });
+      for (let index = 0; index < 3; index += 1) {
+        await appendEvent({
+          matterName,
+          type: 'tool.called',
+          runId: 'worker-run',
+          taskId: task.id,
+          source: 'tool',
+          data: {
+            tool: 'evidence_chunk_read',
+            success: false,
+            policyDecision: 'allow',
+            error: `Transient failure ${index}`,
+          },
+        });
+      }
+
+      const health = await runOrchestrationHealthCheck(matterName, {
+        phases: getDefaultPhases(),
+        masterRunId: 'master-run',
+      });
+
+      expect(health.status).toBe('blocked');
+      expect(health.shouldBlockAdvance).toBe(true);
+      expect(health.issues).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'repeated_tool_failure', severity: 'high' }),
+      ]));
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
 });
 
 async function saveAcceptedCandidate(

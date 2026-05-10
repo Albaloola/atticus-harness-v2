@@ -60,6 +60,7 @@ export async function runOrchestrationHealthCheck(
   issues.push(...detectPhaseContradictions(tasks, options.phases));
   issues.push(...detectHollowVerification(tasks));
   issues.push(...detectPathGuessing(scopedEvents));
+  issues.push(...detectRuntimeAnomalies(scopedEvents, tasks, runs, now));
   issues.push(...detectCheckpointContradiction(checkpoint, tasks, runs));
   issues.push(...detectOrphanedTasks(tasks, liveRunIds, now, options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS));
   issues.push(...detectOpaqueBlockedTasks(tasks));
@@ -79,7 +80,10 @@ export async function runOrchestrationHealthCheck(
     issue.type === 'policy_block' ||
     issue.type === 'phase_state_contradiction' ||
     issue.type === 'hollow_verification' ||
-    issue.type === 'candidate_store_drift'
+    issue.type === 'candidate_store_drift' ||
+    issue.type === 'repeated_tool_failure' ||
+    issue.type === 'agent_error_burst' ||
+    issue.type === 'agent_max_turns_exhausted'
   );
   const status = shouldBlockAdvance
     ? 'blocked'
@@ -229,6 +233,113 @@ function detectPathGuessing(events: MatterEvent[]): OrchestrationHealthIssue[] {
       })),
     },
   }];
+}
+
+function detectRuntimeAnomalies(
+  events: MatterEvent[],
+  tasks: TaskDagNode[],
+  runs: AgentRun[],
+  now: Date,
+): OrchestrationHealthIssue[] {
+  const issues: OrchestrationHealthIssue[] = [];
+  const recentEvents = events.slice(0, 100);
+  const failedToolEvents = recentEvents.filter((event) =>
+    event.type === 'tool.called' &&
+    event.data.success === false &&
+    event.data.policyDecision !== 'ask' &&
+    event.data.policyDecision !== 'deny'
+  );
+  const failuresByRunAndTool = new Map<string, MatterEvent[]>();
+  for (const event of failedToolEvents) {
+    const key = `${event.runId ?? 'unknown'}:${stringData(event.data, 'tool', 'unknown')}`;
+    const grouped = failuresByRunAndTool.get(key) ?? [];
+    grouped.push(event);
+    failuresByRunAndTool.set(key, grouped);
+  }
+  for (const grouped of failuresByRunAndTool.values()) {
+    if (grouped.length < 3) continue;
+    const first = grouped[0];
+    issues.push({
+      type: 'repeated_tool_failure',
+      severity: 'high',
+      summary: `Tool ${stringData(first.data, 'tool', 'unknown')} failed ${grouped.length} time(s) in run ${first.runId ?? 'unknown'}.`,
+      remediation: 'Stop spending agent turns, inspect the repeated tool error, repair configuration/tool inputs, then retry the affected task.',
+      objectId: first.taskId ?? first.runId ?? first.id,
+      evidence: {
+        runId: first.runId,
+        taskId: first.taskId,
+        tool: first.data.tool,
+        failures: grouped.slice(0, 5).map((event) => ({
+          eventId: event.id,
+          error: event.data.error,
+          args: event.data.args,
+        })),
+      },
+    });
+  }
+
+  const errorEvents = recentEvents.filter((event) => event.type === 'agent.run.error');
+  if (errorEvents.length >= 2) {
+    issues.push({
+      type: 'agent_error_burst',
+      severity: 'high',
+      summary: `${errorEvents.length} recent agent run error event(s) were recorded.`,
+      remediation: 'Pause orchestration, inspect common failure causes, and restart only after the failing tool/model/config path is repaired.',
+      objectId: errorEvents[0]?.runId ?? errorEvents[0]?.id,
+      evidence: {
+        errors: errorEvents.slice(0, 5).map((event) => ({
+          eventId: event.id,
+          runId: event.runId,
+          taskId: event.taskId,
+          error: event.data.error,
+          summary: event.data.summary,
+        })),
+      },
+    });
+  }
+
+  const maxTurnEvents = recentEvents.filter((event) => event.type === 'agent.run.max_turns');
+  for (const event of maxTurnEvents.slice(0, 5)) {
+    issues.push({
+      type: 'agent_max_turns_exhausted',
+      severity: 'high',
+      summary: `Agent run ${event.runId ?? 'unknown'} exhausted its turn budget without a usable final result.`,
+      remediation: 'Stop dependent work, inspect the transcript for loops or missing tools, then retry with corrected task context or tool access.',
+      objectId: event.taskId ?? event.runId ?? event.id,
+      evidence: {
+        eventId: event.id,
+        runId: event.runId,
+        taskId: event.taskId,
+        data: event.data,
+      },
+    });
+  }
+
+  const liveRunIds = new Set(runs.filter((run) => isRunLive(run, now)).map((run) => run.id));
+  const staleInProgress = tasks
+    .filter((task) => task.status === 'in_progress' && task.runId && liveRunIds.has(task.runId))
+    .filter((task) => {
+      const updatedAt = new Date(task.updated).getTime();
+      return Number.isFinite(updatedAt) && now.getTime() - updatedAt >= 10 * 60 * 1000;
+    })
+    .slice(0, 5);
+  for (const task of staleInProgress) {
+    issues.push({
+      type: 'stale_in_progress_task',
+      severity: 'medium',
+      summary: `Task ${task.id} has been in_progress for more than 10 minutes without task-state movement.`,
+      remediation: 'Inspect the owning run heartbeat and latest transcript; split, retry, or cancel the task if it is not producing progress.',
+      objectId: task.id,
+      evidence: {
+        taskId: task.id,
+        runId: task.runId,
+        phaseId: task.type,
+        updated: task.updated,
+      },
+    });
+  }
+
+  return issues;
 }
 
 function detectCheckpointContradiction(

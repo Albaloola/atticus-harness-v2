@@ -306,6 +306,9 @@ export class WorkerAgent {
       quietMode: this.config.quietMode,
       verbose: this.config.verbose,
       autonomy: effectiveAutonomy,
+      shouldStop: () => this.config.runtime?.isAborted()
+        ? 'orchestration runtime aborted by active health monitor or operator control'
+        : undefined,
     };
 
     if (this.config.queryLoopFactory) {
@@ -313,7 +316,11 @@ export class WorkerAgent {
     }
 
     const loop = new QueryLoop(config, createLLMClient(resolvedConfig));
-    return loop.run(userMessage);
+    const result = await loop.run(userMessage);
+    if (this.config.runtime?.isAborted()) {
+      this.aborted = true;
+    }
+    return result;
   }
 
   private mapStatus(status: AgentStructuredResult['status']): 'completed' | 'blocked' | 'error' | 'max_turns' {

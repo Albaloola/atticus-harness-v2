@@ -187,6 +187,42 @@ describe('QueryLoop', () => {
       expect(result.turns).toHaveLength(0);
     });
 
+    it('stops before another model turn when the runtime monitor aborts after a tool call', async () => {
+      const toolRegistry = new ToolRegistry();
+      let stopped = false;
+      toolRegistry.register({
+        name: 'abort_after_tool',
+        description: 'Triggers the monitor stop flag',
+        inputSchema: {},
+        async call(): Promise<ToolResult> {
+          stopped = true;
+          return makeSuccessToolResult('ok');
+        },
+        isEnabled: () => true,
+      });
+      const fakeClient = new FakeLLMClient([
+        makeToolCallResponse('abort_after_tool'),
+        makeResponse({ content: 'Should not be requested' }),
+      ]);
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Use tools.',
+          tools: toolRegistry,
+          quietMode: true,
+          shouldStop: () => stopped ? 'active health monitor stopped orchestration' : undefined,
+        },
+        fakeClient,
+      );
+
+      const result = await loop.run('Run');
+
+      expect(result.status).toBe('aborted');
+      expect(result.error).toContain('active health monitor');
+      expect(result.turns).toHaveLength(1);
+      expect(fakeClient.requests).toHaveLength(1);
+    });
+
     it('allows native-agent providers to receive tool definitions without Harness-owned execution', async () => {
       const toolRegistry = new ToolRegistry();
       toolRegistry.register(new FakeTool('search_tool', makeSuccessToolResult('found results')));

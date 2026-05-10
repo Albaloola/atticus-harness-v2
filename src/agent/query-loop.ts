@@ -37,6 +37,7 @@ export interface QueryLoopConfig {
   maxHistoryChars?: number;
   maxToolOutputChars?: number;
   mcpContext?: Record<string, string>;
+  shouldStop?: () => string | undefined;
   /** When true, if the final response is not valid JSON, the loop will give the model another turn with feedback instead of returning raw non-JSON content. */
   retryNonJson?: boolean;
 }
@@ -45,7 +46,7 @@ export interface QueryLoopResult {
   turns: AgentTurn[];
   history: LLMMessage[];
   finalContent: string;
-  status: 'completed' | 'max_turns' | 'error';
+  status: 'completed' | 'max_turns' | 'error' | 'aborted';
   error?: string;
   transcriptPath?: string;
   nativeActions?: LLMNativeAction[];
@@ -89,6 +90,11 @@ export class QueryLoop {
 
     try {
       for (let turnCount = 1; turnCount <= maxTurns; turnCount++) {
+      const stopReason = this.config.shouldStop?.();
+      if (stopReason) {
+        return await this.abortResult(userMessage, stopReason);
+      }
+
       if (this.config.verbose && !this.config.quietMode) {
         console.log(`\n[Turn ${turnCount}/${maxTurns}]`);
       }
@@ -237,6 +243,18 @@ export class QueryLoop {
         });
       }
 
+      const stopAfterTools = this.config.shouldStop?.();
+      if (stopAfterTools) {
+        this.turns.push({
+          turnNumber: turnCount,
+          request: this.history.slice(-(response.toolCalls.length + 2)),
+          response,
+          toolCalls: toolCallResults,
+        });
+        await this.emitTurnEvent(turnCount, response.content);
+        return await this.abortResult(userMessage, stopAfterTools);
+      }
+
       const requestSlice = this.history.slice(-(response.toolCalls.length + 2));
 
       const turn: AgentTurn = {
@@ -278,6 +296,23 @@ export class QueryLoop {
     } finally {
       await this.toolRegistry.close();
     }
+  }
+
+  private async abortResult(userMessage: string, reason: string): Promise<QueryLoopResult> {
+    const transcriptPath = await this.saveTranscript();
+    await this.saveResumeSummary({
+      lastUserGoal: userMessage,
+      failedOperation: { type: 'agent.aborted', error: reason },
+      lastModelVisibleSummary: `Stopped by runtime monitor: ${reason}`,
+    });
+    return {
+      turns: this.turns,
+      history: this.history,
+      finalContent: '',
+      status: 'aborted',
+      error: reason,
+      transcriptPath,
+    };
   }
 
   private async emitTurnEvent(turnNumber: number, content: string): Promise<void> {

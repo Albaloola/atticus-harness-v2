@@ -13,8 +13,10 @@ export class OrchestrationRuntime {
   private heartbeatTimers = new Map<string, NodeJS.Timeout>();
   private aborted = false;
   private paused = false;
+  private stopReason?: string;
   private depth = 0;
   private totalCost = 0;
+  private startedAt = new Date();
 
   constructor(config: {
     matterName: string;
@@ -60,7 +62,7 @@ export class OrchestrationRuntime {
   }
 
   async applyControlCommands(runId?: string): Promise<void> {
-    const commands = await listPendingControlCommands({ matterName: this.matterName, runId });
+    const commands = await listPendingControlCommands({ matterName: this.matterName, runId, createdAfter: this.startedAt });
     for (const command of commands) {
       if (command.action === 'pause') {
         this.paused = true;
@@ -87,6 +89,7 @@ export class OrchestrationRuntime {
 
   abort(reason = 'aborted', runId?: string): void {
     this.aborted = true;
+    this.stopReason = reason;
     void appendEvent({
       matterName: this.matterName,
       type: 'run.partial',
@@ -100,8 +103,25 @@ export class OrchestrationRuntime {
     return this.aborted;
   }
 
+  pauseForRepair(reason = 'paused for repair', runId?: string): void {
+    this.paused = true;
+    this.aborted = true;
+    this.stopReason = reason;
+    void appendEvent({
+      matterName: this.matterName,
+      type: 'run.partial',
+      runId,
+      data: { reason, runningAgents: this.running.size, status: 'paused_for_repair' },
+      source: 'system',
+    }).catch((error: unknown) => reportEventWriteFailure('pause-for-repair event', error));
+  }
+
   isPaused(): boolean {
     return this.paused;
+  }
+
+  getStopReason(): string | undefined {
+    return this.stopReason;
   }
 
   getActiveCount(): number {

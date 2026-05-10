@@ -160,6 +160,13 @@ describe('Control queue', () => {
     expect(getPendingControlCommandCount()).toBe(1);
     expect(await listPendingControlCommands({ matterName: 'matter-a', runId: 'run-a' })).toEqual([]);
   });
+
+  it('can ignore stale matter-wide commands created before a run starts', async () => {
+    await enqueueControlCommand({ action: 'cancel', matterName: 'matter-a' });
+    const createdAfter = new Date(Date.now() + 1000);
+
+    expect(await listPendingControlCommands({ matterName: 'matter-a', runId: 'fresh-run', createdAfter })).toEqual([]);
+  });
 });
 
 describe('Daemon', () => {

@@ -72,7 +72,7 @@ describe('provider profiles and auth preflight', () => {
       only: ['DeepSeek'],
       allowFallbacks: false,
       requireParameters: true,
-      dataCollection: 'deny',
+      dataCollection: 'allow',
     });
     expect(config.profiles['openrouter-deepseek'].inputModalities).toEqual(['text', 'file']);
     expect(config.profiles['openrouter-deepseek'].models.reasoning).toBe('deepseek/deepseek-v4-pro');

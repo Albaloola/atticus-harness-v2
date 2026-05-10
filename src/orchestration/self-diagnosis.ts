@@ -49,29 +49,34 @@ export async function runOrchestrationHealthCheck(
   const checkpoint = loadOrchestrationCheckpoint(matterName);
   const liveRunIds = new Set(runs.filter((run) => isRunLive(run, now)).map((run) => run.id));
   const relatedRunIds = options.masterRunId ? collectRelatedRunIds(runs, options.masterRunId) : undefined;
+  const scopedTasks = relatedRunIds
+    ? tasks.filter((task) => task.runId && relatedRunIds.has(task.runId))
+    : tasks;
   const scopedEvents = relatedRunIds
-    ? events.filter((event) => !event.runId || relatedRunIds.has(event.runId))
+    ? events.filter((event) => event.runId && relatedRunIds.has(event.runId))
     : events.slice(0, 200);
   const issues: OrchestrationHealthIssue[] = [];
   const interventions: string[] = [];
 
   issues.push(...detectPolicyBlocks(scopedEvents));
   issues.push(...detectCandidateDrift(telemetry));
-  issues.push(...detectPhaseContradictions(tasks, options.phases));
-  issues.push(...detectHollowVerification(tasks));
+  issues.push(...detectPhaseContradictions(scopedTasks, options.phases));
+  issues.push(...detectHollowVerification(scopedTasks));
   issues.push(...detectPathGuessing(scopedEvents));
-  issues.push(...detectRuntimeAnomalies(scopedEvents, tasks, runs, now));
+  issues.push(...detectMasterNoPhaseProgress(scopedEvents, scopedTasks));
+  issues.push(...detectProviderCreditExhaustion(scopedEvents));
+  issues.push(...detectRuntimeAnomalies(scopedEvents, scopedTasks, runs, now));
   issues.push(...detectCheckpointContradiction(checkpoint, tasks, runs));
-  issues.push(...detectOrphanedTasks(tasks, liveRunIds, now, options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS));
-  issues.push(...detectOpaqueBlockedTasks(tasks));
+  issues.push(...detectOrphanedTasks(scopedTasks, liveRunIds, now, options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS));
+  issues.push(...detectOpaqueBlockedTasks(scopedTasks));
 
   if (options.intervene) {
-    interventions.push(...repairOrphanedTasks(matterName, tasks, liveRunIds, now, options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS));
-    interventions.push(...repairOpaqueBlockedTasks(matterName, tasks));
+    interventions.push(...repairOrphanedTasks(matterName, scopedTasks, liveRunIds, now, options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS));
+    interventions.push(...repairOpaqueBlockedTasks(matterName, scopedTasks));
   }
 
   if (options.reconcileCheckpoint) {
-    const reconciliation = reconcileCheckpoint(matterName, options.phases, tasks, options.masterRunId, issues);
+    const reconciliation = reconcileCheckpoint(matterName, options.phases, scopedTasks, options.masterRunId, issues);
     if (reconciliation) interventions.push(reconciliation);
   }
 
@@ -80,6 +85,8 @@ export async function runOrchestrationHealthCheck(
     issue.type === 'policy_block' ||
     issue.type === 'phase_state_contradiction' ||
     issue.type === 'hollow_verification' ||
+    issue.type === 'master_no_phase_progress' ||
+    issue.type === 'provider_credit_exhausted' ||
     issue.type === 'candidate_store_drift' ||
     issue.type === 'repeated_tool_failure' ||
     issue.type === 'agent_error_burst' ||
@@ -115,6 +122,54 @@ export async function runOrchestrationHealthCheck(
   }
 
   return result;
+}
+
+function detectProviderCreditExhaustion(events: MatterEvent[]): OrchestrationHealthIssue[] {
+  const creditErrors = events.filter((event) => {
+    if (event.type !== 'agent.run.error') return false;
+    const error = typeof event.data.error === 'string' ? event.data.error : '';
+    return error.includes('Insufficient credits') || error.includes('error (402)') || error.includes(' 402');
+  });
+  if (creditErrors.length === 0) return [];
+
+  return [{
+    type: 'provider_credit_exhausted',
+    severity: 'critical',
+    summary: `Provider credit exhaustion detected in ${creditErrors.length} agent error event(s).`,
+    remediation: 'Pause orchestration for operator repair. Add provider credits or switch to an explicitly allowed provider, then resume from the checkpoint instead of restarting completed phases.',
+    objectId: creditErrors[0]?.runId ?? creditErrors[0]?.id,
+    evidence: {
+      errors: creditErrors.slice(0, 5).map((event) => ({
+        eventId: event.id,
+        runId: event.runId,
+        taskId: event.taskId,
+        error: event.data.error,
+      })),
+    },
+  }];
+}
+
+function detectMasterNoPhaseProgress(events: MatterEvent[], tasks: TaskDagNode[]): OrchestrationHealthIssue[] {
+  if (tasks.some((task) => task.kind === 'mini_orchestrator')) return [];
+  const turnEvents = events.filter((event) => event.type === 'agent.turn.completed');
+  if (turnEvents.length < 8) return [];
+  const toolEvents = events.filter((event) => event.type === 'tool.called');
+  const runPhaseCalls = toolEvents.filter((event) => event.data.tool === 'run_phase');
+  if (runPhaseCalls.length > 0) return [];
+  return [{
+    type: 'master_no_phase_progress',
+    severity: 'critical',
+    summary: `Master completed ${turnEvents.length} turn(s) without creating any phase task or calling run_phase.`,
+    remediation: 'Pause for repair, checkpoint the master state, tighten the master prompt/tool policy, then resume from the same run position without replaying completed phases.',
+    evidence: {
+      turnCount: turnEvents.length,
+      recentTools: toolEvents.slice(0, 10).map((event) => ({
+        eventId: event.id,
+        tool: event.data.tool,
+        success: event.data.success,
+      })),
+    },
+  }];
 }
 
 function detectPolicyBlocks(events: MatterEvent[]): OrchestrationHealthIssue[] {
@@ -247,7 +302,8 @@ function detectRuntimeAnomalies(
     event.type === 'tool.called' &&
     event.data.success === false &&
     event.data.policyDecision !== 'ask' &&
-    event.data.policyDecision !== 'deny'
+    event.data.policyDecision !== 'deny' &&
+    !isNonBlockingToolMiss(event)
   );
   const failuresByRunAndTool = new Map<string, MatterEvent[]>();
   for (const event of failedToolEvents) {
@@ -340,6 +396,18 @@ function detectRuntimeAnomalies(
   }
 
   return issues;
+}
+
+function isNonBlockingToolMiss(event: MatterEvent): boolean {
+  const tool = stringData(event.data, 'tool');
+  const error = stringData(event.data, 'error');
+  if (tool === 'evidence_chunk_read' && /No chunks found|no indexed chunks/i.test(error)) {
+    return true;
+  }
+  if ((tool === 'evidence_search' || tool === 'glob' || tool === 'search_files') && /No matching evidence found|No files found/i.test(error)) {
+    return true;
+  }
+  return false;
 }
 
 function detectCheckpointContradiction(

@@ -96,6 +96,25 @@ describe('Claude-style tool parity', () => {
     expect(todo.data?.newTodos[0].content).toBe('Verify tools');
   });
 
+  it('isolates todo files by run to survive concurrent workers', async () => {
+    const tool = new TodoWriteTool();
+    const [first, second] = await Promise.all([
+      tool.call({
+        todos: [{ content: 'Worker one', status: 'in_progress', priority: 'high' }],
+      }, { ...makeContext(), runId: 'run/one' }),
+      tool.call({
+        todos: [{ content: 'Worker two', status: 'completed', priority: 'medium' }],
+      }, { ...makeContext(), runId: 'run/two' }),
+    ]);
+
+    expect(first.success).toBe(true);
+    expect(second.success).toBe(true);
+    expect(existsSync(join(tmpDir, '.atticus', 'todos', 'run_one.json'))).toBe(true);
+    expect(existsSync(join(tmpDir, '.atticus', 'todos', 'run_two.json'))).toBe(true);
+    expect(readFileSync(join(tmpDir, '.atticus', 'todos', 'run_one.json'), 'utf-8')).toContain('Worker one');
+    expect(readFileSync(join(tmpDir, '.atticus', 'todos', 'run_two.json'), 'utf-8')).toContain('Worker two');
+  });
+
   it('edits notebooks by cell index', async () => {
     const notebookPath = join(tmpDir, 'analysis.ipynb');
     writeFileSync(notebookPath, JSON.stringify({

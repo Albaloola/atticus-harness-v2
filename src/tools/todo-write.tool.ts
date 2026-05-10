@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
 import { resolveWorkspacePath } from './path-safety.js';
@@ -53,20 +53,20 @@ export class TodoWriteTool implements Tool<TodoWriteArgs, TodoWriteResult> {
 
   isEnabled(): boolean { return true; }
 
-  async call(args: TodoWriteArgs, _context: ToolUseContext): Promise<ToolResult<TodoWriteResult>> {
+  async call(args: TodoWriteArgs, context: ToolUseContext): Promise<ToolResult<TodoWriteResult>> {
     try {
       if (!Array.isArray(args.todos)) {
         return { success: false, error: 'todo_write requires a todos array' };
       }
       const newTodos = args.todos.map((todo, index) => normalizeTodo(todo, index));
-      const path = resolveWorkspacePath('.atticus/todos.json');
+      const path = resolveWorkspacePath(todoPathForContext(context));
       const oldTodos = await readTodos(path);
       const store: TodoStore = {
         updatedAt: new Date().toISOString(),
         todos: newTodos,
       };
       await mkdir(dirname(path), { recursive: true });
-      await writeFile(path, `${JSON.stringify(store, null, 2)}\n`, 'utf-8');
+      await atomicWriteFile(path, `${JSON.stringify(store, null, 2)}\n`);
 
       const data: TodoWriteResult = { oldTodos, newTodos, path };
       return {
@@ -88,8 +88,25 @@ async function readTodos(path: string): Promise<TodoItem[]> {
   } catch (err: unknown) {
     const code = (err as NodeJS.ErrnoException).code;
     if (code === 'ENOENT') return [];
+    if (err instanceof SyntaxError) return [];
     throw err;
   }
+}
+
+async function atomicWriteFile(path: string, contents: string): Promise<void> {
+  const tempPath = `${path}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`;
+  await writeFile(tempPath, contents, 'utf-8');
+  await rename(tempPath, path);
+}
+
+function todoPathForContext(context: ToolUseContext): string {
+  if (context.runId) return `.atticus/todos/${safePathSegment(context.runId)}.json`;
+  if (context.taskId) return `.atticus/todos/${safePathSegment(context.taskId)}.json`;
+  return '.atticus/todos.json';
+}
+
+function safePathSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 120) || 'session';
 }
 
 function normalizeTodo(todo: TodoItem, index: number): TodoItem {

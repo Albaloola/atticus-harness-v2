@@ -4,7 +4,7 @@ const CHECKPOINT_KEY = 'orchestration.checkpoint';
 
 export interface OrchestrationCheckpoint {
   masterRunId?: string;
-  status: 'running' | 'blocked' | 'completed' | 'failed';
+  status: 'running' | 'paused' | 'blocked' | 'completed' | 'failed';
   objective?: string;
   currentPhaseIndex?: number;
   currentPhaseId?: string;

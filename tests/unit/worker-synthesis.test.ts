@@ -285,7 +285,7 @@ describe('WorkerAgent structured synthesis', () => {
     expect(eventTypes).not.toContain('agent.run.completed');
   });
 
-  it('quarantines primary findings supported only by case-preparation work product', async () => {
+  it('warns on primary findings supported only by case-preparation work product without blocking useful work', async () => {
     const db = getDb(matterName);
     insertEvidenceItemV2(db, {
       evidenceId: 'ANF-SRC-0027',
@@ -346,12 +346,12 @@ describe('WorkerAgent structured synthesis', () => {
     const result = await worker.execute();
     const eventTypes = listEvents(matterName).map((event) => event.type);
 
-    expect(result.status).toBe('needs_followup');
-    expect(result.summary).toContain('source-discipline');
+    expect(result.status).toBe('completed');
+    expect(result.summary).toContain('Source-discipline warning');
     expect(result.risks.some((risk) => risk.risk.includes('work product'))).toBe(true);
-    expect(result.nextActions.join('\n')).toContain('source-record-only support');
-    expect(eventTypes).toContain('agent.run.blocked');
-    expect(eventTypes).not.toContain('agent.run.completed');
+    expect(result.nextActions.join('\n')).toContain('Review source-discipline warning');
+    expect(eventTypes).toContain('agent.run.completed');
+    expect(eventTypes).not.toContain('agent.run.blocked');
   });
 
   it('marks instruction-only timeout synthesis as needs-followup', async () => {

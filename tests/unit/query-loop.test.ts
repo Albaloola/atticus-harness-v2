@@ -8,7 +8,7 @@ import type { Tool, ToolResult, ToolUseContext } from '../../src/types/tool.ts';
 import type { LLMResponse, LLMRequest } from '../../src/types/llm.ts';
 import { initMatter, deleteMatter } from '../../src/storage/matter.ts';
 import { closeAllStateDbs } from '../../src/state/store.ts';
-import { TokenLimitError } from '../../src/llm/errors.ts';
+import { MalformedProviderResponseError, TokenLimitError } from '../../src/llm/errors.ts';
 import { DEFAULTS } from '../../src/config/schema.ts';
 
 class FakeLLMClient {
@@ -533,6 +533,67 @@ describe('QueryLoop', () => {
       expect(fakeClient.requests).toHaveLength(3);
       expect(fakeClient.requests[2].messages.some((message) => message.content.includes('context_overflow'))).toBe(true);
       expect(fakeClient.requests[2].messages.some((message) => message.content.includes('EV-CTX'))).toBe(true);
+    });
+
+    it('retries malformed provider tool arguments with model-visible feedback', async () => {
+      const toolRegistry = new ToolRegistry();
+      const fakeClient = new FakeLLMClient([
+        new MalformedProviderResponseError('Malformed tool arguments from openrouter-deepseek for submit_candidate: Unterminated string in JSON'),
+        makeResponse({ content: 'Recovered after malformed tool args' }),
+      ]);
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Use tools carefully.',
+          tools: toolRegistry,
+          maxTurns: 3,
+          quietMode: true,
+        },
+        fakeClient as unknown as FakeLLMClient & typeof fakeClient,
+      );
+
+      const result = await loop.run('Submit a candidate');
+
+      expect(result.status).toBe('completed');
+      expect(result.finalContent).toBe('Recovered after malformed tool args');
+      expect(fakeClient.requests).toHaveLength(2);
+      expect(fakeClient.requests[1].messages.some((message) =>
+        message.role === 'user' && message.content.includes('function arguments were not valid JSON')
+      )).toBe(true);
+    });
+
+    it('keeps assistant tool-call messages with tool results when compacting', async () => {
+      const toolRegistry = new ToolRegistry();
+      toolRegistry.register(new FakeTool('large_tool', makeSuccessToolResult('important evidence EV-GROUP '.repeat(60))));
+      const fakeClient = new FakeLLMClient([
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeToolCallResponse('large_tool'),
+        makeResponse({ content: 'Final answer after grouped compaction' }),
+      ]);
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Use tools and preserve evidence IDs.',
+          tools: toolRegistry,
+          maxTurns: 8,
+          maxHistoryChars: 1500,
+          quietMode: true,
+        },
+        fakeClient as unknown as FakeLLMClient & typeof fakeClient,
+      );
+
+      const result = await loop.run('Analyze the large record');
+
+      expect(result.status).toBe('completed');
+      const finalRequestMessages = fakeClient.requests.at(-1)?.messages ?? [];
+      for (let index = 0; index < finalRequestMessages.length; index++) {
+        if (finalRequestMessages[index].role !== 'tool') continue;
+        expect(finalRequestMessages[index - 1]?.role).toBe('assistant');
+        expect(finalRequestMessages[index - 1]?.toolCalls?.length).toBeGreaterThan(0);
+      }
     });
   });
 

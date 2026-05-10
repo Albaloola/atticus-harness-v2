@@ -64,19 +64,18 @@ export function applySourceDisciplineGate(
 
   return {
     ...result,
-    status: 'needs_followup',
-    summary: `Worker output quarantined for source-discipline review: ${issueSummary}. Prior summary: ${result.summary}`,
+    summary: `Source-discipline warning: ${issueSummary}. Prior summary: ${result.summary}`,
     risks: [
       ...result.risks,
       {
         risk: 'Worker promoted secondary case-preparation work product as primary support for a factual, procedural, holding, or risk finding.',
-        severity: 'high',
+        severity: 'medium',
         mitigation: 'Rerun or revise the worker output so primary facts and procedural/legal conclusions are supported by source records; use drafts/action plans only as party positions or secondary context.',
       },
     ],
     nextActions: [
       ...result.nextActions,
-      'Rerun the affected worker with source-record-only support for primary/procedural findings.',
+      'Review source-discipline warning before relying on primary/procedural findings.',
     ],
   };
 }

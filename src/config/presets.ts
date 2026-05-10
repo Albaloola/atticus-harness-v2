@@ -44,7 +44,7 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
       only: ['DeepSeek'],
       allowFallbacks: false,
       requireParameters: true,
-      dataCollection: 'deny',
+      dataCollection: 'allow',
     },
     inputModalities: ['text', 'file'],
     models: {
@@ -194,7 +194,7 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
       only: ['DeepSeek'],
       allowFallbacks: false,
       requireParameters: true,
-      dataCollection: 'deny',
+      dataCollection: 'allow',
     },
     inputModalities: ['text', 'file'],
     models: {

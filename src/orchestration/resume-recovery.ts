@@ -37,9 +37,13 @@ export function buildProviderAgnosticResumePlan(input: {
   objective?: string;
   phases: PhaseDefinition[];
 }): ProviderAgnosticResumePlan {
+  const checkpoint = loadOrchestrationCheckpoint(input.matterName);
   const checkpointPlan = buildResumePlanFromCheckpoint(input.matterName, input.phases);
   const eventPlan = buildResumePlanFromEvents(input.matterName, input.phases);
 
+  if (checkpoint?.status === 'paused' && /interrupted by SIG|paused for repair/i.test(String(checkpoint.supervisorStopReason ?? '')) && eventPlan.phaseResults.length > 0) {
+    return eventPlan;
+  }
   if (eventPlan.startIndex > checkpointPlan.startIndex) return eventPlan;
   if (checkpointPlan.startIndex > 0) return checkpointPlan;
   return eventPlan;
@@ -307,7 +311,18 @@ function rootRunIdFor(runs: Map<string, AgentRun>, runId: string | undefined): s
 
 function setRecordIfNewer(records: Map<string, PhaseRecoveryRecord>, record: PhaseRecoveryRecord): void {
   const existing = records.get(record.phaseId);
-  if (!existing || new Date(record.timestamp).getTime() >= new Date(existing.timestamp).getTime()) {
+  if (!existing) {
+    records.set(record.phaseId, record);
+    return;
+  }
+  if (existing.status === 'completed' && record.status !== 'completed') {
+    return;
+  }
+  if (record.status === 'completed' && existing.status !== 'completed') {
+    records.set(record.phaseId, record);
+    return;
+  }
+  if (new Date(record.timestamp).getTime() >= new Date(existing.timestamp).getTime()) {
     records.set(record.phaseId, record);
   }
 }

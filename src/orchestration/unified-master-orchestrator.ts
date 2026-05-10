@@ -1,10 +1,11 @@
 import { QueryLoop } from '../agent/query-loop.js';
 import { createLLMClient } from '../llm/client.js';
 import { createRun, updateRun } from '../state/runs.js';
+import { listTasks } from '../state/tasks.js';
 import { appendEvent } from '../state/events.js';
 import { recoverStaleRuntimeState } from '../state/runtime-recovery.js';
 import { OrchestrationRuntime } from './runtime.js';
-import { saveOrchestrationCheckpoint } from './checkpoint.js';
+import { loadOrchestrationCheckpoint, saveOrchestrationCheckpoint } from './checkpoint.js';
 import { DEFAULT_MAX_CONCURRENCY, DEFAULT_MAX_DEPTH, normalizePositiveInteger, remainingDepth } from './limits.js';
 import { resolveConfig } from '../config/loader.js';
 import { selectModelForTask } from '../config/model-routing.js';
@@ -16,7 +17,8 @@ import { createRunPhaseTool, createGetOrchestrationStateTool, type PhaseToolsCon
 import { buildProviderAgnosticResumePlan } from './resume-recovery.js';
 import { buildOrchestrationGapAnalysis, formatGapAnalysisForPrompt, type GapAnalysisResult } from './gap-analysis.js';
 import { runOrchestrationHealthCheck, type OrchestrationHealthCheckResult } from './self-diagnosis.js';
-import type { OrchestratorConfig, OrchestratorResult } from './types.js';
+import type { AgentStructuredResult, OrchestratorConfig, OrchestratorResult } from './types.js';
+import type { ToolUseContext } from '../types/tool.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
 
@@ -39,6 +41,7 @@ export class UnifiedMasterOrchestrator {
   async run(): Promise<OrchestratorResult> {
     const { matterName, objective, maxDepth, maxConcurrency } = this.config;
     const phases = this.config.phases ?? getDefaultPhases();
+    const startingCheckpoint = loadOrchestrationCheckpoint(matterName);
     await recoverStaleRuntimeState(matterName, { preserveInterruptedTasks: Boolean(this.config.resume) });
     const resolvedConfig = await resolveConfig({ matterName });
     const masterModel = this.config.model ?? selectModelForTask({
@@ -174,7 +177,34 @@ export class UnifiedMasterOrchestrator {
         enforcePolicy: true,
         includeResearchTools: Boolean(resolvedConfig.autonomy?.autoApproveWeb),
       });
-      toolRegistry.register(createRunPhaseTool(phaseToolsConfig));
+      if (shouldUseDeterministicPhaseDriver({
+        checkpoint: startingCheckpoint,
+        resume: Boolean(this.config.resume),
+        force: Boolean(this.config.force),
+      })) {
+        const runPhaseTool = createRunPhaseTool(phaseToolsConfig);
+        const deterministicResult = await runDeterministicPhaseDriver({
+          matterName,
+          objective,
+          phases,
+          masterRunId: masterRun.id,
+          tool: runPhaseTool,
+          gapAnalysis,
+          resumePlan,
+        });
+        await this.runtime.emitRunCompleted(masterRun.id, deterministicResult.summary, {
+          status: deterministicResult.status,
+          completedPhases: deterministicResult.phaseResults.filter((phase) => phase.status === 'completed').length,
+          totalPhases: phases.length,
+        });
+        updateRun(matterName, masterRun.id, {
+          status: deterministicResult.status === 'completed' ? 'completed' : 'blocked',
+          summary: deterministicResult.summary,
+        });
+        return deterministicResult;
+      }
+      const runPhaseTool = createRunPhaseTool(phaseToolsConfig);
+      toolRegistry.register(runPhaseTool);
       toolRegistry.register(createGetOrchestrationStateTool(phaseToolsConfig));
       stopActiveHealthMonitor = this.startActiveHealthMonitor(masterRun.id, phases);
 
@@ -205,6 +235,8 @@ export class UnifiedMasterOrchestrator {
         'You are the Unified Master Orchestrator. Your job is to run legal matter phases and oversee the entire harness.',
         'Start by calling get_orchestration_state to understand the current matter state.',
         'Then use todo_write to plan which phases to run.',
+        'Do not browse .atticus, guessed filesystem paths, or SQLite tables to decide whether to start phases; the harness already supplied gap analysis and state tools.',
+        'If missing or stale deliverables are listed below, call run_phase for the first missing/stale phase within your first three turns.',
         'For each phase that has missing or stale deliverables, call run_phase with the phase ID and a clear objective. Do not intentionally re-produce complete deliverables unless force mode is enabled.',
         'Between phases, inspect results, diagnose issues, and if the harness itself is broken, fix the harness code using your editing tools.',
         'When all necessary phases are complete (or you decide to stop), return a JSON synthesis of the entire run.',
@@ -244,7 +276,7 @@ export class UnifiedMasterOrchestrator {
           ATTICUS_HARNESS_RESUME: this.config.resume ? '1' : '0',
         },
         shouldStop: () => this.runtime.isAborted()
-          ? 'orchestration runtime aborted by active health monitor or operator control'
+          ? (this.runtime.getStopReason() ?? 'orchestration runtime aborted by active health monitor or operator control')
           : undefined,
         retryNonJson: true,
       }, createLLMClient(resolvedConfig));
@@ -254,6 +286,7 @@ export class UnifiedMasterOrchestrator {
       stopActiveHealthMonitor = undefined;
 
       if (result.status === 'aborted') {
+        const pausedForRepair = this.runtime.isPaused();
         const finalHealth = await runOrchestrationHealthCheck(matterName, {
           phases,
           masterRunId: masterRun.id,
@@ -263,7 +296,9 @@ export class UnifiedMasterOrchestrator {
         });
         const abortedResult = reconcileOrchestratorHealth({
           matterName,
-          summary: `Unified orchestration stopped by active monitor: ${result.error ?? 'runtime aborted'}`,
+          summary: pausedForRepair
+            ? `Unified orchestration paused for repair: ${result.error ?? 'runtime paused'}`
+            : `Unified orchestration stopped by active monitor: ${result.error ?? 'runtime aborted'}`,
           status: 'needs_followup',
           artifacts: [],
           findings: [],
@@ -280,11 +315,36 @@ export class UnifiedMasterOrchestrator {
           summary: abortedResult.summary,
           error: result.error,
         });
+        saveOrchestrationCheckpoint(matterName, {
+          masterRunId: masterRun.id,
+          status: pausedForRepair ? 'paused' : 'blocked',
+          objective,
+          currentPhaseIndex: nextPhaseIndexFromTasks(listTasks(matterName), phases),
+          currentPhaseId: phases[nextPhaseIndexFromTasks(listTasks(matterName), phases)]?.id,
+          completedPhaseIds: listTasks(matterName)
+            .filter((task) => task.kind === 'mini_orchestrator' && task.status === 'completed')
+            .map((task) => task.type),
+          blockedPhaseIds: listTasks(matterName)
+            .filter((task) => task.kind === 'mini_orchestrator' && task.status === 'blocked')
+            .map((task) => task.type),
+          failedPhaseIds: listTasks(matterName)
+            .filter((task) => task.kind === 'mini_orchestrator' && task.status === 'failed')
+            .map((task) => task.type),
+          phaseSummaries: recoverPhaseResultsFromTasks(matterName, phases).map((phaseResult) => ({
+            phaseId: phaseResult.phaseId,
+            phaseName: phaseResult.phaseName,
+            status: phaseResult.status === 'completed' ? 'completed' : phaseResult.status === 'failed' ? 'failed' : 'blocked',
+            summary: phaseResult.summary,
+          })),
+          supervisorStopReason: result.error,
+          resumeFromRunId: masterRun.id,
+        });
         return abortedResult;
       }
 
       const initialParsed = reconcileOrchestratorResult(
         parseOrchestratorResult(result.finalContent, matterName),
+        matterName,
         phases,
         gapAnalysis,
       );
@@ -371,9 +431,18 @@ export class UnifiedMasterOrchestrator {
     const signals: NodeJS.Signals[] = ['SIGINT', 'SIGTERM', 'SIGUSR1'];
     const handler = (signal: NodeJS.Signals): void => {
       const message = `Orchestration interrupted by ${signal}`;
-      this.runtime.abort(message, masterRunId);
+      const existingCheckpoint = loadOrchestrationCheckpoint(matterName);
+      this.runtime.pauseForRepair(message, masterRunId);
+      saveOrchestrationCheckpoint(matterName, {
+        ...existingCheckpoint,
+        masterRunId,
+        status: 'paused',
+        objective: this.config.objective,
+        supervisorStopReason: message,
+        resumeFromRunId: masterRunId,
+      });
       updateRun(matterName, masterRunId, {
-        status: 'error',
+        status: 'blocked',
         summary: message,
         error: message,
       });
@@ -403,10 +472,34 @@ export class UnifiedMasterOrchestrator {
         });
         if (health.shouldBlockAdvance) {
           const summary = summarizeHealthForAbort(health);
-          this.runtime.abort(`active_health_monitor: ${summary}`, masterRunId);
+          this.runtime.pauseForRepair(`active_health_monitor: ${summary}`, masterRunId);
+          saveOrchestrationCheckpoint(matterName, {
+            masterRunId,
+            status: 'paused',
+            objective: this.config.objective,
+            currentPhaseIndex: nextPhaseIndexFromTasks(listTasks(matterName), phases),
+            currentPhaseId: phases[nextPhaseIndexFromTasks(listTasks(matterName), phases)]?.id,
+            completedPhaseIds: listTasks(matterName)
+              .filter((task) => task.kind === 'mini_orchestrator' && task.status === 'completed')
+              .map((task) => task.type),
+            blockedPhaseIds: listTasks(matterName)
+              .filter((task) => task.kind === 'mini_orchestrator' && task.status === 'blocked')
+              .map((task) => task.type),
+            failedPhaseIds: listTasks(matterName)
+              .filter((task) => task.kind === 'mini_orchestrator' && task.status === 'failed')
+              .map((task) => task.type),
+            phaseSummaries: recoverPhaseResultsFromTasks(matterName, phases).map((phaseResult) => ({
+              phaseId: phaseResult.phaseId,
+              phaseName: phaseResult.phaseName,
+              status: phaseResult.status === 'completed' ? 'completed' : phaseResult.status === 'failed' ? 'failed' : 'blocked',
+              summary: phaseResult.summary,
+            })),
+            supervisorStopReason: summary,
+            resumeFromRunId: masterRunId,
+          });
           updateRun(matterName, masterRunId, {
             status: 'blocked',
-            summary: `Active health monitor stopped orchestration: ${summary}`,
+            summary: `Active health monitor paused orchestration for repair: ${summary}`,
             error: summary,
           });
         }
@@ -536,10 +629,14 @@ function parseOrchestratorResult(content: string, matterName: string): Orchestra
 
 function reconcileOrchestratorResult(
   parsed: OrchestratorResult,
+  matterName: string,
   phases: PhaseDefinition[],
   gapAnalysis: GapAnalysisResult,
 ): OrchestratorResult {
-  const byPhase = new Map(parsed.phaseResults.map((phase) => [phase.phaseId, phase]));
+  const recoveredPhaseResults = parsed.phaseResults.length > 0
+    ? parsed.phaseResults
+    : recoverPhaseResultsFromTasks(matterName, phases);
+  const byPhase = new Map(recoveredPhaseResults.map((phase) => [phase.phaseId, phase]));
   const phaseResults = phases.map((phase) => {
     const existing = byPhase.get(phase.id);
     if (existing) return existing;
@@ -604,6 +701,215 @@ function reconcileOrchestratorResult(
       return phase;
     }),
   };
+}
+
+function recoverPhaseResultsFromTasks(
+  matterName: string,
+  phases: PhaseDefinition[],
+): OrchestratorResult['phaseResults'] {
+  const phaseIds = new Set(phases.map((phase) => phase.id));
+  const latestByPhase = new Map<string, ReturnType<typeof listTasks>[number]>();
+  for (const task of listTasks(matterName)) {
+    if (task.kind !== 'mini_orchestrator' || !phaseIds.has(task.type)) continue;
+    const existing = latestByPhase.get(task.type);
+    if (!existing || task.updated.localeCompare(existing.updated) > 0) {
+      latestByPhase.set(task.type, task);
+    }
+  }
+
+  return phases.flatMap((phase) => {
+    const task = latestByPhase.get(phase.id);
+    if (!task) return [];
+    const resultStatus = stringValue(task.data.resultStatus);
+    const status = task.status === 'completed' && resultStatus === 'completed'
+      ? 'completed'
+      : task.status === 'failed' || resultStatus === 'failed'
+        ? 'failed'
+        : 'blocked';
+    return [{
+      phaseId: phase.id,
+      phaseName: phase.name,
+      status,
+      summary: stringValue(task.data.summary) || task.blockedReason || `Recovered ${phase.name} from task state (${task.status}).`,
+      findings: [],
+      risks: [],
+      artifactIds: stringArray(task.data.artifactIds),
+      workerResults: [],
+    }];
+  });
+}
+
+function nextPhaseIndexFromTasks(tasks: ReturnType<typeof listTasks>, phases: PhaseDefinition[]): number {
+  const completedPhaseIds = new Set(
+    tasks
+      .filter((task) => task.kind === 'mini_orchestrator' && task.status === 'completed')
+      .map((task) => task.type),
+  );
+  const index = phases.findIndex((phase) => !completedPhaseIds.has(phase.id));
+  return index === -1 ? phases.length : index;
+}
+
+function shouldUseDeterministicPhaseDriver(input: {
+  checkpoint: ReturnType<typeof loadOrchestrationCheckpoint>;
+  resume: boolean;
+  force: boolean;
+}): boolean {
+  if (input.checkpoint?.status === 'paused') return true;
+  return input.resume && input.force;
+}
+
+async function runDeterministicPhaseDriver(input: {
+  matterName: string;
+  objective?: string;
+  phases: PhaseDefinition[];
+  masterRunId: string;
+  tool: ReturnType<typeof createRunPhaseTool>;
+  gapAnalysis: GapAnalysisResult;
+  resumePlan?: ReturnType<typeof buildProviderAgnosticResumePlan>;
+}): Promise<OrchestratorResult> {
+  const requiredPhaseIds = new Set(input.gapAnalysis.toProduce.map((requirement) => requirement.phaseId).filter((id): id is string => Boolean(id)));
+  const recoveredResultByPhase = new Map(input.resumePlan?.phaseResults.map(({ phase, result }) => [phase.id, result]) ?? []);
+  const phasesToRun = input.phases.filter((phase, index) =>
+    (requiredPhaseIds.size === 0 || requiredPhaseIds.has(phase.id)) &&
+    (
+      input.resumePlan
+        ? !isRecoveredPhaseCompleteEnough(phase.id, recoveredResultByPhase.get(phase.id))
+        : (input.gapAnalysis.force || index >= 0)
+    )
+  );
+  const phaseResults: OrchestratorResult['phaseResults'] = [
+    ...(input.resumePlan?.phaseResults.map(({ phase, result }) => ({
+      phaseId: phase.id,
+      phaseName: phase.name,
+      status: result.status === 'completed' ? 'completed' as const : result.status === 'failed' ? 'failed' as const : 'blocked' as const,
+      summary: result.summary,
+      findings: result.findings.map((finding) => ({
+        claim: finding.claim,
+        support: finding.support,
+        confidence: finding.confidence,
+        kind: finding.kind,
+      })),
+      risks: result.risks,
+      artifactIds: result.artifactIds,
+      workerResults: [],
+    })) ?? []),
+  ];
+
+  for (const phase of phasesToRun) {
+    saveOrchestrationCheckpoint(input.matterName, {
+      masterRunId: input.masterRunId,
+      status: 'running',
+      objective: input.objective,
+      currentPhaseIndex: input.phases.findIndex((candidate) => candidate.id === phase.id),
+      currentPhaseId: phase.id,
+      completedPhaseIds: phaseResults.filter((result) => result.status === 'completed').map((result) => result.phaseId),
+      blockedPhaseIds: phaseResults.filter((result) => result.status === 'blocked').map((result) => result.phaseId),
+      failedPhaseIds: phaseResults.filter((result) => result.status === 'failed').map((result) => result.phaseId),
+      phaseSummaries: phaseResults.map((result) => ({
+        phaseId: result.phaseId,
+        phaseName: result.phaseName,
+        status: result.status === 'completed' ? 'completed' : result.status === 'failed' ? 'failed' : 'blocked',
+        summary: result.summary,
+      })),
+      resumeFromRunId: input.resumePlan?.resumeFromRunId,
+    });
+
+    const result = await input.tool.call({
+      phaseId: phase.id,
+      objective: `${input.objective ?? 'Run phase'}\n\nDeterministic phase driver: execute ${phase.name} because gap analysis still requires this phase. Preserve existing completed phase outputs and do not replay unrelated phases.`,
+    }, makeDeterministicToolContext(input.matterName, input.masterRunId));
+    const data = result.data;
+    const phaseResult = {
+      phaseId: phase.id,
+      phaseName: phase.name,
+      status: result.success && data?.status === 'completed' ? 'completed' as const : result.success && data?.status === 'failed' ? 'failed' as const : 'blocked' as const,
+      summary: result.success ? (data?.summary ?? result.output ?? `Phase ${phase.name} completed.`) : (result.error ?? `Phase ${phase.name} failed.`),
+      findings: [],
+      risks: result.success ? [] : [{
+        risk: result.error ?? `Phase ${phase.name} failed.`,
+        severity: 'high' as const,
+        mitigation: 'Pause for repair, keep the checkpoint, then resume this phase after fixing the blocker.',
+      }],
+      artifactIds: data?.artifactIds ?? [],
+      workerResults: [],
+    };
+    phaseResults.push(phaseResult);
+    if (phaseResult.status !== 'completed') {
+      saveOrchestrationCheckpoint(input.matterName, {
+        masterRunId: input.masterRunId,
+        status: 'paused',
+        objective: input.objective,
+        currentPhaseIndex: input.phases.findIndex((candidate) => candidate.id === phase.id),
+        currentPhaseId: phase.id,
+        completedPhaseIds: phaseResults.filter((item) => item.status === 'completed').map((item) => item.phaseId),
+        blockedPhaseIds: phaseResults.filter((item) => item.status === 'blocked').map((item) => item.phaseId),
+        failedPhaseIds: phaseResults.filter((item) => item.status === 'failed').map((item) => item.phaseId),
+        phaseSummaries: phaseResults.map((item) => ({
+          phaseId: item.phaseId,
+          phaseName: item.phaseName,
+          status: item.status === 'completed' ? 'completed' : item.status === 'failed' ? 'failed' : 'blocked',
+          summary: item.summary,
+        })),
+        supervisorStopReason: phaseResult.summary,
+        resumeFromRunId: input.masterRunId,
+      });
+      return {
+        matterName: input.matterName,
+        summary: `Deterministic orchestration paused at ${phase.name}: ${phaseResult.summary}`,
+        status: 'needs_followup',
+        artifacts: phaseResults.flatMap((item) => item.artifactIds),
+        findings: [],
+        risks: phaseResult.risks,
+        phaseResults,
+      };
+    }
+  }
+
+  saveOrchestrationCheckpoint(input.matterName, {
+    masterRunId: input.masterRunId,
+    status: 'completed',
+    objective: input.objective,
+    completedPhaseIds: phaseResults.filter((item) => item.status === 'completed').map((item) => item.phaseId),
+    blockedPhaseIds: [],
+    failedPhaseIds: [],
+    phaseSummaries: phaseResults.map((item) => ({
+      phaseId: item.phaseId,
+      phaseName: item.phaseName,
+      status: item.status === 'completed' ? 'completed' : item.status === 'failed' ? 'failed' : 'blocked',
+      summary: item.summary,
+    })),
+    resumeFromRunId: input.masterRunId,
+  });
+  return {
+    matterName: input.matterName,
+    summary: `Deterministic orchestration completed ${phasesToRun.length} phase(s) from paused checkpoint.`,
+    status: 'completed',
+    artifacts: phaseResults.flatMap((item) => item.artifactIds),
+    findings: [],
+    risks: [],
+    phaseResults,
+  };
+}
+
+function isRecoveredPhaseCompleteEnough(phaseId: string, result: AgentStructuredResult | undefined): boolean {
+  if (result?.status !== 'completed') return false;
+  if ((phaseId === 'document_production' || phaseId === 'bundle_and_war_room_assembly') && result.artifactIds.length === 0) return false;
+  return true;
+}
+
+function makeDeterministicToolContext(matterName: string, runId: string): ToolUseContext {
+  return {
+    matterName,
+    runId,
+    getEvidencePath: (id: string) => `matters/${matterName}/_evidence/${id}`,
+    getExtractionPath: (id: string) => `matters/${matterName}/_extractions/${id}.txt`,
+    getConfig: () => ({ matterName, runId, deterministicPhaseDriver: true }),
+    log: () => {},
+  };
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
 }
 
 function reconcileOrchestratorHealth(

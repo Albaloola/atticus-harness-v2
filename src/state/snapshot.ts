@@ -6,6 +6,7 @@ import { listTasks } from './tasks.js';
 import { isRunLive, listRuns } from './runs.js';
 import { buildMatterStoreTelemetry } from '../observability/store-telemetry.js';
 import { recoverStaleRuntimeState } from './runtime-recovery.js';
+import { loadOrchestrationCheckpoint } from '../orchestration/checkpoint.js';
 import type { MatterRuntimeSnapshot, TaskCounts, RuntimeCosts } from '../types/state.js';
 import { evaluateRunReadiness } from '../orchestration/contracts.js';
 import type { MatterStatus } from '../types/matter.js';
@@ -19,7 +20,10 @@ export async function deriveSnapshot(
   const candidates = await listCandidates(matterName).catch(() => []);
   const storeTelemetry = await buildMatterStoreTelemetry(matterName).catch(() => undefined);
   if (options.recoverRuntime !== false) {
-    await recoverStaleRuntimeState(matterName);
+    const checkpoint = loadOrchestrationCheckpoint(matterName);
+    await recoverStaleRuntimeState(matterName, {
+      preserveInterruptedTasks: checkpoint?.status === 'paused',
+    });
   }
 
   const tasks = listTasks(matterName);

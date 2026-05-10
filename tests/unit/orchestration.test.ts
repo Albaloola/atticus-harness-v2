@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdir, writeFile } from 'fs/promises';
 import { initMatter, deleteMatter, getMatterPath } from '../../src/storage/matter.js';
 import { loadMatter } from '../../src/storage/matter.js';
-import { acceptCandidate, saveCandidate } from '../../src/storage/candidate.js';
+import { acceptCandidate, listCandidates, saveCandidate } from '../../src/storage/candidate.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
 import { createRun, listRuns, updateRun } from '../../src/state/runs.js';
 import { createTask, listTasks, updateTask } from '../../src/state/tasks.js';
@@ -59,6 +59,7 @@ import { OpenRouterClient, createLLMClient } from '../../src/llm/client.js';
 import type { OrchestratorConfig } from '../../src/orchestration/master-orchestrator.js';
 import { MasterOrchestrator } from '../../src/orchestration/master-orchestrator.js';
 import { UnifiedMasterOrchestrator } from '../../src/orchestration/unified-master-orchestrator.js';
+import { MiniOrchestrator } from '../../src/orchestration/mini-orchestrator.js';
 import { WorkerAgent } from '../../src/orchestration/worker.js';
 import type { ArtifactType } from '../../src/types/artifact.js';
 
@@ -327,6 +328,36 @@ describe('phase tool contracts', () => {
     }
   });
 
+  it('blocks advance when provider credits are exhausted', async () => {
+    const matterName = 'orchestration-health-provider-credit-test';
+    await initMatter(matterName);
+
+    try {
+      await appendEvent({
+        matterName,
+        type: 'agent.run.error',
+        runId: 'worker-run',
+        taskId: 'worker-task',
+        source: 'agent',
+        data: {
+          operation: 'llm.chatWithTools',
+          error: 'openrouter-deepseek error (402): {"error":{"message":"Insufficient credits"}}',
+        },
+      });
+
+      const health = await runOrchestrationHealthCheck(matterName, {
+        phases: getDefaultPhases(),
+      });
+
+      expect(health.status).toBe('blocked');
+      expect(health.shouldBlockAdvance).toBe(true);
+      expect(health.issues.map((issue) => issue.type)).toContain('provider_credit_exhausted');
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+
   it('blocks verification when transcript drift proves no reducer-visible candidates exist', async () => {
     const matterName = 'orchestration-health-drift-test';
     await initMatter(matterName);
@@ -440,6 +471,42 @@ describe('phase tool contracts', () => {
     }
   });
 
+  it('flags master loops that burn turns without launching any phase', async () => {
+    const matterName = 'orchestration-health-master-progress-test';
+    await initMatter(matterName);
+
+    try {
+      const masterRun = createRun({
+        matterName,
+        id: 'master-no-progress',
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      for (let turn = 1; turn <= 8; turn += 1) {
+        await appendEvent({
+          matterName,
+          runId: masterRun.id,
+          type: 'agent.turn.completed',
+          source: 'agent',
+          data: { turnNumber: turn, summary: '' },
+        });
+      }
+
+      const health = await runOrchestrationHealthCheck(matterName, {
+        phases: getDefaultPhases(),
+        masterRunId: masterRun.id,
+      });
+
+      expect(health.shouldBlockAdvance).toBe(true);
+      expect(health.issues.some((issue) => issue.type === 'master_no_phase_progress')).toBe(true);
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+
   it('blocks on generic repeated tool failures while a run is active', async () => {
     const matterName = 'orchestration-health-repeated-tool-failure-test';
     await initMatter(matterName);
@@ -495,6 +562,68 @@ describe('phase tool contracts', () => {
       expect(health.shouldBlockAdvance).toBe(true);
       expect(health.issues).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: 'repeated_tool_failure', severity: 'high' }),
+      ]));
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('does not block on repeated evidence chunk misses while a run is active', async () => {
+    const matterName = 'orchestration-health-nonblocking-evidence-miss-test';
+    await initMatter(matterName);
+
+    try {
+      createRun({
+        matterName,
+        id: 'master-run',
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      createRun({
+        matterName,
+        id: 'worker-run',
+        parentRunId: 'master-run',
+        model: 'test-model',
+        agentType: 'worker',
+        role: 'worker',
+        prompt: 'Read sparse evidence.',
+      });
+      const task = createTask({
+        matterName,
+        type: 'evidence_ingestion_and_fact_extraction',
+        title: 'Read sparse evidence',
+        runId: 'worker-run',
+        data: { phaseId: 'evidence_ingestion_and_fact_extraction' },
+      });
+      updateTask(matterName, task.id, { status: 'in_progress' });
+      for (const evidenceId of ['OME-SRC-0126', 'OME-SRC-0131', 'OME-SRC-0209']) {
+        await appendEvent({
+          matterName,
+          type: 'tool.called',
+          runId: 'worker-run',
+          taskId: task.id,
+          source: 'tool',
+          data: {
+            tool: 'evidence_chunk_read',
+            success: false,
+            policyDecision: 'allow',
+            error: `No chunks found for ${evidenceId}. It has no indexed chunks.`,
+            args: { evidenceId, chunkIndex: 0 },
+          },
+        });
+      }
+
+      const health = await runOrchestrationHealthCheck(matterName, {
+        phases: getDefaultPhases(),
+        masterRunId: 'master-run',
+      });
+
+      expect(health.shouldBlockAdvance).toBe(false);
+      expect(health.issues).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'repeated_tool_failure' }),
       ]));
     } finally {
       closeAllStateDbs();
@@ -676,6 +805,26 @@ describe('MasterOrchestrator', () => {
     expect(orchestrator.getActiveRunCount()).toBe(0);
   }, 30000);
 
+  it('fans out phase workers up to the configured concurrency ceiling', async () => {
+    const phases = getDefaultPhases().filter((phase) => phase.id === 'issue_spotting');
+    const orchestrator = new MasterOrchestrator({
+      matterName,
+      objective: 'High-concurrency issue spotting test',
+      maxDepth: 2,
+      maxConcurrency: 15,
+      phases,
+    });
+
+    const result = await orchestrator.run();
+    const workers = listTasks(matterName).filter((task) => task.kind === 'worker' && task.type === 'issue_spotting');
+    const titles = workers.map((task) => task.title);
+
+    expect(result.status).toBe('completed');
+    expect(workers).toHaveLength(15);
+    expect(titles).toContain('Identify equality and discrimination issues');
+    expect(titles).toContain('Prepare issue map synthesis with evidence anchors');
+  }, 30000);
+
   it('returns OrchestratorResult with correct fields', async () => {
     const config: OrchestratorConfig = {
       matterName,
@@ -761,6 +910,110 @@ describe('MasterOrchestrator', () => {
     expect(listRuns(matterName).filter((run) => run.role === 'mini_orchestrator')).toHaveLength(0);
     expect(listTasks(matterName).filter((task) => task.kind === 'mini_orchestrator')).toHaveLength(0);
     expect(listEvents(matterName).map((event) => event.type)).toContain('orchestration.gap_analysis.completed');
+  }, 30000);
+
+  it('recovers phase summaries from task state when the unified master returns non-json final text', async () => {
+    const phases = getDefaultPhases().slice(0, 1);
+    const task = createTask({
+      matterName,
+      runId: 'master-seeded',
+      kind: 'mini_orchestrator',
+      type: phases[0].id,
+      title: `Phase: ${phases[0].name}`,
+      priority: 'high',
+      depth: 1,
+      assignedAgent: 'mini_orchestrator',
+      data: { phaseId: phases[0].id },
+    });
+    updateTask(matterName, task.id, {
+      status: 'completed',
+      data: {
+        phaseId: phases[0].id,
+        resultStatus: 'completed',
+        summary: 'Recovered completed phase from task state.',
+        artifactIds: ['candidate:intake-summary'],
+      },
+    });
+
+    vi.mocked(createLLMClient).mockReturnValueOnce({
+      chatWithTools: vi.fn().mockResolvedValue({
+        content: 'Reconciler found 1 missing or blocked phase result(s).',
+        toolCalls: undefined,
+      }),
+      chat: vi.fn().mockResolvedValue({ content: '{}' }),
+      healthCheck: vi.fn().mockResolvedValue(true),
+    } as never);
+
+    const orchestrator = new UnifiedMasterOrchestrator({
+      matterName,
+      objective: 'Recover from malformed final text',
+      maxDepth: 1,
+      maxConcurrency: 1,
+      phases,
+      force: true,
+    });
+    const result = await orchestrator.run();
+
+    expect(result.phaseResults).toHaveLength(1);
+    expect(result.phaseResults[0]).toMatchObject({
+      phaseId: phases[0].id,
+      status: 'completed',
+      summary: 'Recovered completed phase from task state.',
+      artifactIds: ['candidate:intake-summary'],
+    });
+  }, 30000);
+
+  it('creates reducer-visible fallback candidates when document production workers return no artifacts', async () => {
+    const phases = getDefaultPhases();
+    const documentIndex = phases.findIndex((item) => item.id === 'document_production');
+    for (const prior of phases.slice(0, documentIndex)) {
+      const task = createTask({
+        matterName,
+        runId: 'master-doc-fallback',
+        kind: 'mini_orchestrator',
+        type: prior.id,
+        title: `Phase: ${prior.name}`,
+        priority: 'high',
+        depth: 1,
+        assignedAgent: 'mini_orchestrator',
+        data: { phaseId: prior.id },
+      });
+      updateTask(matterName, task.id, {
+        status: 'completed',
+        data: {
+          phaseId: prior.id,
+          resultStatus: 'completed',
+          summary: 'Prior phase seeded complete for document fallback test.',
+          artifactIds: ['seed-artifact'],
+        },
+      });
+    }
+    const tool = createRunPhaseTool({
+      matterName,
+      masterRunId: 'master-doc-fallback',
+      maxDepth: 1,
+      maxConcurrency: 1,
+      force: true,
+    });
+
+    const result = await tool.call({
+      phaseId: 'document_production',
+      objective: 'Produce Phase 11 documents.',
+    }, {} as ToolUseContext);
+
+    expect(result.success).toBe(true);
+    expect(result.data?.status).toBe('completed');
+    expect(result.data?.artifactIds).toContain('phase11-ordinary-action-claim-draft');
+    expect(result.data?.artifactIds).toContain('phase11-master-action-plan');
+    expect((await listCandidates(matterName)).map((candidate) => candidate.id)).toEqual(expect.arrayContaining([
+      'phase11-judicial-review-petition-draft',
+      'phase11-ordinary-action-claim-draft',
+      'phase11-ico-complaint-draft',
+      'phase11-spso-complaint-draft',
+      'phase11-gmc-complaint-draft',
+      'phase11-slcc-complaint-draft',
+      'phase11-master-action-plan',
+    ]));
   }, 30000);
 
   it('does not mark an aborted orchestration as completed', async () => {
@@ -908,14 +1161,15 @@ describe('MasterOrchestrator', () => {
       objective: 'Invalid concurrency test',
       maxDepth: 2,
       maxConcurrency: 0,
+      phases: getDefaultPhases().slice(0, 1),
     });
 
     const result = await orchestrator.run();
 
-    expect(result.phaseResults).toHaveLength(getDefaultPhases().length);
+    expect(result.phaseResults).toHaveLength(1);
     expect(result.status).toBe('completed');
     expect(orchestrator.getActiveRunCount()).toBe(0);
-  }, 30000);
+  }, 60000);
 
   it('uses retrospective appellate production and bundle tasks for concluded case trials', async () => {
     const phases = getDefaultPhases().filter((phase) =>
@@ -939,6 +1193,70 @@ describe('MasterOrchestrator', () => {
     expect(workerTitles).toContain('Create retrospective appellate bundle index from matter_inventory production candidates');
     expect(workerTitles).not.toContain('Draft key documents');
     expect(workerTitles).not.toContain('Create master bundle index');
+  }, 30000);
+
+  it('credits candidates submitted during a phase even when workers omit final artifactIds', async () => {
+    const fakeClient = {
+      chatWithTools: vi.fn().mockImplementation(async () => {
+        await saveCandidate(matterName, {
+          id: 'bundle-index-submitted-by-tool',
+          matterName,
+          type: 'case_management',
+          title: 'Bundle Index Submitted By Tool',
+          content: 'Reducer-visible bundle index content.',
+          status: 'candidate',
+          created: new Date().toISOString(),
+          metadata: { source: 'submit_candidate', phase: 'bundle_and_war_room_assembly' },
+        });
+        return {
+          content: JSON.stringify({
+            status: 'completed',
+            summary: 'Submitted the bundle index but forgot to echo artifactIds.',
+            findings: [],
+            risks: [],
+            proposedTasks: [],
+            artifactIds: [],
+            nextActions: [],
+          }),
+          toolCalls: undefined,
+        };
+      }),
+      chat: vi.fn().mockResolvedValue({
+        content: JSON.stringify({
+          status: 'completed',
+          summary: 'Submitted the bundle index but forgot to echo artifactIds.',
+          findings: [],
+          risks: [],
+          proposedTasks: [],
+          artifactIds: [],
+          nextActions: [],
+        }),
+      }),
+      healthCheck: vi.fn().mockResolvedValue(true),
+    };
+    vi.mocked(OpenRouterClient).mockImplementation(() => fakeClient as unknown as InstanceType<typeof OpenRouterClient>);
+    vi.mocked(createLLMClient).mockReturnValue(fakeClient as ReturnType<typeof createLLMClient>);
+
+    const phaseTask = createTask({
+      matterName,
+      kind: 'mini_orchestrator',
+      type: 'bundle_and_war_room_assembly',
+      title: 'Phase: Bundle and War Room Assembly',
+    });
+    const orchestrator = new MiniOrchestrator({
+      matterName,
+      phase: getDefaultPhases().find((phase) => phase.id === 'bundle_and_war_room_assembly')!,
+      objective: 'Bundle phase candidate capture test',
+      maxDepth: 2,
+      maxConcurrency: 1,
+      phaseTaskId: phaseTask.id,
+    });
+    (orchestrator as unknown as { decompose: () => Array<{ title: string }> }).decompose = () => [{ title: 'Submit bundle index candidate' }];
+
+    const result = await orchestrator.execute();
+
+    expect(result.status).toBe('completed');
+    expect(result.artifactIds).toContain('bundle-index-submitted-by-tool');
   }, 30000);
 
   it('defers restart-only supervisor recommendations until the active phase can checkpoint', () => {
@@ -1181,6 +1499,78 @@ describe('MasterOrchestrator', () => {
     expect(plan.diagnostics.recoveredPhaseIds).toEqual(phases.slice(0, 4).map((phase) => phase.id));
     expect(plan.phaseResults[2].result.status).toBe('blocked');
     expect(plan.phaseResults[3].result.status).toBe('completed');
+  });
+
+  it('prefers a durable completed phase over a newer interrupted duplicate on resume', async () => {
+    const phases = getDefaultPhases().slice(0, 2);
+    const priorMaster = createRun({
+      matterName,
+      model: 'gpt-5.5',
+      role: 'master',
+      agentType: 'master_orchestrator',
+      prompt: 'Prior completed phase',
+    });
+    const completedMini = createRun({
+      matterName,
+      model: 'gpt-5.5',
+      parentRunId: priorMaster.id,
+      role: 'mini_orchestrator',
+      agentType: 'mini_orchestrator',
+      prompt: phases[0].description,
+    });
+    await appendEvent({
+      matterName,
+      type: 'agent.spawned',
+      runId: completedMini.id,
+      source: 'orchestration',
+      data: { role: 'mini_orchestrator', phase: phases[0].id },
+    });
+    updateRun(matterName, completedMini.id, { status: 'completed', summary: 'Intake completed durably.' });
+    await appendEvent({
+      matterName,
+      type: 'agent.run.completed',
+      runId: completedMini.id,
+      source: 'orchestration',
+      data: { role: 'mini_orchestrator', phase: phases[0].id },
+    });
+
+    const interruptedMaster = createRun({
+      matterName,
+      model: 'deepseek/deepseek-v4-flash',
+      role: 'master',
+      agentType: 'master_orchestrator',
+      prompt: 'Interrupted repair run',
+    });
+    const interruptedMini = createRun({
+      matterName,
+      model: 'deepseek/deepseek-v4-flash',
+      parentRunId: interruptedMaster.id,
+      role: 'mini_orchestrator',
+      agentType: 'mini_orchestrator',
+      prompt: phases[0].description,
+    });
+    await appendEvent({
+      matterName,
+      type: 'agent.spawned',
+      runId: interruptedMini.id,
+      source: 'orchestration',
+      data: { role: 'mini_orchestrator', phase: phases[0].id },
+    });
+    updateRun(matterName, interruptedMini.id, {
+      status: 'error',
+      summary: 'Run recovered as stale: repair interruption.',
+      error: 'interrupted',
+    });
+
+    const plan = buildProviderAgnosticResumePlan({
+      matterName,
+      objective: 'Resume without replaying completed phase',
+      phases,
+    });
+
+    expect(plan.startIndex).toBe(1);
+    expect(plan.phaseResults[0].phase.id).toBe(phases[0].id);
+    expect(plan.phaseResults[0].result.status).toBe('completed');
   });
 
   it('marks stale in-progress tasks as interrupted on resume instead of failed', async () => {

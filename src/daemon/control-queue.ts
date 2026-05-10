@@ -66,6 +66,7 @@ export async function listControlCommandAcks(): Promise<ControlCommandAck[]> {
 export async function listPendingControlCommands(filter?: {
   matterName?: string;
   runId?: string;
+  createdAfter?: Date;
 }): Promise<ControlCommand[]> {
   const [commands, acks] = await Promise.all([listControlCommands(), listControlCommandAcks()]);
   return filterPending(commands, new Set(acks.map((ack) => ack.commandId)), filter);
@@ -103,11 +104,12 @@ export function getPendingControlCommandCount(): number {
 function filterPending(
   commands: ControlCommand[],
   appliedIds: Set<string>,
-  filter?: { matterName?: string; runId?: string },
+  filter?: { matterName?: string; runId?: string; createdAfter?: Date },
 ): ControlCommand[] {
   return commands.filter((command) => {
     if (appliedIds.has(command.id)) return false;
     if (filter?.matterName && command.matterName !== filter.matterName) return false;
+    if (filter?.createdAfter && Date.parse(command.createdAt) < filter.createdAfter.getTime()) return false;
     if (filter?.runId && command.runId && command.runId !== filter.runId) return false;
     return true;
   });

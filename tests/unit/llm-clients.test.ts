@@ -97,7 +97,7 @@ describe('OpenAICompatibleClient', () => {
         only: ['DeepSeek'],
         allowFallbacks: false,
         requireParameters: true,
-        dataCollection: 'deny',
+        dataCollection: 'allow',
       },
     });
 
@@ -112,7 +112,7 @@ describe('OpenAICompatibleClient', () => {
       only: ['DeepSeek'],
       allow_fallbacks: false,
       require_parameters: true,
-      data_collection: 'deny',
+      data_collection: 'allow',
     });
     expect(body.response_format).toEqual({ type: 'json_object' });
   });

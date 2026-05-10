@@ -2,7 +2,7 @@ import { appendFile, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { OpenRouterClient, type LLMClient } from '../llm/client.js';
 import { DEFAULT_MODEL } from '../llm/config.js';
-import { TokenLimitError } from '../llm/errors.js';
+import { MalformedProviderResponseError, TokenLimitError } from '../llm/errors.js';
 import type { AgentTurn, ToolCallResult } from '../types/agent.js';
 import { stringifyMessageContent, type LLMMessage } from '../types/message.js';
 import type { LLMNativeAction, LLMResponse, ReasoningEffort } from '../types/llm.js';
@@ -336,6 +336,8 @@ export class QueryLoop {
     turnCount: number;
   }): Promise<LLMResponse> {
     let recoveredFromContextOverflow = false;
+    let malformedToolRetries = 0;
+    const maxMalformedToolRetries = 2;
 
     for (;;) {
       try {
@@ -353,6 +355,25 @@ export class QueryLoop {
           },
         });
       } catch (error) {
+        if (isMalformedToolArgumentError(error) && malformedToolRetries < maxMalformedToolRetries) {
+          malformedToolRetries += 1;
+          const message = error instanceof Error ? error.message : String(error);
+          this.history.push({
+            role: 'user',
+            content: buildMalformedToolRetryFeedback(message, malformedToolRetries, maxMalformedToolRetries),
+          });
+          await this.saveResumeSummary({
+            lastUserGoal: input.userMessage,
+            failedOperation: {
+              type: 'llm.malformed_tool_arguments',
+              error: message,
+              recovered: true,
+            },
+            lastModelVisibleSummary: `Malformed tool arguments detected (retry ${malformedToolRetries}/${maxMalformedToolRetries}). Asked model to resend a smaller valid JSON tool call.`,
+          });
+          continue;
+        }
+
         if (!(error instanceof TokenLimitError) || recoveredFromContextOverflow) {
           throw error;
         }
@@ -604,8 +625,12 @@ export class QueryLoop {
 
     const system = this.history[0];
     const boundedRecentCount = Math.max(2, Math.min(recentMessageCount, this.history.length - 2));
-    const recent = this.history.slice(-boundedRecentCount);
-    const compacted = this.history.slice(1, -boundedRecentCount);
+    let recentStart = this.history.length - boundedRecentCount;
+    while (recentStart > 1 && this.history[recentStart]?.role === 'tool') {
+      recentStart -= 1;
+    }
+    const recent = this.history.slice(recentStart);
+    const compacted = this.history.slice(1, recentStart);
     if (compacted.length === 0) {
       return {
         compacted: false,
@@ -747,5 +772,22 @@ function buildNonJsonRetryFeedback(previousContent: string): string {
       ? `Your previous response was: ${previousContent.slice(0, 200)}${previousContent.length > 200 ? '...' : ''}`
       : 'Your previous response was empty.',
     'Return ONLY the JSON object now, starting with { and ending with }.',
+  ].join('\n');
+}
+
+function isMalformedToolArgumentError(error: unknown): boolean {
+  if (!(error instanceof MalformedProviderResponseError)) return false;
+  return /Malformed tool arguments|JSON|Unterminated string|Unexpected end/i.test(error.message);
+}
+
+function buildMalformedToolRetryFeedback(errorMessage: string, retry: number, maxRetries: number): string {
+  return [
+    `Your previous tool call could not be executed because its function arguments were not valid JSON (retry ${retry}/${maxRetries}).`,
+    'Call the tool again with syntactically valid, complete JSON arguments.',
+    'If the candidate or artifact body is long, split it into a concise structured candidate now and put detailed prose in later smaller candidates rather than one huge string.',
+    'Do not wrap tool arguments in markdown. Do not leave strings unterminated. Escape quotes and newlines correctly.',
+    '',
+    'Provider/tool error:',
+    truncateText(errorMessage, 1200),
   ].join('\n');
 }

@@ -88,7 +88,7 @@ describe('OpenRouterClient config resolution', () => {
       only: ['DeepSeek'],
       allow_fallbacks: false,
       require_parameters: true,
-      data_collection: 'deny',
+      data_collection: 'allow',
     });
   });
 

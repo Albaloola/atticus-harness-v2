@@ -16,6 +16,7 @@ import { DEFAULT_MAX_CONCURRENCY } from '../../src/orchestration/limits.js';
 import { buildProviderAgnosticResumePlan } from '../../src/orchestration/resume-recovery.js';
 import { createRunPhaseTool } from '../../src/orchestration/orchestration-tools.js';
 import { runOrchestrationHealthCheck } from '../../src/orchestration/self-diagnosis.js';
+import { loadOrchestrationCheckpoint } from '../../src/orchestration/checkpoint.js';
 import { ToolRegistry } from '../../src/tools/index.js';
 import type { ToolUseContext } from '../../src/types/tool.js';
 
@@ -370,6 +371,69 @@ describe('phase tool contracts', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('candidate_store_drift');
       expect(result.error).toContain('zero JSON/indexed candidates');
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('keeps reconciled checkpoints blocked for global critical health issues', async () => {
+    const matterName = 'orchestration-health-checkpoint-global-blocker-test';
+    await initMatter(matterName);
+
+    try {
+      const masterRun = createRun({
+        matterName,
+        id: 'master-run',
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      createRun({
+        matterName,
+        id: 'worker-run',
+        parentRunId: masterRun.id,
+        model: 'test-model',
+        agentType: 'worker',
+        role: 'worker',
+        prompt: 'Write output.',
+      });
+      updateRun(matterName, 'worker-run', { status: 'completed' });
+      for (const phase of getDefaultPhases()) {
+        updateTask(matterName, createTask({
+          matterName,
+          runId: masterRun.id,
+          kind: 'mini_orchestrator',
+          type: phase.id,
+          title: `Phase: ${phase.name}`,
+          data: { phaseId: phase.id, resultStatus: 'completed', artifactIds: ['accepted-artifact'] },
+        }).id, { status: 'completed' });
+      }
+      await appendEvent({
+        matterName,
+        type: 'tool.called',
+        runId: 'worker-run',
+        source: 'tool',
+        data: {
+          tool: 'todo_write',
+          success: false,
+          policyDecision: 'ask',
+          error: 'Tool "todo_write" blocked by policy decision: ask',
+        },
+      });
+
+      const health = await runOrchestrationHealthCheck(matterName, {
+        phases: getDefaultPhases(),
+        masterRunId: masterRun.id,
+        reconcileCheckpoint: true,
+      });
+
+      expect(health.status).toBe('blocked');
+      const checkpoint = loadOrchestrationCheckpoint(matterName);
+      expect(checkpoint?.status).toBe('blocked');
+      expect(checkpoint?.blockedPhaseIds).toContain('document_output_pipeline');
+      expect(checkpoint?.completedPhaseIds).not.toContain('document_output_pipeline');
     } finally {
       closeAllStateDbs();
       await deleteMatter(matterName);

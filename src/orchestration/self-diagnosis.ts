@@ -194,6 +194,7 @@ function detectHollowVerification(tasks: TaskDagNode[]): OrchestrationHealthIssu
     remediation: 'Invalidate or block the verification phase, rerun document production with submit_candidate output, then verify actual documents.',
     objectId: latestVerification.id,
     evidence: {
+      phaseId: 'verification_and_hostile_review',
       verificationTaskId: latestVerification.id,
       documentProductionTaskId: latestDocumentProduction?.id,
       documentProductionStatus: latestDocumentProduction?.status,
@@ -357,6 +358,8 @@ function reconcileCheckpoint(
   issues: OrchestrationHealthIssue[],
 ): string | undefined {
   const phaseTasks = tasks.filter((task) => task.kind === 'mini_orchestrator');
+  const phaseIds = new Set(phases.map((phase) => phase.id));
+  const phaseByTaskId = buildPhaseByTaskId(tasks, phaseIds);
   const phaseSummaries = phases
     .map((phase) => {
       const task = latestPhaseTask(phaseTasks, phase.id);
@@ -374,9 +377,19 @@ function reconcileCheckpoint(
   const blockedIssuePhaseIds = new Set(
     issues
       .filter((issue) => issue.severity === 'critical' || issue.severity === 'high')
-      .map((issue) => typeof issue.evidence?.phaseId === 'string' ? issue.evidence.phaseId : undefined)
+      .map((issue) => phaseIdForIssue(issue, phaseIds, phaseByTaskId))
       .filter((phaseId): phaseId is string => Boolean(phaseId)),
   );
+  const hasUnmappedBlockingIssue = issues.some((issue) =>
+    (issue.severity === 'critical' || issue.severity === 'high') &&
+    !phaseIdForIssue(issue, phaseIds, phaseByTaskId)
+  );
+  const fallbackBlockedPhaseId = hasUnmappedBlockingIssue
+    ? fallbackPhaseForGlobalBlocker(phaseSummaries, phaseIds)
+    : undefined;
+  if (fallbackBlockedPhaseId) {
+    blockedIssuePhaseIds.add(fallbackBlockedPhaseId);
+  }
   const normalizedSummaries = phaseSummaries.map((summary) => blockedIssuePhaseIds.has(summary.phaseId)
     ? { ...summary, status: 'blocked' as const, summary: `${summary.summary} Health check blocked this phase.` }
     : summary);
@@ -397,6 +410,61 @@ function latestPhaseTask(tasks: TaskDagNode[], phaseId: string): TaskDagNode | u
   return tasks
     .filter((task) => task.kind === 'mini_orchestrator' && task.type === phaseId)
     .sort((a, b) => b.updated.localeCompare(a.updated))[0];
+}
+
+function buildPhaseByTaskId(tasks: TaskDagNode[], phaseIds: Set<string>): Map<string, string> {
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const phaseByTaskId = new Map<string, string>();
+  for (const task of tasks) {
+    const directPhaseId = typeof task.data.phaseId === 'string' ? task.data.phaseId : undefined;
+    if (directPhaseId && phaseIds.has(directPhaseId)) {
+      phaseByTaskId.set(task.id, directPhaseId);
+      continue;
+    }
+    if (task.kind === 'mini_orchestrator' && phaseIds.has(task.type)) {
+      phaseByTaskId.set(task.id, task.type);
+      continue;
+    }
+    let cursor = task.parentId ? byId.get(task.parentId) : undefined;
+    while (cursor) {
+      const parentPhaseId = typeof cursor.data.phaseId === 'string' ? cursor.data.phaseId : undefined;
+      if (parentPhaseId && phaseIds.has(parentPhaseId)) {
+        phaseByTaskId.set(task.id, parentPhaseId);
+        break;
+      }
+      if (cursor.kind === 'mini_orchestrator' && phaseIds.has(cursor.type)) {
+        phaseByTaskId.set(task.id, cursor.type);
+        break;
+      }
+      cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+    }
+  }
+  return phaseByTaskId;
+}
+
+function phaseIdForIssue(
+  issue: OrchestrationHealthIssue,
+  phaseIds: Set<string>,
+  phaseByTaskId: Map<string, string>,
+): string | undefined {
+  const evidencePhaseId = typeof issue.evidence?.phaseId === 'string' ? issue.evidence.phaseId : undefined;
+  if (evidencePhaseId && phaseIds.has(evidencePhaseId)) return evidencePhaseId;
+  if (issue.objectId) {
+    const taskPhaseId = phaseByTaskId.get(issue.objectId);
+    if (taskPhaseId) return taskPhaseId;
+  }
+  const taskId = typeof issue.evidence?.taskId === 'string' ? issue.evidence.taskId : undefined;
+  return taskId ? phaseByTaskId.get(taskId) : undefined;
+}
+
+function fallbackPhaseForGlobalBlocker(
+  phaseSummaries: Array<{ phaseId: string; phaseName: string; status: 'completed' | 'blocked'; summary: string }>,
+  phaseIds: Set<string>,
+): string | undefined {
+  for (const preferred of ['document_output_pipeline', 'operator_handoff', 'bundle_and_war_room_assembly', 'verification_and_hostile_review']) {
+    if (phaseIds.has(preferred) && phaseSummaries.some((summary) => summary.phaseId === preferred)) return preferred;
+  }
+  return phaseSummaries.at(-1)?.phaseId;
 }
 
 function collectRelatedRunIds(runs: AgentRun[], masterRunId: string): Set<string> {

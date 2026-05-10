@@ -57,11 +57,46 @@ describe('OpenRouterClient config resolution', () => {
     expect(init.headers.Authorization).toBe('Bearer secret-store-key');
   });
 
+  it('carries default OpenRouter DeepSeek routing through resolved client creation', async () => {
+    const client = createLLMClient({
+      providerName: 'openrouter-deepseek',
+      provider: {
+        ...DEFAULTS.providers['openrouter-deepseek'],
+        apiKey: 'test-key',
+      },
+      profile: DEFAULTS.profiles['openrouter-deepseek'],
+      activeProfile: undefined,
+      providerPolicy: DEFAULTS.providerPolicy,
+      model: DEFAULTS.providerPolicy.models.reasoning,
+      autonomy: DEFAULTS.autonomy,
+      toolPolicy: DEFAULTS.toolPolicy,
+      search: DEFAULTS.search,
+      mcp: DEFAULTS.mcp,
+      plugins: DEFAULTS.plugins,
+      outputStyle: DEFAULTS.outputStyle,
+      fromDisk: false,
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'Return json.' }],
+      config: { model: DEFAULTS.providerPolicy.models.reasoning, jsonMode: true },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.provider).toEqual({
+      only: ['DeepSeek'],
+      allow_fallbacks: false,
+      require_parameters: true,
+      data_collection: 'deny',
+    });
+  });
+
   it('fails closed for unknown provider models', () => {
     const decision = evaluateProviderPolicy({
       policy: DEFAULTS.providerPolicy,
       providers: DEFAULTS.providers,
-      providerName: 'openrouter',
+      providerName: 'openrouter-deepseek',
       model: 'unlisted/model',
     });
     expect(decision.allowed).toBe(false);
@@ -77,7 +112,7 @@ describe('OpenRouterClient config resolution', () => {
     const decision = evaluateProviderPolicy({
       policy: DEFAULTS.providerPolicy,
       providers: DEFAULTS.providers,
-      providerName: 'openrouter',
+      providerName: 'openrouter-deepseek',
       model: DEFAULTS.providerPolicy.models.reasoning,
       requestedFallback: true,
     });

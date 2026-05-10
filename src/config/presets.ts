@@ -5,9 +5,10 @@ import type { GlobalHarnessConfig, ProviderConfig, ProviderPolicy, ProviderProfi
  *
  * All profiles below are supported by the UnifiedMasterOrchestrator. The
  * orchestrator uses provider-agnostic JSON retry (retryNonJson on QueryLoop)
- * — it works through prompt feedback, not provider-specific API parameters
- * (response_format, outputSchema). No profile-specific code changes are
- * required for orchestrator compatibility.
+ * plus provider-native JSON mode when a compatible transport supports it.
+ * OpenRouter DeepSeek profiles also pin request routing to DeepSeek with
+ * fallbacks disabled so OpenRouter cannot silently substitute another
+ * provider.
  *
  * The active profile controls the model used for the master orchestrator
  * role via the 'reasoning' slot. Change providers with:
@@ -39,6 +40,13 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     keyName: 'OPENROUTER_API_KEY',
     baseUrl: 'https://openrouter.ai/api/v1',
     reasoningControl: 'openrouter-reasoning',
+    openRouterProviderRouting: {
+      only: ['DeepSeek'],
+      allowFallbacks: false,
+      requireParameters: true,
+      dataCollection: 'deny',
+    },
+    inputModalities: ['text', 'file'],
     models: {
       fast: 'deepseek/deepseek-v4-flash',
       reasoning: 'deepseek/deepseek-v4-pro',
@@ -182,6 +190,13 @@ export const DEFAULT_PROVIDER_PROFILES: Record<string, ProviderProfile> = {
     keyName: 'OPENROUTER_API_KEY',
     baseUrl: 'https://openrouter.ai/api/v1',
     reasoningControl: 'openrouter-reasoning',
+    openRouterProviderRouting: {
+      only: ['DeepSeek'],
+      allowFallbacks: false,
+      requireParameters: true,
+      dataCollection: 'deny',
+    },
+    inputModalities: ['text', 'file'],
     models: {
       fast: 'deepseek/deepseek-v4-flash',
       reasoning: 'deepseek/deepseek-v4-pro',
@@ -304,6 +319,8 @@ function normalizeDiskProfile(name: string, diskProfile: ProviderProfile): Provi
     apiPath: diskProfile.apiPath ?? preset.apiPath,
     anthropicFormat: diskProfile.anthropicFormat ?? preset.anthropicFormat,
     reasoningControl: diskProfile.reasoningControl ?? preset.reasoningControl,
+    openRouterProviderRouting: diskProfile.openRouterProviderRouting ?? preset.openRouterProviderRouting,
+    inputModalities: diskProfile.inputModalities ?? preset.inputModalities,
     agentCapable: diskProfile.agentCapable ?? preset.agentCapable,
     codexToolStrategy: diskProfile.codexToolStrategy ?? preset.codexToolStrategy,
     codexDangerouslyBypassApprovalsAndSandbox: diskProfile.codexDangerouslyBypassApprovalsAndSandbox ?? preset.codexDangerouslyBypassApprovalsAndSandbox,
@@ -329,6 +346,8 @@ export function profileToProviderConfig(profile: ProviderProfile, apiKey?: strin
     apiPath: profile.apiPath,
     anthropicFormat: profile.anthropicFormat,
     reasoningControl: profile.reasoningControl,
+    openRouterProviderRouting: profile.openRouterProviderRouting,
+    inputModalities: profile.inputModalities,
     agentCapable: profile.agentCapable,
     codexToolStrategy: profile.codexToolStrategy,
     codexDangerouslyBypassApprovalsAndSandbox: profile.codexDangerouslyBypassApprovalsAndSandbox,

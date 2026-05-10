@@ -149,6 +149,10 @@ export interface ProviderConfig {
   anthropicFormat?: boolean;
   /** Provider-native reasoning control strategy. */
   reasoningControl?: ReasoningControl;
+  /** OpenRouter per-request provider routing preferences. */
+  openRouterProviderRouting?: OpenRouterProviderRouting;
+  /** Modalities this profile is allowed to send to the provider. */
+  inputModalities?: InputModality[];
   /** Whether this provider can run a native agent loop instead of Harness-owned tool calls. */
   agentCapable?: boolean;
   /** Tool execution strategy for the delegated Codex SDK transport. */
@@ -156,6 +160,29 @@ export interface ProviderConfig {
   /** Codex CLI exec workaround: required for native MCP tool calls while the CLI approval bug is present. */
   codexDangerouslyBypassApprovalsAndSandbox?: boolean;
 }
+
+export interface OpenRouterProviderRouting {
+  /** Provider slugs/names to try first, in order. */
+  order?: string[];
+  /** Whether OpenRouter may try backup providers when the primary route fails. */
+  allowFallbacks?: boolean;
+  /** Require selected providers to support every request parameter. */
+  requireParameters?: boolean;
+  /** Restrict providers by OpenRouter's data collection policy. */
+  dataCollection?: 'allow' | 'deny';
+  /** Restrict routing to zero-data-retention endpoints. */
+  zdr?: boolean;
+  /** Only allow these provider slugs/names. */
+  only?: string[];
+  /** Skip these provider slugs/names. */
+  ignore?: string[];
+  /** Optional OpenRouter quantization filter. */
+  quantizations?: string[];
+  /** Optional OpenRouter provider sort policy. */
+  sort?: 'price' | 'throughput' | 'latency' | Record<string, unknown>;
+}
+
+export type InputModality = 'text' | 'image' | 'file' | 'audio' | 'video';
 
 export interface ProvidersConfig {
   openrouter?: ProviderConfig;
@@ -187,6 +214,10 @@ export interface ProviderProfile {
   anthropicFormat?: boolean;
   /** Provider-native reasoning control strategy */
   reasoningControl?: ReasoningControl;
+  /** OpenRouter per-request provider routing preferences. */
+  openRouterProviderRouting?: OpenRouterProviderRouting;
+  /** Modalities this profile is allowed to send to the provider. */
+  inputModalities?: InputModality[];
   /** Whether this provider can run a native agent loop instead of Harness-owned tool calls. */
   agentCapable?: boolean;
   /** Tool execution strategy for the delegated Codex SDK transport. */
@@ -314,6 +345,13 @@ export const DEFAULT_OPENROUTER_PROFILE: ProviderProfile = {
   keyName: 'OPENROUTER_API_KEY',
   baseUrl: 'https://openrouter.ai/api/v1',
   reasoningControl: 'openrouter-reasoning',
+  openRouterProviderRouting: {
+    only: ['DeepSeek'],
+    allowFallbacks: false,
+    requireParameters: true,
+    dataCollection: 'deny',
+  },
+  inputModalities: ['text', 'file'],
   models: DEFAULT_MODEL_DELEGATION,
   fallbackModel: 'deepseek/deepseek-v4-pro',
   isCustom: false,
@@ -340,6 +378,13 @@ export const DEFAULTS: GlobalHarnessConfig = {
       authType: 'api-key',
       keyName: 'OPENROUTER_API_KEY',
       reasoningControl: 'openrouter-reasoning',
+      openRouterProviderRouting: {
+        only: ['DeepSeek'],
+        allowFallbacks: false,
+        requireParameters: true,
+        dataCollection: 'deny',
+      },
+      inputModalities: ['text', 'file'],
     },
     'openrouter-deepseek': {
       baseUrl: 'https://openrouter.ai/api/v1',
@@ -351,6 +396,13 @@ export const DEFAULTS: GlobalHarnessConfig = {
       authType: 'api-key',
       keyName: 'OPENROUTER_API_KEY',
       reasoningControl: 'openrouter-reasoning',
+      openRouterProviderRouting: {
+        only: ['DeepSeek'],
+        allowFallbacks: false,
+        requireParameters: true,
+        dataCollection: 'deny',
+      },
+      inputModalities: ['text', 'file'],
     },
   },
   search: {
@@ -373,12 +425,13 @@ export const DEFAULTS: GlobalHarnessConfig = {
   },
   outputStyle: 'default',
   providerPolicy: {
-    defaultProvider: 'openrouter',
+    defaultProvider: 'openrouter-deepseek',
     models: DEFAULT_MODEL_DELEGATION,
     retries: 3,
     timeoutMs: 180_000,
     concurrentRequests: 15,
     failClosed: true,
+    allowedProviders: ['openrouter-deepseek'],
     allowedModels: [
       'deepseek/deepseek-v4-flash',
       'deepseek/deepseek-v4-pro',

@@ -85,7 +85,59 @@ describe('OpenAICompatibleClient', () => {
 
     const [, init] = fetchMock.mock.calls[0];
     expect(init.headers['HTTP-Referer']).toBe('https://github.com/atticus/harness-v2');
-    expect(init.headers['X-Title']).toBe('Harness v2');
+    expect(init.headers['X-OpenRouter-Title']).toBe('Harness v2');
+  });
+
+  it('pins OpenRouter DeepSeek routing to DeepSeek with fallbacks disabled', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      providerName: 'openrouter-deepseek',
+      openRouterProviderRouting: {
+        only: ['DeepSeek'],
+        allowFallbacks: false,
+        requireParameters: true,
+        dataCollection: 'deny',
+      },
+    });
+
+    await client.chat({
+      messages: [{ role: 'user', content: 'return json' }],
+      config: { model: 'deepseek/deepseek-v4-pro', jsonMode: true },
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.provider).toEqual({
+      only: ['DeepSeek'],
+      allow_fallbacks: false,
+      require_parameters: true,
+      data_collection: 'deny',
+    });
+    expect(body.response_format).toEqual({ type: 'json_object' });
+  });
+
+  it('fails fast when the DeepSeek-only OpenRouter profile receives image content', async () => {
+    const client = new OpenAICompatibleClient({
+      apiKey: 'test-key',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      providerName: 'openrouter-deepseek',
+      inputModalities: ['text', 'file'],
+    });
+
+    await expect(client.chat({
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'What is in this image?' },
+            { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,abc123' } },
+          ],
+        },
+      ],
+      config: { model: 'deepseek/deepseek-v4-pro' },
+    })).rejects.toThrow(/unsupported image content/);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('allows no auth for local providers and checks /models health', async () => {

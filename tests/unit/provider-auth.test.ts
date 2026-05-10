@@ -68,7 +68,16 @@ describe('provider profiles and auth preflight', () => {
     expect(config.profiles['openai-codex-oauth']).toBeUndefined();
     expect(config.profiles['openrouter-deepseek'].providerKind).toBe('openai-compatible');
     expect(config.profiles['openrouter-deepseek'].reasoningControl).toBe('openrouter-reasoning');
+    expect(config.profiles['openrouter-deepseek'].openRouterProviderRouting).toEqual({
+      only: ['DeepSeek'],
+      allowFallbacks: false,
+      requireParameters: true,
+      dataCollection: 'deny',
+    });
+    expect(config.profiles['openrouter-deepseek'].inputModalities).toEqual(['text', 'file']);
     expect(config.profiles['openrouter-deepseek'].models.reasoning).toBe('deepseek/deepseek-v4-pro');
+    expect(config.providerPolicy.defaultProvider).toBe('openrouter-deepseek');
+    expect(config.providerPolicy.allowedProviders).toEqual(['openrouter-deepseek']);
     expect(config.profiles['anthropic-oauth'].providerKind).toBe('anthropic');
     expect(config.profiles['anthropic-oauth'].reasoningControl).toBe('anthropic-thinking');
     expect(config.profiles['anthropic-api-key'].providerKind).toBe('anthropic');

@@ -15,6 +15,8 @@ export interface ProviderConfig {
   authType?: import('../config/schema.js').ProviderAuthType;
   delegatedAuthProvider?: import('../config/schema.js').DelegatedAuthProvider;
   reasoningControl?: import('../config/schema.js').ReasoningControl;
+  openRouterProviderRouting?: import('../config/schema.js').OpenRouterProviderRouting;
+  inputModalities?: import('../config/schema.js').InputModality[];
   agentCapable?: boolean;
   codexToolStrategy?: import('../config/schema.js').CodexToolStrategy;
   codexDangerouslyBypassApprovalsAndSandbox?: boolean;
@@ -48,6 +50,8 @@ export async function loadConfigFromStore(): Promise<ProviderConfig> {
       maxRetries: resolved.provider.maxRetries ?? 3,
       providerName: resolved.providerName,
       reasoningControl: resolved.provider.reasoningControl ?? resolved.profile.reasoningControl,
+      openRouterProviderRouting: resolved.provider.openRouterProviderRouting ?? resolved.profile.openRouterProviderRouting,
+      inputModalities: resolved.provider.inputModalities ?? resolved.profile.inputModalities,
       agentCapable: resolved.provider.agentCapable ?? resolved.profile.agentCapable,
       codexToolStrategy: resolved.provider.codexToolStrategy ?? resolved.profile.codexToolStrategy,
       codexDangerouslyBypassApprovalsAndSandbox: resolved.provider.codexDangerouslyBypassApprovalsAndSandbox,

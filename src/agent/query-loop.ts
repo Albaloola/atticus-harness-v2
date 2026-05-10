@@ -4,7 +4,7 @@ import { OpenRouterClient, type LLMClient } from '../llm/client.js';
 import { DEFAULT_MODEL } from '../llm/config.js';
 import { TokenLimitError } from '../llm/errors.js';
 import type { AgentTurn, ToolCallResult } from '../types/agent.js';
-import type { LLMMessage } from '../types/message.js';
+import { stringifyMessageContent, type LLMMessage } from '../types/message.js';
 import type { LLMNativeAction, LLMResponse, ReasoningEffort } from '../types/llm.js';
 import type { StoredToolResultMetadata, ToolDefinition, ToolResult, ToolUseContext } from '../types/tool.js';
 import type { ToolRegistry } from '../tools/index.js';
@@ -312,6 +312,7 @@ export class QueryLoop {
             temperature: this.config.temperature ?? 0.1,
             maxTokens: this.config.maxTokens ?? 8192,
             reasoningEffort: this.config.reasoningEffort,
+            jsonMode: this.config.retryNonJson || undefined,
             disableThinking: this.config.reasoningEffort ? this.config.reasoningEffort === 'none' : true,
             mcpContext: this.buildMcpContext(),
           },
@@ -546,7 +547,7 @@ export class QueryLoop {
 
   private compactHistoryIfNeeded(): void {
     const maxChars = this.config.maxHistoryChars ?? DEFAULT_MAX_HISTORY_CHARS;
-    const totalChars = this.history.reduce((sum, message) => sum + message.content.length, 0);
+    const totalChars = this.history.reduce((sum, message) => sum + stringifyMessageContent(message.content).length, 0);
     if (totalChars <= maxChars || this.history.length <= 10) return;
     this.compactHistory('size_limit', 8);
   }
@@ -556,7 +557,7 @@ export class QueryLoop {
   }
 
   private compactHistory(reason: 'size_limit' | 'context_overflow', recentMessageCount: number): HistoryCompactionResult {
-    const beforeChars = this.history.reduce((sum, message) => sum + message.content.length, 0);
+    const beforeChars = this.history.reduce((sum, message) => sum + stringifyMessageContent(message.content).length, 0);
     if (this.history.length <= 3) {
       return {
         compacted: false,
@@ -582,7 +583,7 @@ export class QueryLoop {
     const summary = compacted
       .map((message) => {
         const label = message.toolName ? `${message.role}:${message.toolName}` : message.role;
-        return `- ${label}: ${truncateText(message.content.replace(/\s+/g, ' '), 300)}`;
+        return `- ${label}: ${truncateText(stringifyMessageContent(message.content).replace(/\s+/g, ' '), 300)}`;
       })
       .join('\n');
 
@@ -599,7 +600,7 @@ export class QueryLoop {
       ...recent,
     ];
 
-    const afterChars = this.history.reduce((sum, message) => sum + message.content.length, 0);
+    const afterChars = this.history.reduce((sum, message) => sum + stringifyMessageContent(message.content).length, 0);
     return {
       compacted: true,
       beforeChars,

@@ -3,7 +3,7 @@ import { PRO_MODEL } from '../llm/config.js';
 import { resolveConfig } from '../config/loader.js';
 import { parseStructuredResult } from '../agent/result-schema.js';
 import type { LLMResponse } from '../types/llm.js';
-import type { LLMMessage } from '../types/message.js';
+import { stringifyMessageContent, type LLMMessage } from '../types/message.js';
 import type { AgentSpawnInput, AgentStructuredResult } from './types.js';
 import type { QueryLoopResult } from '../agent/query-loop.js';
 
@@ -74,7 +74,7 @@ export function buildTranscriptExcerpt(history: LLMMessage[], maxChars = 12000):
       const toolCalls = message.toolCalls?.length
         ? `\nTool calls: ${message.toolCalls.map((tool) => tool.name).join(', ')}`
         : '';
-      return `## ${label}\n${message.content}${toolCalls}`;
+      return `## ${label}\n${stringifyMessageContent(message.content)}${toolCalls}`;
     });
 
   const excerpt = usefulMessages.join('\n\n');
@@ -91,7 +91,7 @@ function makeDeterministicResult(
 ): AgentStructuredResult {
   const toolMessages = loopResult.history.filter((message) => message.role === 'tool');
   const evidenceIds = [...new Set(transcript.match(/[A-Z][A-Z0-9_-]*-SRC-\d+/g) || [])].slice(0, 12);
-  const summarySource = loopResult.finalContent.trim() || toolMessages.at(-1)?.content || transcript;
+  const summarySource = loopResult.finalContent.trim() || stringifyMessageContent(toolMessages.at(-1)?.content ?? '') || transcript;
   const summary = summarySource
     ? summarizeText(summarySource, 700)
     : 'Worker completed but did not return reducer-readable content.';

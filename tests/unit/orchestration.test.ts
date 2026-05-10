@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { writeFile } from 'fs/promises';
-import { initMatter, deleteMatter } from '../../src/storage/matter.js';
+import { mkdir, writeFile } from 'fs/promises';
+import { initMatter, deleteMatter, getMatterPath } from '../../src/storage/matter.js';
 import { loadMatter } from '../../src/storage/matter.js';
 import { acceptCandidate, saveCandidate } from '../../src/storage/candidate.js';
 import { closeAllStateDbs } from '../../src/state/store.js';
@@ -15,6 +15,7 @@ import { allowedToolsForPhase } from '../../src/orchestration/phase-tools.js';
 import { DEFAULT_MAX_CONCURRENCY } from '../../src/orchestration/limits.js';
 import { buildProviderAgnosticResumePlan } from '../../src/orchestration/resume-recovery.js';
 import { createRunPhaseTool } from '../../src/orchestration/orchestration-tools.js';
+import { runOrchestrationHealthCheck } from '../../src/orchestration/self-diagnosis.js';
 import { ToolRegistry } from '../../src/tools/index.js';
 import type { ToolUseContext } from '../../src/types/tool.js';
 
@@ -251,6 +252,124 @@ describe('phase tool contracts', () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('document_production completed without reducer-visible artifactIds');
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('self-diagnoses policy blocks and repairs orphaned in-progress tasks', async () => {
+    const matterName = 'orchestration-health-policy-orphan-test';
+    await initMatter(matterName);
+
+    try {
+      createRun({
+        matterName,
+        id: 'master-run',
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      createRun({
+        matterName,
+        id: 'dead-worker-run',
+        parentRunId: 'master-run',
+        model: 'test-model',
+        agentType: 'worker',
+        role: 'worker',
+        prompt: 'Cross-reference evidence and facts.',
+      });
+      updateRun(matterName, 'dead-worker-run', { status: 'error', error: 'stalled' });
+      const task = createTask({
+        matterName,
+        type: 'bundle_and_war_room_assembly',
+        title: 'Cross-reference evidence and facts',
+        runId: 'dead-worker-run',
+      });
+      updateTask(matterName, task.id, { status: 'in_progress' });
+      await appendEvent({
+        matterName,
+        type: 'tool.called',
+        runId: 'dead-worker-run',
+        taskId: task.id,
+        source: 'tool',
+        data: {
+          tool: 'todo_write',
+          success: false,
+          policyDecision: 'ask',
+          error: 'Tool "todo_write" blocked by policy decision: ask',
+        },
+      });
+
+      const health = await runOrchestrationHealthCheck(matterName, {
+        phases: getDefaultPhases(),
+        masterRunId: 'master-run',
+        emitEvent: true,
+        intervene: true,
+        orphanAfterMs: 0,
+      });
+
+      expect(health.status).toBe('blocked');
+      expect(health.issues.map((issue) => issue.type)).toEqual(expect.arrayContaining([
+        'policy_block',
+        'orphaned_task',
+      ]));
+      const repairedTask = listTasks(matterName).find((candidate) => candidate.id === task.id);
+      expect(repairedTask?.status).toBe('blocked');
+      expect(repairedTask?.blockedReason).toContain('agent_orphaned');
+      expect(repairedTask?.data.blocker).toMatchObject({ type: 'agent_orphaned', severity: 'high' });
+      expect(listEvents(matterName, { type: 'orchestration.health_check' })).toHaveLength(1);
+    } finally {
+      closeAllStateDbs();
+      await deleteMatter(matterName);
+    }
+  });
+
+  it('blocks verification when transcript drift proves no reducer-visible candidates exist', async () => {
+    const matterName = 'orchestration-health-drift-test';
+    await initMatter(matterName);
+
+    try {
+      const candidatesDir = getMatterPath(matterName, '_candidates');
+      await mkdir(candidatesDir, { recursive: true });
+      for (let index = 0; index < 6; index += 1) {
+        await writeFile(getMatterPath(matterName, '_candidates', `transcript-2026-05-10-${index}.md`), 'telemetry only', 'utf-8');
+      }
+      const masterRun = createRun({
+        matterName,
+        model: 'test-model',
+        agentType: 'master_orchestrator',
+        role: 'master',
+        prompt: 'Handle the matter.',
+      });
+      for (const phase of getDefaultPhases().slice(0, 7)) {
+        updateTask(matterName, createTask({
+          matterName,
+          runId: masterRun.id,
+          kind: 'mini_orchestrator',
+          type: phase.id,
+          title: `Phase: ${phase.name}`,
+          data: { phaseId: phase.id, resultStatus: 'completed', artifactIds: ['accepted-artifact'] },
+        }).id, { status: 'completed' });
+      }
+
+      const tool = createRunPhaseTool({
+        matterName,
+        masterRunId: masterRun.id,
+        maxDepth: 1,
+        maxConcurrency: 1,
+        force: true,
+      });
+
+      const result = await tool.call({
+        phaseId: 'verification_and_hostile_review',
+        objective: 'Verify produced documents.',
+      }, makeToolContext(matterName));
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('candidate_store_drift');
+      expect(result.error).toContain('zero JSON/indexed candidates');
     } finally {
       closeAllStateDbs();
       await deleteMatter(matterName);

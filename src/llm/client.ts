@@ -16,9 +16,9 @@ import {
 } from './errors.js';
 import { defaultRetryPolicy, type RetryAttempt, type RetryFailure, withRetry } from './retry.js';
 import { assertProviderPolicyAllowed } from '../config/provider-policy.js';
-import type { ReasoningControl, ResolvedHarnessConfig } from '../config/schema.js';
+import type { InputModality, OpenRouterProviderRouting, ReasoningControl, ResolvedHarnessConfig } from '../config/schema.js';
 import type { LLMRequest, LLMResponse, LLMUsage, ReasoningEffort } from '../types/llm.js';
-import type { LLMMessage, ToolCall } from '../types/message.js';
+import type { LLMMessage, LLMMessageContent, ToolCall } from '../types/message.js';
 import { appendEvent } from '../state/events.js';
 
 export interface LLMClient {
@@ -86,6 +86,8 @@ export interface OpenAICompatibleClientOptions {
   allowNoAuth?: boolean;
   headers?: Record<string, string>;
   reasoningControl?: ReasoningControl;
+  openRouterProviderRouting?: OpenRouterProviderRouting;
+  inputModalities?: InputModality[];
 }
 
 /** Backward-compatible alias for existing imports. */
@@ -113,6 +115,34 @@ function buildOpenRouterReasoningPayload(effort: ReasoningEffort): Record<string
   return effort === 'none'
     ? { effort: 'none', exclude: true }
     : { effort };
+}
+
+function buildOpenRouterProviderPayload(routing: OpenRouterProviderRouting): Record<string, unknown> {
+  const provider: Record<string, unknown> = {};
+  if (routing.order) provider.order = routing.order;
+  if (routing.allowFallbacks !== undefined) provider.allow_fallbacks = routing.allowFallbacks;
+  if (routing.requireParameters !== undefined) provider.require_parameters = routing.requireParameters;
+  if (routing.dataCollection !== undefined) provider.data_collection = routing.dataCollection;
+  if (routing.zdr !== undefined) provider.zdr = routing.zdr;
+  if (routing.only) provider.only = routing.only;
+  if (routing.ignore) provider.ignore = routing.ignore;
+  if (routing.quantizations) provider.quantizations = routing.quantizations;
+  if (routing.sort) provider.sort = routing.sort;
+  return provider;
+}
+
+function detectMessageModalities(content: LLMMessageContent): InputModality[] {
+  if (typeof content === 'string') return ['text'];
+  const modalities = new Set<InputModality>();
+  for (const part of content) {
+    const type = typeof part.type === 'string' ? part.type : undefined;
+    if (type === 'text') modalities.add('text');
+    else if (type === 'image_url') modalities.add('image');
+    else if (type === 'file') modalities.add('file');
+    else if (type === 'input_audio') modalities.add('audio');
+    else if (type === 'video_url') modalities.add('video');
+  }
+  return Array.from(modalities);
 }
 
 function isDeepSeekModel(model: string): boolean {
@@ -165,6 +195,8 @@ export class OpenAICompatibleClient implements LLMClient {
   private allowNoAuth: boolean;
   private headers: Record<string, string>;
   private reasoningControl: ReasoningControl;
+  private openRouterProviderRouting?: OpenRouterProviderRouting;
+  private inputModalities?: InputModality[];
   private readonly explicitOptions: OpenAICompatibleClientOptions;
   private readonly storeConfig: Promise<ProviderConfig>;
 
@@ -189,6 +221,8 @@ export class OpenAICompatibleClient implements LLMClient {
     }
     this.headers = options?.headers ?? {};
     this.reasoningControl = options?.reasoningControl ?? inferReasoningControl(this.providerName, this.baseUrl);
+    this.openRouterProviderRouting = options?.openRouterProviderRouting;
+    this.inputModalities = options?.inputModalities;
   }
 
   async chat(request: LLMRequest): Promise<LLMResponse> {
@@ -292,6 +326,12 @@ export class OpenAICompatibleClient implements LLMClient {
         ? inferReasoningControl(this.providerName, this.baseUrl)
         : (config.reasoningControl ?? inferReasoningControl(this.providerName, this.baseUrl));
     }
+    if (!this.explicitOptions.openRouterProviderRouting && config.openRouterProviderRouting) {
+      this.openRouterProviderRouting = config.openRouterProviderRouting;
+    }
+    if (!this.explicitOptions.inputModalities && config.inputModalities) {
+      this.inputModalities = config.inputModalities;
+    }
     if (this.explicitOptions.allowNoAuth === undefined) {
       this.allowNoAuth = isLocalProvider(this.providerName, this.baseUrl);
     }
@@ -312,7 +352,7 @@ export class OpenAICompatibleClient implements LLMClient {
     }
     if (this.isOpenRouterProvider()) {
       headers['HTTP-Referer'] = 'https://github.com/atticus/harness-v2';
-      headers['X-Title'] = 'Harness v2';
+      headers['X-OpenRouter-Title'] = 'Harness v2';
     }
     return headers;
   }
@@ -348,6 +388,7 @@ export class OpenAICompatibleClient implements LLMClient {
   }
 
   private buildPayload(request: LLMRequest): Record<string, unknown> {
+    this.assertSupportedModalities(request);
     const messages = request.messages.map((m) => this.formatMessage(m));
 
     const payload: Record<string, unknown> = {
@@ -402,6 +443,10 @@ export class OpenAICompatibleClient implements LLMClient {
       }
     }
 
+    if (this.isOpenRouterProvider() && this.openRouterProviderRouting) {
+      payload.provider = buildOpenRouterProviderPayload(this.openRouterProviderRouting);
+    }
+
     return payload;
   }
 
@@ -431,6 +476,29 @@ export class OpenAICompatibleClient implements LLMClient {
     }
 
     return formatted;
+  }
+
+  private assertSupportedModalities(request: LLMRequest): void {
+    if (!this.inputModalities) return;
+    const allowed = new Set<InputModality>(this.inputModalities);
+    const requested = new Set<InputModality>();
+    for (const message of request.messages) {
+      for (const modality of detectMessageModalities(message.content)) {
+        requested.add(modality);
+      }
+    }
+
+    const unsupported = Array.from(requested).filter((modality) => !allowed.has(modality));
+    if (unsupported.length === 0) return;
+
+    throw new LLMError(
+      `Provider profile ${this.providerName} only permits ${this.inputModalities.join(', ')} input; ` +
+        `request included unsupported ${unsupported.join(', ')} content. ` +
+        'Select a multimodal OpenRouter profile/model for image, audio, or video inputs.',
+      400,
+      this.providerName,
+      { category: 'invalid_request', code: 'unsupported_modality', retryable: false },
+    );
   }
 
   private parseResponse(data: OpenAICompatibleResponse): LLMResponse {
@@ -535,6 +603,8 @@ export function createLLMClient(config: ResolvedHarnessConfig | ProviderConfig):
     ...retryEvents,
     providerName,
     reasoningControl,
+    openRouterProviderRouting: providerMetadata.openRouterProviderRouting,
+    inputModalities: providerMetadata.inputModalities,
     allowNoAuth: isLocalProvider(providerName, baseUrl),
   });
 }

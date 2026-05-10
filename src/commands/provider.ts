@@ -381,6 +381,8 @@ function applyActiveProfile(config: GlobalHarnessConfig, profile: ProviderProfil
     apiPath: profile.apiPath,
     anthropicFormat: profile.anthropicFormat,
     reasoningControl: profile.reasoningControl,
+    openRouterProviderRouting: profile.openRouterProviderRouting,
+    inputModalities: profile.inputModalities,
     agentCapable: profile.agentCapable,
   };
 }

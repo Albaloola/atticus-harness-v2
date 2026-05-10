@@ -75,6 +75,7 @@ export type MatterEventType =
   | 'output.documents.produced'
   | 'case.auto_accept.evaluated'
   | 'orchestration.gap_analysis.completed'
+  | 'orchestration.health_check'
   | 'orchestration.phase.skipped'
   | 'case.quality_gate.feedback_created'
   | 'case.quality_gate.exception_recorded'

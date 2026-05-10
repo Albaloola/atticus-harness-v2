@@ -1,0 +1,439 @@
+import { buildMatterStoreTelemetry } from '../observability/store-telemetry.js';
+import { appendEvent, listEvents } from '../state/events.js';
+import { isRunLive, listRuns } from '../state/runs.js';
+import { listTasks, updateTask } from '../state/tasks.js';
+import type { AgentRun, MatterEvent, TaskDagNode } from '../types/state.js';
+import { loadOrchestrationCheckpoint, saveOrchestrationCheckpoint } from './checkpoint.js';
+import type { PhaseDefinition } from '../legal/workflow.js';
+
+export type OrchestrationHealthSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface OrchestrationHealthIssue {
+  type: string;
+  severity: OrchestrationHealthSeverity;
+  summary: string;
+  remediation: string;
+  objectId?: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface OrchestrationHealthCheckOptions {
+  phases: PhaseDefinition[];
+  masterRunId?: string;
+  now?: Date;
+  emitEvent?: boolean;
+  intervene?: boolean;
+  reconcileCheckpoint?: boolean;
+  orphanAfterMs?: number;
+}
+
+export interface OrchestrationHealthCheckResult {
+  status: 'healthy' | 'warning' | 'blocked';
+  issues: OrchestrationHealthIssue[];
+  interventions: string[];
+  shouldBlockAdvance: boolean;
+}
+
+const DEFAULT_ORPHAN_AFTER_MS = 2 * 60 * 1000;
+const DRIFT_THRESHOLD = 5;
+
+export async function runOrchestrationHealthCheck(
+  matterName: string,
+  options: OrchestrationHealthCheckOptions,
+): Promise<OrchestrationHealthCheckResult> {
+  const now = options.now ?? new Date();
+  const tasks = listTasks(matterName);
+  const runs = listRuns(matterName);
+  const events = listEvents(matterName);
+  const telemetry = await buildMatterStoreTelemetry(matterName).catch(() => undefined);
+  const checkpoint = loadOrchestrationCheckpoint(matterName);
+  const liveRunIds = new Set(runs.filter((run) => isRunLive(run, now)).map((run) => run.id));
+  const relatedRunIds = options.masterRunId ? collectRelatedRunIds(runs, options.masterRunId) : undefined;
+  const scopedEvents = relatedRunIds
+    ? events.filter((event) => !event.runId || relatedRunIds.has(event.runId))
+    : events.slice(0, 200);
+  const issues: OrchestrationHealthIssue[] = [];
+  const interventions: string[] = [];
+
+  issues.push(...detectPolicyBlocks(scopedEvents));
+  issues.push(...detectCandidateDrift(telemetry));
+  issues.push(...detectPhaseContradictions(tasks, options.phases));
+  issues.push(...detectHollowVerification(tasks));
+  issues.push(...detectPathGuessing(scopedEvents));
+  issues.push(...detectCheckpointContradiction(checkpoint, tasks, runs));
+  issues.push(...detectOrphanedTasks(tasks, liveRunIds, now, options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS));
+  issues.push(...detectOpaqueBlockedTasks(tasks));
+
+  if (options.intervene) {
+    interventions.push(...repairOrphanedTasks(matterName, tasks, liveRunIds, now, options.orphanAfterMs ?? DEFAULT_ORPHAN_AFTER_MS));
+    interventions.push(...repairOpaqueBlockedTasks(matterName, tasks));
+  }
+
+  if (options.reconcileCheckpoint) {
+    const reconciliation = reconcileCheckpoint(matterName, options.phases, tasks, options.masterRunId, issues);
+    if (reconciliation) interventions.push(reconciliation);
+  }
+
+  const shouldBlockAdvance = issues.some((issue) =>
+    issue.severity === 'critical' ||
+    issue.type === 'policy_block' ||
+    issue.type === 'phase_state_contradiction' ||
+    issue.type === 'hollow_verification' ||
+    issue.type === 'candidate_store_drift'
+  );
+  const status = shouldBlockAdvance
+    ? 'blocked'
+    : issues.some((issue) => issue.severity === 'high' || issue.severity === 'medium')
+      ? 'warning'
+      : 'healthy';
+
+  const result: OrchestrationHealthCheckResult = {
+    status,
+    issues,
+    interventions,
+    shouldBlockAdvance,
+  };
+
+  if (options.emitEvent && (issues.length > 0 || interventions.length > 0)) {
+    await appendEvent({
+      matterName,
+      type: 'orchestration.health_check',
+      runId: options.masterRunId,
+      source: 'orchestration',
+      data: {
+        status,
+        shouldBlockAdvance,
+        issueCount: issues.length,
+        issues,
+        interventions,
+      },
+    });
+  }
+
+  return result;
+}
+
+function detectPolicyBlocks(events: MatterEvent[]): OrchestrationHealthIssue[] {
+  const blocked = events
+    .filter((event) => event.type === 'tool.called')
+    .filter((event) => event.data.success === false && (event.data.policyDecision === 'ask' || event.data.policyDecision === 'deny'));
+  const recent = blocked.slice(0, 10);
+  return recent.map((event) => ({
+    type: 'policy_block',
+    severity: 'critical',
+    summary: `Tool ${stringData(event.data, 'tool', 'unknown')} was blocked by policy decision ${stringData(event.data, 'policyDecision', 'unknown')}.`,
+    remediation: 'Stop phase advancement, align autonomy/tool policy, then retry the affected task.',
+    objectId: event.taskId ?? event.runId ?? event.id,
+    evidence: {
+      eventId: event.id,
+      runId: event.runId,
+      taskId: event.taskId,
+      tool: event.data.tool,
+      policyDecision: event.data.policyDecision,
+      error: event.data.error,
+    },
+  }));
+}
+
+function detectCandidateDrift(telemetry: Awaited<ReturnType<typeof buildMatterStoreTelemetry>> | undefined): OrchestrationHealthIssue[] {
+  if (!telemetry) return [];
+  const { artifactSummary, candidateSummary, reconciliation } = telemetry;
+  if (reconciliation.candidateFilesystemDrift <= DRIFT_THRESHOLD) return [];
+  if (candidateSummary.jsonCount > 0 || candidateSummary.indexCount > 0) return [];
+  if (artifactSummary.jsonCount > 0 || artifactSummary.indexCount > 0) return [];
+  return [{
+    type: 'candidate_store_drift',
+    severity: 'critical',
+    summary: `${reconciliation.candidateFilesystemDrift} candidate filesystem file(s) exist but zero JSON/indexed candidates are reducer-visible.`,
+    remediation: 'Require workers to call submit_candidate for deliverables and do not advance to verification/export until reducer-visible candidates or artifacts exist.',
+    evidence: {
+      filesystemCount: candidateSummary.filesystemCount,
+      transcriptCount: candidateSummary.transcriptCount,
+      jsonCount: candidateSummary.jsonCount,
+      indexCount: candidateSummary.indexCount,
+      candidateFilesystemDrift: reconciliation.candidateFilesystemDrift,
+    },
+  }];
+}
+
+function detectPhaseContradictions(tasks: TaskDagNode[], phases: PhaseDefinition[]): OrchestrationHealthIssue[] {
+  const issues: OrchestrationHealthIssue[] = [];
+  const phaseIds = new Set(phases.map((phase) => phase.id));
+  for (const task of tasks.filter((candidate) => candidate.kind === 'mini_orchestrator' && phaseIds.has(candidate.type))) {
+    const resultStatus = stringData(task.data, 'resultStatus');
+    const blocker = isRecord(task.data.blocker) ? task.data.blocker : undefined;
+    if (task.status === 'completed' && (resultStatus === 'blocked' || resultStatus === 'failed' || blocker)) {
+      issues.push({
+        type: 'phase_state_contradiction',
+        severity: 'critical',
+        summary: `Phase task ${task.type} is completed but carries ${resultStatus || 'blocker'} state.`,
+        remediation: 'Treat the phase as blocked, inspect worker events, and prevent downstream phase execution.',
+        objectId: task.id,
+        evidence: {
+          phaseId: task.type,
+          resultStatus,
+          blocker,
+          summary: task.data.summary,
+        },
+      });
+    }
+  }
+  return issues;
+}
+
+function detectHollowVerification(tasks: TaskDagNode[]): OrchestrationHealthIssue[] {
+  const latestDocumentProduction = latestPhaseTask(tasks, 'document_production');
+  const latestVerification = latestPhaseTask(tasks, 'verification_and_hostile_review');
+  if (!latestVerification || latestVerification.status !== 'completed') return [];
+  const documentArtifacts = artifactIds(latestDocumentProduction);
+  if (documentArtifacts.length > 0) return [];
+  return [{
+    type: 'hollow_verification',
+    severity: 'critical',
+    summary: 'Verification completed without reducer-visible document production artifacts.',
+    remediation: 'Invalidate or block the verification phase, rerun document production with submit_candidate output, then verify actual documents.',
+    objectId: latestVerification.id,
+    evidence: {
+      verificationTaskId: latestVerification.id,
+      documentProductionTaskId: latestDocumentProduction?.id,
+      documentProductionStatus: latestDocumentProduction?.status,
+      documentArtifactIds: documentArtifacts,
+    },
+  }];
+}
+
+function detectPathGuessing(events: MatterEvent[]): OrchestrationHealthIssue[] {
+  const misses = events
+    .filter((event) => event.type === 'tool.called')
+    .filter((event) => event.data.success === false && /ENOENT|no such file|not found/i.test(stringData(event.data, 'error')))
+    .filter((event) => {
+      const tool = stringData(event.data, 'tool');
+      return tool === 'read_file' || tool === 'search_files' || tool === 'glob' || tool === 'grep';
+    })
+    .slice(0, 12);
+  if (misses.length < 2) return [];
+  return [{
+    type: 'path_guessing',
+    severity: 'medium',
+    summary: `${misses.length} recent filesystem lookup failure(s) suggest workers are guessing paths instead of using evidence APIs.`,
+    remediation: 'Broadcast matter_inventory -> evidence_search/evidence_chunk_read guidance and include evidence id-to-filename mappings in worker context.',
+    evidence: {
+      events: misses.map((event) => ({
+        eventId: event.id,
+        runId: event.runId,
+        taskId: event.taskId,
+        tool: event.data.tool,
+        error: event.data.error,
+        args: event.data.args,
+      })),
+    },
+  }];
+}
+
+function detectCheckpointContradiction(
+  checkpoint: ReturnType<typeof loadOrchestrationCheckpoint>,
+  tasks: TaskDagNode[],
+  runs: AgentRun[],
+): OrchestrationHealthIssue[] {
+  if (!checkpoint) return [];
+  const runningRuns = runs.filter((run) => run.status === 'running');
+  const phaseTasks = tasks.filter((task) => task.kind === 'mini_orchestrator');
+  const completedPhases = phaseTasks.filter((task) => task.status === 'completed').map((task) => task.type);
+  const blockedPhases = phaseTasks.filter((task) => task.status === 'blocked' || task.status === 'failed').map((task) => task.type);
+  if (runningRuns.length > 0) return [];
+  if (checkpoint.status === 'blocked' && (checkpoint.completedPhaseIds ?? []).length === 0 && completedPhases.length > 0) {
+    return [{
+      type: 'checkpoint_live_state_mismatch',
+      severity: 'medium',
+      summary: 'Checkpoint says blocked with no completed phases, but live task state has completed phase tasks.',
+      remediation: 'Reconcile the checkpoint at wind-down using task state and preserve blocked/failed phase reasons.',
+      evidence: {
+        checkpointStatus: checkpoint.status,
+        checkpointCompletedPhaseIds: checkpoint.completedPhaseIds ?? [],
+        liveCompletedPhases: completedPhases,
+        liveBlockedPhases: blockedPhases,
+      },
+    }];
+  }
+  return [];
+}
+
+function detectOrphanedTasks(
+  tasks: TaskDagNode[],
+  liveRunIds: Set<string>,
+  now: Date,
+  orphanAfterMs: number,
+): OrchestrationHealthIssue[] {
+  return tasks
+    .filter((task) => isOrphanedTask(task, liveRunIds, now, orphanAfterMs))
+    .map((task) => ({
+      type: 'orphaned_task',
+      severity: 'high',
+      summary: `Task ${task.id} is in_progress but has no live run or lease.`,
+      remediation: 'Mark the task blocked with an agent_orphaned blocker, then retry or replace the worker before continuing.',
+      objectId: task.id,
+      evidence: {
+        taskId: task.id,
+        phaseId: task.type,
+        runId: task.runId,
+        updated: task.updated,
+        leaseId: task.leaseId,
+        leaseExpiresAt: task.leaseExpiresAt,
+      },
+    }));
+}
+
+function detectOpaqueBlockedTasks(tasks: TaskDagNode[]): OrchestrationHealthIssue[] {
+  return tasks
+    .filter((task) => task.status === 'blocked' && !task.blockedReason && !isRecord(task.data.blocker))
+    .map((task) => ({
+      type: 'opaque_blocked_task',
+      severity: 'medium',
+      summary: `Blocked task ${task.id} has no structured blocker or blocked reason.`,
+      remediation: 'Populate blockedReason and data.blocker before checkpointing or operator handoff.',
+      objectId: task.id,
+      evidence: {
+        taskId: task.id,
+        phaseId: task.type,
+        title: task.title,
+      },
+    }));
+}
+
+function repairOrphanedTasks(
+  matterName: string,
+  tasks: TaskDagNode[],
+  liveRunIds: Set<string>,
+  now: Date,
+  orphanAfterMs: number,
+): string[] {
+  const interventions: string[] = [];
+  for (const task of tasks.filter((candidate) => isOrphanedTask(candidate, liveRunIds, now, orphanAfterMs))) {
+    const reason = task.runId ? `owning run ${task.runId} is not live` : 'task has no owning run';
+    updateTask(matterName, task.id, {
+      status: 'blocked',
+      blockedReason: `agent_orphaned: ${reason}`,
+      data: {
+        blocker: {
+          type: 'agent_orphaned',
+          objectId: task.id,
+          reason,
+          remediation: 'Retry this task with a replacement worker before trusting downstream phases.',
+          severity: 'high',
+        },
+      },
+    });
+    interventions.push(`Marked orphaned task ${task.id} blocked.`);
+  }
+  return interventions;
+}
+
+function repairOpaqueBlockedTasks(matterName: string, tasks: TaskDagNode[]): string[] {
+  const interventions: string[] = [];
+  for (const task of tasks.filter((candidate) => candidate.status === 'blocked' && !candidate.blockedReason && !isRecord(candidate.data.blocker))) {
+    const reason = 'blocked_without_structured_reason: inspect latest task/agent/tool events to determine the original blocker';
+    updateTask(matterName, task.id, {
+      blockedReason: reason,
+      data: {
+        blocker: {
+          type: 'unknown_blocker',
+          objectId: task.id,
+          reason,
+          remediation: 'Replay recent events for this task and replace this placeholder with the policy, dependency, evidence, or runtime cause.',
+          severity: 'medium',
+        },
+      },
+    });
+    interventions.push(`Added placeholder blocker for task ${task.id}.`);
+  }
+  return interventions;
+}
+
+function reconcileCheckpoint(
+  matterName: string,
+  phases: PhaseDefinition[],
+  tasks: TaskDagNode[],
+  masterRunId: string | undefined,
+  issues: OrchestrationHealthIssue[],
+): string | undefined {
+  const phaseTasks = tasks.filter((task) => task.kind === 'mini_orchestrator');
+  const phaseSummaries = phases
+    .map((phase) => {
+      const task = latestPhaseTask(phaseTasks, phase.id);
+      if (!task) return undefined;
+      const status = task.status === 'completed' ? 'completed' : 'blocked';
+      return {
+        phaseId: phase.id,
+        phaseName: phase.name,
+        status,
+        summary: stringData(task.data, 'summary', task.blockedReason ?? `Phase task is ${task.status}.`),
+      };
+    })
+    .filter((summary): summary is { phaseId: string; phaseName: string; status: 'completed' | 'blocked'; summary: string } => Boolean(summary));
+  if (phaseSummaries.length === 0) return undefined;
+  const blockedIssuePhaseIds = new Set(
+    issues
+      .filter((issue) => issue.severity === 'critical' || issue.severity === 'high')
+      .map((issue) => typeof issue.evidence?.phaseId === 'string' ? issue.evidence.phaseId : undefined)
+      .filter((phaseId): phaseId is string => Boolean(phaseId)),
+  );
+  const normalizedSummaries = phaseSummaries.map((summary) => blockedIssuePhaseIds.has(summary.phaseId)
+    ? { ...summary, status: 'blocked' as const, summary: `${summary.summary} Health check blocked this phase.` }
+    : summary);
+  const blockedPhaseIds = normalizedSummaries.filter((summary) => summary.status !== 'completed').map((summary) => summary.phaseId);
+
+  saveOrchestrationCheckpoint(matterName, {
+    masterRunId,
+    status: blockedPhaseIds.length > 0 ? 'blocked' : 'completed',
+    completedPhaseIds: normalizedSummaries.filter((summary) => summary.status === 'completed').map((summary) => summary.phaseId),
+    blockedPhaseIds,
+    failedPhaseIds: tasks.filter((task) => task.kind === 'mini_orchestrator' && task.status === 'failed').map((task) => task.type),
+    phaseSummaries: normalizedSummaries,
+  });
+  return `Reconciled checkpoint from ${normalizedSummaries.length} live phase task(s).`;
+}
+
+function latestPhaseTask(tasks: TaskDagNode[], phaseId: string): TaskDagNode | undefined {
+  return tasks
+    .filter((task) => task.kind === 'mini_orchestrator' && task.type === phaseId)
+    .sort((a, b) => b.updated.localeCompare(a.updated))[0];
+}
+
+function collectRelatedRunIds(runs: AgentRun[], masterRunId: string): Set<string> {
+  const related = new Set<string>([masterRunId]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const run of runs) {
+      if (run.parentRunId && related.has(run.parentRunId) && !related.has(run.id)) {
+        related.add(run.id);
+        changed = true;
+      }
+    }
+  }
+  return related;
+}
+
+function artifactIds(task: TaskDagNode | undefined): string[] {
+  if (!task) return [];
+  return Array.isArray(task.data.artifactIds)
+    ? task.data.artifactIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : [];
+}
+
+function isOrphanedTask(task: TaskDagNode, liveRunIds: Set<string>, now: Date, orphanAfterMs: number): boolean {
+  if (task.status !== 'in_progress') return false;
+  if (task.leaseExpiresAt && new Date(task.leaseExpiresAt).getTime() > now.getTime()) return false;
+  if (task.runId && liveRunIds.has(task.runId)) return false;
+  const updatedAt = new Date(task.updated).getTime();
+  return Number.isFinite(updatedAt) && now.getTime() - updatedAt >= orphanAfterMs;
+}
+
+function stringData(data: Record<string, unknown>, key: string, fallback = ''): string {
+  const value = data[key];
+  return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}

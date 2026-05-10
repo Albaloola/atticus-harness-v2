@@ -15,6 +15,7 @@ import { ToolRegistry } from '../tools/index.js';
 import { createRunPhaseTool, createGetOrchestrationStateTool, type PhaseToolsConfig } from './orchestration-tools.js';
 import { buildProviderAgnosticResumePlan } from './resume-recovery.js';
 import { buildOrchestrationGapAnalysis, formatGapAnalysisForPrompt, type GapAnalysisResult } from './gap-analysis.js';
+import { runOrchestrationHealthCheck, type OrchestrationHealthCheckResult } from './self-diagnosis.js';
 import type { OrchestratorConfig, OrchestratorResult } from './types.js';
 
 export { OrchestratorConfig, OrchestratorResult } from './types.js';
@@ -243,11 +244,19 @@ export class UnifiedMasterOrchestrator {
 
       const result = await loop.run(userMessage);
 
-      const parsed = reconcileOrchestratorResult(
+      const initialParsed = reconcileOrchestratorResult(
         parseOrchestratorResult(result.finalContent, matterName),
         phases,
         gapAnalysis,
       );
+      const finalHealth = await runOrchestrationHealthCheck(matterName, {
+        phases,
+        masterRunId: masterRun.id,
+        emitEvent: true,
+        intervene: true,
+        reconcileCheckpoint: true,
+      });
+      const parsed = reconcileOrchestratorHealth(initialParsed, finalHealth);
       const terminalStatus = parsed.status;
 
       await this.runtime.emitRunCompleted(masterRun.id, parsed.summary, {
@@ -489,6 +498,37 @@ function reconcileOrchestratorResult(
       }
       return phase;
     }),
+  };
+}
+
+function reconcileOrchestratorHealth(
+  parsed: OrchestratorResult,
+  health: OrchestrationHealthCheckResult,
+): OrchestratorResult {
+  if (health.status === 'healthy' && health.issues.length === 0) return parsed;
+  const risks = [
+    ...parsed.risks,
+    ...health.issues
+      .filter((issue) => issue.severity === 'critical' || issue.severity === 'high')
+      .map((issue) => ({
+        risk: `Orchestrator self-diagnosis: ${issue.summary}`,
+        severity: issue.severity,
+        mitigation: issue.remediation,
+      })),
+  ];
+  return {
+    ...parsed,
+    status: parsed.status === 'failed' ? 'failed' : health.shouldBlockAdvance ? 'needs_followup' : parsed.status,
+    summary: [
+      parsed.summary,
+      health.issues.length > 0
+        ? `Self-diagnosis found ${health.issues.length} issue(s): ${health.issues.slice(0, 3).map((issue) => issue.type).join(', ')}.`
+        : undefined,
+      health.interventions.length > 0
+        ? `Interventions: ${health.interventions.slice(0, 3).join(' ')}`
+        : undefined,
+    ].filter(Boolean).join(' '),
+    risks,
   };
 }
 

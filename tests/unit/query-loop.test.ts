@@ -143,6 +143,29 @@ describe('QueryLoop', () => {
       expect(result.status).toBe('completed');
       expect(result.finalContent).toBe('Tool-free answer');
     });
+
+    it('requests provider JSON mode when retrying non-JSON output', async () => {
+      const toolRegistry = new ToolRegistry();
+      const fakeClient = new FakeLLMClient([
+        makeResponse({ content: '{"status":"completed","summary":"json ok"}' }),
+      ]);
+
+      const loop = new QueryLoop(
+        {
+          systemPrompt: 'Return one json object.',
+          tools: toolRegistry,
+          quietMode: true,
+          retryNonJson: true,
+        },
+        fakeClient,
+      );
+
+      const result = await loop.run('Return json');
+
+      expect(result.status).toBe('completed');
+      expect(fakeClient.requests[0].config.jsonMode).toBe(true);
+      expect(fakeClient.requests[0].config.maxTokens).toBe(8192);
+    });
   });
 
   describe('tool calls', () => {

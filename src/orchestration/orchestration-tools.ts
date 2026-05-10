@@ -9,6 +9,7 @@ import { getDefaultPhases, type PhaseDefinition } from '../legal/workflow.js';
 import { buildMatterStoreTelemetry } from '../observability/store-telemetry.js';
 import { buildOrchestrationGapAnalysis, type GapAnalysisResult } from './gap-analysis.js';
 import { runDocumentOutputPipeline } from '../export/document-output-pipeline.js';
+import { runOrchestrationHealthCheck, type OrchestrationHealthCheckResult } from './self-diagnosis.js';
 import type { Tool, ToolResult, ToolUseContext } from '../types/tool.js';
 import type { AgentStructuredResult } from './types.js';
 import type { OrchestrationRuntime } from './runtime.js';
@@ -74,6 +75,7 @@ interface OrchestrationStateResult {
     missing: number;
     toProduce: string[];
   };
+  health?: OrchestrationHealthCheckResult;
 }
 
 export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs, RunPhaseResult> {
@@ -109,6 +111,20 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
         }
 
         const phaseIndex = allPhases.findIndex((p) => p.id === phase.id);
+        const preflightHealth = await runOrchestrationHealthCheck(config.matterName, {
+          phases: allPhases,
+          masterRunId: config.masterRunId,
+          emitEvent: true,
+          intervene: true,
+        });
+        const healthBlocker = phaseBlockedByHealth(phase, preflightHealth);
+        if (healthBlocker) {
+          return {
+            success: false,
+            error: healthBlocker,
+          };
+        }
+
         const dependencyBlocker = phaseDependencyBlocker(config.matterName, allPhases, phaseIndex, config.resumePlan, config.gapAnalysis);
         if (dependencyBlocker) {
           return {
@@ -356,6 +372,12 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
             blocker,
           },
         } as Parameters<typeof updateTask>[2]);
+        await runOrchestrationHealthCheck(config.matterName, {
+          phases: allPhases,
+          masterRunId: config.masterRunId,
+          emitEvent: true,
+          intervene: true,
+        });
 
         return {
           success: true,
@@ -758,13 +780,20 @@ export function createGetOrchestrationStateTool(config: PhaseToolsConfig): Tool<
       try {
         const matterName = config.matterName;
 
-        const [matter, runs, tasks, events, checkpoint, telemetry] = await Promise.all([
+        const phases = getDefaultPhases();
+        const [matter, runs, tasks, events, checkpoint, telemetry, health] = await Promise.all([
           loadMatter(matterName).catch(() => null),
           Promise.resolve(listRuns(matterName)),
           Promise.resolve(listTasks(matterName)),
           Promise.resolve(listEvents(matterName)),
           Promise.resolve(loadOrchestrationCheckpoint(matterName)),
           buildMatterStoreTelemetry(matterName).catch(() => undefined),
+          runOrchestrationHealthCheck(matterName, {
+            phases,
+            masterRunId: config.masterRunId,
+            emitEvent: true,
+            intervene: true,
+          }).catch(() => undefined),
         ]);
 
         const taskList = tasks ?? [];
@@ -827,6 +856,7 @@ export function createGetOrchestrationStateTool(config: PhaseToolsConfig): Tool<
               missing: config.gapAnalysis.gaps.length,
               toProduce: config.gapAnalysis.toProduce.map((requirement) => requirement.label),
             } : undefined,
+            health,
           },
         };
       } catch (error) {
@@ -841,4 +871,33 @@ export function createGetOrchestrationStateTool(config: PhaseToolsConfig): Tool<
       return true;
     },
   };
+}
+
+function phaseBlockedByHealth(
+  phase: PhaseDefinition,
+  health: OrchestrationHealthCheckResult,
+): string | undefined {
+  const blockingIssues = health.issues.filter((issue) => {
+    if (issue.type === 'policy_block') return true;
+    if (issue.type === 'phase_state_contradiction') return true;
+    if (issue.type === 'orphaned_task') return true;
+    if (issue.type === 'hollow_verification') {
+      return phase.id === 'verification_and_hostile_review' ||
+        phase.id === 'bundle_and_war_room_assembly' ||
+        phase.id === 'operator_handoff' ||
+        phase.id === 'document_output_pipeline';
+    }
+    if (issue.type === 'candidate_store_drift') {
+      return phase.id === 'verification_and_hostile_review' ||
+        phase.id === 'bundle_and_war_room_assembly' ||
+        phase.id === 'operator_handoff' ||
+        phase.id === 'document_output_pipeline';
+    }
+    return false;
+  });
+  if (blockingIssues.length === 0) return undefined;
+  return [
+    `Cannot run ${phase.id} because orchestrator self-diagnosis found ${blockingIssues.length} blocking issue(s).`,
+    ...blockingIssues.slice(0, 5).map((issue) => `${issue.type}: ${issue.summary} Remediation: ${issue.remediation}`),
+  ].join('\n');
 }

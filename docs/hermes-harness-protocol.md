@@ -1,6 +1,8 @@
-# Hermes ↔ Harness Protocol (Milestone 5)
+# Hermes Harness Protocol
 
-This protocol defines the JSON command surface Hermes uses to interact with the case-management harness.
+This protocol defines the JSON command surface Hermes uses to interact with the
+case-management harness. Hermes should use this protocol for Atticus integration
+work instead of editing matter files or inventing state transitions.
 
 ## Endpoint
 
@@ -21,7 +23,8 @@ Each command returns:
 - `start_case_management`
   - Start or re-open Hermes-driven case management.
   - Required: `matterName`, `instruction`.
-  - Result includes status packet and revision metadata.
+  - Result includes status packet, revision metadata, obligations, blockers,
+    and pending questions where available.
 
 - `submit_user_instruction`
   - Record follow-up user instruction.
@@ -31,6 +34,8 @@ Each command returns:
   - Record an answer for a pending structured question.
   - Required: `matterName`, `questionId`, `answer`.
   - Intended to resume blocked obligations after answer.
+  - Hermes must ask the operator the exact pending question; do not paraphrase a
+    different factual request.
 
 - `get_case_status`
   - Return current ready/missing/blocked/unsafe summary and diagnostics.
@@ -52,6 +57,7 @@ Each command returns:
   - Request a draft email.
   - Required: `matterName`, `to`, `subject`.
   - Returns the draft work-product identifier plus an external action id.
+  - Does not send email.
 
 - `ingest_email`
   - Ingest an inbound email message and extract dates where possible.
@@ -85,4 +91,55 @@ Each command returns:
 ## Safety Rule
 
 - No outbound email/filing action is recorded without an explicit `approved` external action.
+- Hermes must never use a draft work-product id as proof that an external action
+  happened.
+- Generated work products, draft emails, and review-ready exports are not
+  primary evidence unless separately supported by primary evidence/source IDs.
 
+## Provider And Media Rules
+
+- Default legal reasoning should use `openrouter-deepseek`.
+- OpenRouter provider routing for the DeepSeek-only profile must allow only
+  DeepSeek and must not allow silent fallbacks.
+- DeepSeek must not receive image/audio/video inputs.
+- If image processing is genuinely required beyond reasonable doubt, Hermes may
+  brief Codex for the approved Gemma vision fallback for `image_extraction`
+  only. Extracted facts return to case state; legal reasoning returns to
+  DeepSeek.
+- JSON mode, tool calling, prompt caching, and structured output assumptions
+  must come from the provider capability matrix, not from Hermes memory.
+
+## Recovery Semantics
+
+Hermes should expect long-running Harness work to be recoverable:
+
+- Work units are recorded with obligation id, task id, run id, provider/model,
+  state hash, partial outputs, applied updates, work products, questions, retry
+  count, failure reason, cost, and status.
+- Runtime checkpoints can be `running`, `paused`, `resumed`, `resumable`,
+  `completed`, or `failed`.
+- Provider-credit exhaustion should pause for repair.
+- Network stalls should not mark a case complete.
+- Stale running work with no active worker should be marked orphaned and linked
+  obligations should become retryable/failed with `agent_orphaned` evidence.
+
+When Hermes sees a stuck run, it should ask Codex/Harness to recover from the
+ledger and checkpoint. It should not instruct a fresh full rerun unless the
+operator explicitly requests that cost.
+
+## Review-Ready Export Semantics
+
+Review-ready output is not the same as "some files exist in `_output/`".
+Hermes should require:
+
+- typed work products at least `operator_review_ready`
+- safe status
+- manifest
+- source map
+- unresolved-gap report
+- readable Markdown/DOCX rendering
+- blockers for rejected or unsafe products
+
+If export produces only a readiness failure report, Hermes should tell the
+operator what is blocking review rather than presenting the folder as useful
+legal output.

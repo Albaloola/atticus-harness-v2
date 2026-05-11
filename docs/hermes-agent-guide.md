@@ -5,12 +5,14 @@ agent. Hermes is not the Harness implementation agent. Hermes does not repair
 source code, edit config files by hand, patch matter state, or improvise around
 Harness failures.
 
-Hermes has three jobs:
+Hermes has four jobs:
 
 1. Understand the operator's request and map it to the correct Harness workflow.
 2. Inspect persisted Harness state using commands that are documented as
    no-write inspection commands.
-3. Brief the Codex orchestrator to run any mutating Harness work, then report the
+3. Ask the operator only for material missing information that Harness has
+   surfaced as a structured pending question.
+4. Brief the Codex orchestrator to run any mutating Harness work, then report the
    evidence-backed result to the operator.
 
 If Hermes finds a Harness defect, missing command, confusing state, provider
@@ -52,7 +54,7 @@ Harness is broken.
 The intended chain is:
 
 ```text
-Human operator -> Hermes -> Codex orchestrator -> Harness CLI -> persisted matter state
+Human operator -> Hermes -> Codex orchestrator -> Harness CLI / Hermes protocol -> persisted matter state
 ```
 
 Hermes is responsible for the operator conversation and supervision. Codex is
@@ -79,6 +81,42 @@ Hermes may run no-write inspection commands directly. Hermes must brief Codex
 for commands that create, change, repair runtime state, accept, reject, schedule,
 pause, resume, cancel, reset, ingest, fetch, draft, verify, review, gate, or
 orchestrate.
+
+## What Changed For Full Case Management
+
+Harness is no longer only a batch orchestrator that runs phases and leaves files
+behind. It now has a case-management contract that Hermes must understand:
+
+- `case-state`: persistent parties, facts, issues, deadlines, communications,
+  work-product references, open questions, and proposed external actions.
+- `case-manager`: obligations, work selection, replanning, autonomous execution
+  records, and status packets.
+- `questions`: structured missing-information prompts that Hermes can ask the
+  operator and submit back to unblock work.
+- `communications` and `external-actions`: prepare-only email drafting and
+  approval gates for anything external.
+- `runtime`: work-unit ledger, checkpoint, orphan reaper, and recovery planner
+  for pause/repair/resume without restarting whole phases.
+- `providers` and `media`: DeepSeek/OpenRouter capability validation and bounded
+  vision fallback policy.
+- `export`: review-ready output gates, manifest/source map, and DOCX readability
+  verification.
+
+Hermes should treat these as the required skill surfaces to mirror in Atticus:
+
+| Hermes skill/runbook | Harness capability it must use |
+| --- | --- |
+| Case status and next action | `get_case_status`, `get_next_actions`, `harness case resume`, `agent-packet` |
+| Missing information interview | `get_pending_questions`, `submit_user_answer` |
+| Email/communication handling | `ingest_email`, `request_email_draft`, `record_received_email` |
+| External action approval | `approve_external_action`, `reject_external_action`, `record_sent_email` |
+| Recovery and stuck-run handling | runtime checkpoint, work-unit ledger, orphan reaper, recovery plan |
+| Provider readiness | `control-panel status`, `provider show`, DeepSeek capability lock |
+| Review-ready output | review-ready export manifest/source map and blockers |
+
+Hermes should not ask the operator to manage phases manually. Hermes should ask
+for missing facts only when Harness reports a material question. Otherwise it
+should brief Codex/Harness to continue the next safe obligation.
 
 ## Allowed Direct Commands
 
@@ -224,15 +262,30 @@ next Harness action or write a bug report.
 
 ## Provider Rules
 
-The default full-tool provider path is OpenRouter with DeepSeek models:
+The default legal-reasoning provider path is OpenRouter with DeepSeek models:
 
 - Default provider profile: `openrouter-deepseek`
 - Default fast model: `deepseek/deepseek-v4-flash`
 - Default reasoning/drafting/reviewer model: `deepseek/deepseek-v4-pro`
 
-That default is not exclusive. Hermes must keep provider language neutral and
-must not imply that Codex SDK replaces OpenRouter, DeepSeek, Anthropic,
-OpenAI-compatible/custom profiles, local profiles, or direct DeepSeek profiles.
+For ordinary legal reasoning and drafting, Hermes should preserve this default
+unless the operator explicitly chooses another profile. OpenRouter routing must
+be pinned to DeepSeek with provider fallbacks disabled. Hermes must treat
+`openrouter/auto`, free DeepSeek variants, or non-DeepSeek OpenRouter fallbacks
+as policy violations for the DeepSeek-only lane.
+
+DeepSeek is text/file only in Harness capability policy. Hermes must not send
+image/audio/video content to DeepSeek or imply that DeepSeek can process images.
+If image processing is genuinely needed beyond reasonable doubt, Hermes should
+brief Codex for a bounded image-extraction step using the approved
+`openrouter-gemma-vision`/Gemma fallback policy. That fallback is not a legal
+reasoning provider. Extracted image facts must be returned to case state, then
+legal reasoning resumes on DeepSeek.
+
+Other profiles remain supported for explicit setup, testing, or operator-chosen
+use. Hermes must keep provider language precise and must not imply that Codex
+SDK replaces OpenRouter, DeepSeek, Anthropic, OpenAI-compatible/custom profiles,
+local profiles, or direct DeepSeek profiles.
 
 The harness architecture is provider-agnostic: the unified orchestrator's
 `retryNonJson` feature works through prompt feedback rather than provider-specific
@@ -297,6 +350,11 @@ If auth is missing, rejected, or unreachable:
 4. Brief Codex to handle provider setup only if the operator explicitly wants
    provider setup work.
 5. If the failure looks like a Harness defect, write a bug report.
+
+If provider credit is exhausted or the network stalls during a run, Hermes
+should not restart the case. It should brief Codex to pause/recover using the
+runtime checkpoint and work-unit ledger, then resume incomplete obligations when
+the operator has repaired credit/network/config.
 
 ### Codex SDK Provider
 
@@ -372,6 +430,8 @@ Use this table to decide what to brief Codex to do.
 | Full investigation | `harness control-panel agent-packet`, `harness events`, `harness case resume` | `harness orchestrate <matter-name> --objective "<objective>" --json` |
 | Long investigation | Same as full investigation | `harness orchestrate <matter-name> --objective "<objective>" --background --json` |
 | Force full reproduction | Same as full investigation | `harness orchestrate <matter-name> --objective "<objective>" --force --json` |
+| Continue case management | `harness case resume`, pending questions, recent events | Brief Codex to continue non-blocked obligations; do not rerun all phases |
+| Missing user fact | `get_pending_questions` or `harness case resume` | Ask the operator the exact structured question, then brief/submit `submit_user_answer` |
 | Follow-up email | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type email --source hermes --json` |
 | Letter or communication | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type communication --source hermes --json` |
 | Task list | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type task --source hermes --json` |
@@ -380,8 +440,9 @@ Use this table to decide what to brief Codex to do.
 | Candidate readiness | `harness control-panel agent-packet` and `harness events` | `harness verify`, `harness gate`, and `harness review` for the candidate |
 | Promote candidate | Inspect candidate ID and gates first | `harness accept manual` or `harness accept auto` |
 | Reject candidate | Inspect candidate ID and reason first | `harness reject <matter-name> <candidate-id> --reason "<reason>"` |
-| Human-friendly document outputs | `harness case resume`, `harness events`, and accepted candidate/artifact IDs | `harness export documents <matter-name> --objective "<output request>" --json` |
+| Human-friendly document outputs | `harness case resume`, `harness events`, accepted candidate/artifact IDs, work-product readiness | `harness export documents <matter-name> --objective "<output request>" --json` or review-ready export once exposed |
 | Exact official court form output | `harness rules scotcourts search "<form name>" --phase document_output_pipeline --json` | `harness export documents <matter-name> --objective "<exact form request>" --scotcourts-source-dir legal-corpora/scotcourts --json` |
+| Stuck/interrupted run | `agent-packet`, `events`, `case resume`, daemon status | Brief Codex to use runtime recovery; pause/repair/resume, do not reset unless explicitly required |
 | Case memory stale | `harness case memory`, `harness case resume`, `harness events` | Only Codex may run `harness case reset` if needed |
 | Background progress | `harness control-panel agent-packet`, `harness events`, `harness daemon status` | Usually none |
 | Schedule monitoring | `harness schedule list <matter-name> --json` | `harness schedule create` or `harness schedule delete` |
@@ -421,6 +482,23 @@ If acceptance fails with a reducer-only, packet, lease, unsafe artifact ID, or
 candidate ownership error, Hermes must not suggest editing files. Hermes should
 write a bug report if Codex cannot resolve the failure through documented
 commands.
+
+## Review-Ready Output Governance
+
+Raw `_output` files are not automatically useful legal documents. Hermes should
+call an output review-ready only when Harness reports:
+
+- typed work products rather than transcript dumps or unaccepted candidates
+- readiness at least `operator_review_ready`
+- safe status
+- source map and unresolved-gap report
+- manifest path
+- readable DOCX or Markdown output
+
+If Harness produces only short fallback fragments, transcript dumps, JSON
+wrappers, unindexed candidates, or documents below the readiness gate, Hermes
+must report blockers and ask Codex to continue case-management obligations
+instead of telling the operator to review useless files.
 
 ## Phase 11 Document Output
 
@@ -468,6 +546,12 @@ If a run is active, Hermes should monitor rather than start a duplicate. If a
 run appears stuck, Hermes should brief Codex to diagnose through Harness commands
 only. Hermes must not clear leases, edit run state, or delete lock files.
 
+Stuck-run recovery rule: if there are in-progress tasks with no active agents,
+provider-credit errors, network stalls, interrupted work units, or stale running
+work units, Hermes must brief Codex to use runtime recovery. The desired outcome
+is a paused or resumable checkpoint plus retryable obligations, not a full rerun
+from phase 1.
+
 ## Reset, Pause, Resume, And Cancel
 
 These are mutating controls. Hermes must not run them directly.
@@ -484,6 +568,10 @@ harness cancel <matter-name> --run <run-id>
 `harness case reset` clears only the main-orchestrator checkpoint. It must not be
 used as a general cleanup command. It does not delete evidence, candidates,
 artifacts, events, tasks, runs, inbox, or sources.
+
+Prefer pause/repair/resume over reset. Reset is a last resort when persisted
+checkpoint state is corrupt and Codex has confirmed that ordinary recovery
+cannot continue.
 
 ## Research And Sources
 
@@ -674,9 +762,12 @@ Hermes should not continue by editing implementation files.
 6. Is provider auth missing, rejected, or unreachable?
    Stop case work. Do not switch providers silently. Brief Codex or write a bug
    report depending on the evidence.
-7. Is the operator asking to send, file, serve, submit, pay, or contact someone?
+7. Is provider credit exhausted, the network stalled, or work orphaned?
+   Brief Codex to recover from the runtime ledger/checkpoint. Do not restart the
+   whole case unless the operator explicitly requests a fresh run.
+8. Is the operator asking to send, file, serve, submit, pay, or contact someone?
    Prepare-only. The human must perform external dispatch.
-8. Is the Harness state ambiguous after inspection?
+9. Is the Harness state ambiguous after inspection?
    Brief Codex to inspect. If the ambiguity is a Harness product issue, write a
    bug report.
 
@@ -704,6 +795,11 @@ harness review <matter-name> <candidate-id>
 Return candidate IDs, artifact IDs, event IDs, status, risks, and next operator
 action. Do not send or file anything externally.
 ```
+
+If `case resume` or the Hermes protocol reports pending critical questions, ask
+the exact question first and submit the answer before briefing more drafting. If
+there are no critical questions, continue the next non-blocked obligation rather
+than restarting the whole investigation.
 
 When the follow-up is about making accepted outputs presentable, brief Codex to
 run Phase 11 instead:

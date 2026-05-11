@@ -7,6 +7,8 @@ Standalone terminal-native agent for legal work. Ingests evidence, runs unified 
 
 Harness v2 is currently a CLI-first TypeScript legal operations agent with matter-scoped filesystem state, SQLite/JSONL audit trails, FTS5 evidence search, provider-routed tool-calling, hierarchical 11-phase orchestration, smart gap analysis, Phase 11 document output, source snapshotting, citation verification, quality gates, review quorum, reducer packets, fenced task leases, fail-closed provider policy, migration registry, daemon scheduling, read-only control-panel/monitor commands, 900+ bundled legal/writing skills, and harness-owned Scotland court corpora.
 
+The newer case-management layer adds persistent case state, obligations, structured questions for missing information, Hermes command packets, prepare-only communications, external-action approval gates, durable runtime work-unit recovery, DeepSeek/OpenRouter capability checks, bounded vision fallback policy, and review-ready export contracts. The design goal is that Atticus/Hermes can manage an active case through Harness without asking the operator to supervise internal phases, while still refusing to send, file, serve, pay, or contact externally without explicit human action.
+
 The architecture papers now separate the legacy control-plane reference from the current TypeScript agent architecture:
 
 - [Atticus Harness V1 Architecture Research Paper](docs/architecture-v1-research-paper.md)
@@ -50,11 +52,19 @@ harness secrets set OPENROUTER_API_KEY sk-or-v1-...
 export OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
-OpenRouter with DeepSeek is the default profile, not a hard-coded provider
-boundary. Select provider profiles with `harness provider select <profile>` and
-inspect the active model roles with `harness provider show`. Built-in profiles
-cover OpenRouter/DeepSeek, direct DeepSeek, Anthropic OAuth/API key, OpenAI API
-key, OpenRouter custom, local/Ollama, and delegated Codex SDK.
+OpenRouter with DeepSeek is the default legal-reasoning profile. Select provider
+profiles with `harness provider select <profile>` and inspect the active model
+roles with `harness provider show`. Built-in profiles cover OpenRouter/DeepSeek,
+direct DeepSeek, Anthropic OAuth/API key, OpenAI API key, OpenRouter custom,
+local/Ollama, and delegated Codex SDK.
+
+For the default `openrouter-deepseek` lane, OpenRouter provider routing must stay
+pinned to DeepSeek with fallbacks disabled. DeepSeek is treated as a text/file
+reasoning provider; the Harness must not send image/audio/video inputs to it. If
+image processing is genuinely required beyond reasonable doubt, the only
+approved non-DeepSeek escape hatch is a bounded OpenRouter Gemma vision step for
+image extraction only. Extracted image facts must be written back to case state,
+then all legal reasoning returns to the DeepSeek profile.
 
 Model-role edits are guarded by the active provider profile. Direct provider
 profiles reject incompatible model ids instead of silently sending them to the
@@ -167,11 +177,21 @@ Hermes should treat these as Codex-orchestrator command templates, not as
 permission to mutate the Harness directly. Case-related emails, communications,
 task lists, status reports, and follow-up documents go through
 `harness case manage`; Hermes inspects read-only state, briefs Codex to execute
-the mutating command, and reports the result. The main orchestrator rebuilds the
-case from persisted matter memory, dashboard/status, accepted artifacts,
-candidate history, evidence, sources, inbox, tasks, runs, autonomy policy, tool
-policy, and acceptance settings. It produces prepare-only candidates; it does not
-send, file, serve, or contact externally.
+the mutating command, and reports the result.
+
+The case-management implementation is stateful rather than phase-only. It
+persists case state, legal/factual obligations, missing-information questions,
+work-product references, communications, proposed external actions, and runtime
+work units. A follow-up should resume from persisted obligations and work-unit
+ledger entries instead of rerunning every phase. If provider credit, network
+stall, interruption, or orphaned worker state is detected, recovery should pause
+or resume from the last checkpoint rather than restart the whole case.
+
+The main orchestrator rebuilds the case from persisted matter memory,
+dashboard/status, accepted artifacts, candidate history, evidence, sources,
+inbox, tasks, runs, autonomy policy, tool policy, and acceptance settings. It
+produces prepare-only candidates; it does not send, file, serve, or contact
+externally.
 
 Before running LLM-backed case work, Hermes should check provider readiness with
 `harness control-panel status --json`. Missing or rejected auth is a setup error:
@@ -203,6 +223,36 @@ harness mcp list --tools
 
 Hermes (Atticus) operators must follow the read-only/briefing runbook in
 [`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
+
+### Hermes integration surface
+
+Hermes/Atticus integrations should prefer the structured protocol in
+[`docs/hermes-harness-protocol.md`](docs/hermes-harness-protocol.md) over
+filesystem edits. The implementation entry point is `executeHermesCommand` in
+`src/hermes/commands.ts`; it returns status packets, pending questions,
+diagnostics, draft identifiers, external-action identifiers, and plain-English
+messages for the operator.
+
+Hermes must keep its own skills/runbooks aligned with these Harness capabilities:
+
+- Case-status skill: inspect case state, obligations, pending questions,
+  blockers, and next safe actions.
+- Question-answer skill: ask the operator only for material missing information,
+  then submit structured answers so blocked obligations can resume.
+- Communication skill: ingest received emails, draft replies as work products,
+  and create proposed external actions without sending.
+- External-action skill: require explicit approval before recording any sent
+  email, filing, complaint submission, payment, concession, withdrawal, or
+  third-party contact.
+- Recovery skill: detect provider-credit exhaustion, network stalls,
+  interrupted runs, and orphaned workers; pause for repair or resume from the
+  work-unit ledger rather than restarting a phase.
+- Provider skill: verify `openrouter-deepseek` routing, DeepSeek-only model
+  roles, fallback denial, JSON/tool-calling assumptions, and the narrow Gemma
+  vision extraction exception.
+- Export skill: request review-ready outputs only after work products are at
+  least `operator_review_ready`; report manifest/source-map paths and blockers
+  instead of presenting raw `_output` files as useful legal documents.
 
 ### Draft, verify, review, gate
 

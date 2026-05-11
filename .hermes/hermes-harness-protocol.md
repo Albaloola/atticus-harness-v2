@@ -104,7 +104,7 @@ Each command returns:
   only DeepSeek and must not allow silent fallbacks.
 - DeepSeek must not receive image/audio/video inputs.
 - If image processing is genuinely required beyond reasonable doubt and the
-  active profile cannot process images, Hermes may brief Codex for the approved
+  active profile cannot process images, Hermes may brief the Unified Master Orchestrator for the approved
   Gemma vision fallback for `image_extraction` only. Extracted facts return to
   case state; legal reasoning returns to the active provider profile.
 - JSON mode, tool calling, prompt caching, and structured output assumptions
@@ -124,9 +124,9 @@ Hermes should expect long-running Harness work to be recoverable:
 - Stale running work with no active worker should be marked orphaned and linked
   obligations should become retryable/failed with `agent_orphaned` evidence.
 
-When Hermes sees a stuck run, it should ask Codex/Harness to recover from the
-ledger and checkpoint. It should not instruct a fresh full rerun unless the
-operator explicitly requests that cost.
+When Hermes sees a stuck run, it should ask the Unified Master Orchestrator to
+recover from the ledger and checkpoint. It should not instruct a fresh full
+rerun unless the operator explicitly requests that cost.
 
 ## Review-Ready Export Semantics
 

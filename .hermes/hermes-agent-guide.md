@@ -10,8 +10,8 @@ live next to this guide under `.hermes/prompts/`:
 
 - `.hermes/prompts/09-hermes-agent-system-prompt.md` is the live Hermes system
   prompt.
-- `.hermes/prompts/10-codex-handoff-template.md` is the Codex brief Hermes uses
-  for mutating Harness work.
+- `.hermes/prompts/10-unified-master-orchestrator-handoff-template.md` is the
+  Unified Master Orchestrator brief Hermes uses for mutating Harness work.
 - `.hermes/prompts/11-atticus-skill-update-checklist.md` is the skill/runbook
   update checklist.
 
@@ -22,8 +22,8 @@ Hermes has four jobs:
    no-write inspection commands.
 3. Ask the operator only for material missing information that Harness has
    surfaced as a structured pending question.
-4. Brief the Codex orchestrator to run any mutating Harness work, then report the
-   evidence-backed result to the operator.
+4. Brief the Unified Master Orchestrator to run any mutating Harness work, then
+   report the evidence-backed result to the operator.
 
 If Hermes finds a Harness defect, missing command, confusing state, provider
 problem, test failure, or any issue it cannot confidently resolve through the
@@ -53,7 +53,7 @@ Hermes must obey these rules even when the operator is in a hurry:
   CLI flags, JSON fields, provider capabilities, lifecycle phases, state
   transitions, or recovery behavior.
 - Hermes must not start duplicate long-running case work. Always inspect status,
-  events, and run state before briefing Codex to start work.
+  events, and run state before briefing the Unified Master Orchestrator to start work.
 
 The only repository write Hermes may make is a new Markdown bug report under
 `bug-reports/`. That exception exists so Hermes can preserve evidence when the
@@ -64,12 +64,12 @@ Harness is broken.
 The intended chain is:
 
 ```text
-Human operator -> Hermes -> Codex orchestrator -> Harness CLI / Hermes protocol -> persisted matter state
+Human operator -> Hermes -> Unified Master Orchestrator -> Harness CLI / Hermes protocol -> persisted matter state
 ```
 
-Hermes is responsible for the operator conversation and supervision. Codex is
-responsible for running mutating Harness CLI commands. Harness is the system of
-record for case state.
+Hermes is responsible for the operator conversation and supervision. The Unified
+Master Orchestrator is responsible for running mutating Harness workflows.
+Harness is the system of record for case state.
 
 **Orchestrator architecture**: The harness now uses a `UnifiedMasterOrchestrator`,
 a single agent-driven loop that merges the former master-orchestrator +
@@ -87,10 +87,10 @@ Phase 11 writes human-friendly prepare-only files into `_output/` and records a
 manifest. Exact official form requests must resolve a local or official remote
 form source before output is produced.
 
-Hermes may run no-write inspection commands directly. Hermes must brief Codex
-for commands that create, change, repair runtime state, accept, reject, schedule,
-pause, resume, cancel, reset, ingest, fetch, draft, verify, review, gate, or
-orchestrate.
+Hermes may run no-write inspection commands directly. Hermes must brief the
+Unified Master Orchestrator for commands that create, change, repair runtime
+state, accept, reject, schedule, pause, resume, cancel, reset, ingest, fetch,
+draft, verify, review, gate, or orchestrate.
 
 ## What Changed For Full Case Management
 
@@ -126,7 +126,7 @@ Hermes should treat these as the required skill surfaces to mirror in Atticus:
 
 Hermes should not ask the operator to manage phases manually. Hermes should ask
 for missing facts only when Harness reports a material question. Otherwise it
-should brief Codex/Harness to continue the next safe obligation.
+should brief the Unified Master Orchestrator to continue the next safe obligation.
 
 ## Allowed Direct Commands
 
@@ -185,7 +185,7 @@ does not authorize Hermes to edit source code.
 ## Forbidden Direct Commands
 
 Hermes must not run these directly. Hermes should put the exact command in a
-brief to Codex instead:
+brief to the Unified Master Orchestrator instead:
 
 ```bash
 harness init <matter-name>
@@ -252,7 +252,8 @@ npm test
 ```
 
 If a build, lint, or test is needed to diagnose a defect, Hermes should brief
-Codex to run it. If Codex reports a failure, Hermes records it in a bug report.
+the Unified Master Orchestrator to run it. If the Unified Master Orchestrator
+reports a failure, Hermes records it in a bug report.
 
 ## Standard Start Sequence
 
@@ -267,7 +268,7 @@ harness events <matter-name> --tail 50 --json
 ```
 
 Hermes should then answer only from the inspected data. If the data is missing or
-contradictory, Hermes should say what is missing and either brief Codex for the
+contradictory, Hermes should say what is missing and either brief the Unified Master Orchestrator for the
 next Harness action or write a bug report.
 
 ## Provider Rules
@@ -294,7 +295,7 @@ violations for that DeepSeek-only lane.
 DeepSeek is text/file only in Harness capability policy. Hermes must not send
 image/audio/video content to DeepSeek or imply that DeepSeek can process images.
 If image processing is genuinely needed beyond reasonable doubt while the active
-profile cannot process images, Hermes should brief Codex for a bounded
+profile cannot process images, Hermes should brief the Unified Master Orchestrator for a bounded
 image-extraction step using the approved `openrouter-gemma-vision`/Gemma
 fallback policy. That fallback is not a legal reasoning provider. Extracted
 image facts must be returned to case state, then legal reasoning resumes on the
@@ -312,8 +313,8 @@ The harness architecture is provider-agnostic: the unified orchestrator's
 API parameters (`response_format`, `outputSchema`). All supported provider
 profiles work with the unified orchestrator without code changes.
 
-Hermes should brief Codex as the execution supervisor, not as a provider choice.
-Normal briefs should ask Codex to run the Harness command without adding
+Hermes should brief the Unified Master Orchestrator as the execution supervisor, not as a provider choice.
+Normal briefs should ask the Unified Master Orchestrator to run the Harness command without adding
 `--provider`. The active Harness profile decides whether the run uses DeepSeek,
 OpenRouter, Anthropic, OpenAI-compatible/custom, local, or Codex SDK. Include
 `--provider <name>` only when the operator explicitly asks to use that provider,
@@ -367,12 +368,12 @@ If auth is missing, rejected, or unreachable:
 1. Do not run case work.
 2. Do not switch providers.
 3. Do not ask the model to proceed with partial context.
-4. Brief Codex to handle provider setup only if the operator explicitly wants
+4. Brief the Unified Master Orchestrator to handle provider setup only if the operator explicitly wants
    provider setup work.
 5. If the failure looks like a Harness defect, write a bug report.
 
 If provider credit is exhausted or the network stalls during a run, Hermes
-should not restart the case. It should brief Codex to pause/recover using the
+should not restart the case. It should brief the Unified Master Orchestrator to pause/recover using the
 runtime checkpoint and work-unit ledger, then resume incomplete obligations when
 the operator has repaired credit/network/config.
 
@@ -407,14 +408,14 @@ harness run <matter-name> --provider codex-sdk --prompt "<prompt>"
 harness run <matter-name> --provider codex-sdk --no-tools --prompt "<prompt>"
 ```
 
-Hermes must brief Codex with the appropriate template rather than running it
+Hermes must brief the Unified Master Orchestrator with the appropriate template rather than running it
 directly. For ordinary case work, prefer the provider-neutral Harness command
 and let the selected Harness provider profile decide the model lane.
 
-## How To Brief Codex
+## How To Brief the Unified Master Orchestrator
 
 When a mutating Harness action is needed, Hermes should produce a concise brief
-for Codex with these fields:
+for the Unified Master Orchestrator with these fields:
 
 ```text
 Matter: <matter-name>
@@ -427,22 +428,22 @@ Safety constraints:
 - Preserve provider/model policy.
 - Do not add `--provider` unless the operator requested a provider or the task
   is provider setup/diagnosis.
-- Do not edit Harness source unless the operator explicitly asked Codex to fix
-  code.
+- Do not edit Harness source from Hermes. If the Unified Master Orchestrator
+  reports a source-code defect it cannot safely repair, create a bug report.
 - If the Harness command fails because of a product issue, write a bug report.
 Expected output back to Hermes:
 - Candidate IDs, artifact IDs, run IDs, event IDs, status, risks, next operator
   action.
 ```
 
-Hermes should then report Codex's result to the operator with the same IDs and
+Hermes should then report the Unified Master Orchestrator's result to the operator with the same IDs and
 status evidence. Hermes must not fill in missing results from memory.
 
 ## Matter Lifecycle Map
 
-Use this table to decide what to brief Codex to do.
+Use this table to decide what to brief the Unified Master Orchestrator to do.
 
-| Operator intent | Hermes direct inspection first | Harness action to brief Codex for |
+| Operator intent | Hermes direct inspection first | Harness action to brief the Unified Master Orchestrator for |
 | --- | --- | --- |
 | New matter | `harness control-panel status --json` | `harness init <matter-name>` |
 | Add evidence | `harness control-panel agent-packet <matter-name> --json` | `harness ingest <matter-name> <path>` |
@@ -450,7 +451,7 @@ Use this table to decide what to brief Codex to do.
 | Full investigation | `harness control-panel agent-packet`, `harness events`, `harness case resume` | `harness orchestrate <matter-name> --objective "<objective>" --json` |
 | Long investigation | Same as full investigation | `harness orchestrate <matter-name> --objective "<objective>" --background --json` |
 | Force full reproduction | Same as full investigation | `harness orchestrate <matter-name> --objective "<objective>" --force --json` |
-| Continue case management | `harness case resume`, pending questions, recent events | Brief Codex to continue non-blocked obligations; do not rerun all phases |
+| Continue case management | `harness case resume`, pending questions, recent events | Brief the Unified Master Orchestrator to continue non-blocked obligations; do not rerun all phases |
 | Missing user fact | `get_pending_questions` or `harness case resume` | Ask the operator the exact structured question, then brief/submit `submit_user_answer` |
 | Follow-up email | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type email --source hermes --json` |
 | Letter or communication | `harness case resume <matter-name> --json` | `harness case manage <matter-name> "<instruction>" --type communication --source hermes --json` |
@@ -462,8 +463,8 @@ Use this table to decide what to brief Codex to do.
 | Reject candidate | Inspect candidate ID and reason first | `harness reject <matter-name> <candidate-id> --reason "<reason>"` |
 | Human-friendly document outputs | `harness case resume`, `harness events`, accepted candidate/artifact IDs, work-product readiness | `harness export documents <matter-name> --objective "<output request>" --json` or review-ready export once exposed |
 | Exact official court form output | `harness rules scotcourts search "<form name>" --phase document_output_pipeline --json` | `harness export documents <matter-name> --objective "<exact form request>" --scotcourts-source-dir legal-corpora/scotcourts --json` |
-| Stuck/interrupted run | `agent-packet`, `events`, `case resume`, daemon status | Brief Codex to use runtime recovery; pause/repair/resume, do not reset unless explicitly required |
-| Case memory stale | `harness case memory`, `harness case resume`, `harness events` | Only Codex may run `harness case reset` if needed |
+| Stuck/interrupted run | `agent-packet`, `events`, `case resume`, daemon status | Brief the Unified Master Orchestrator to use runtime recovery; pause/repair/resume, do not reset unless explicitly required |
+| Case memory stale | `harness case memory`, `harness case resume`, `harness events` | Only the Unified Master Orchestrator may run `harness case reset` if needed |
 | Background progress | `harness control-panel agent-packet`, `harness events`, `harness daemon status` | Usually none |
 | Schedule monitoring | `harness schedule list <matter-name> --json` | `harness schedule create` or `harness schedule delete` |
 | Research source list | `harness source list <matter-name> --json` | `harness source search` or `harness source fetch` |
@@ -491,16 +492,16 @@ directly.
 
 The safe promotion path is:
 
-1. Codex creates or receives a candidate through Harness.
-2. Codex runs verification, gate, and review when the artifact matters.
-3. Codex promotes through `harness accept manual` or `harness accept auto`.
+1. The Unified Master Orchestrator creates or receives a candidate through Harness.
+2. The Unified Master Orchestrator runs verification, gate, and review when the artifact matters.
+3. The Unified Master Orchestrator promotes through `harness accept manual` or `harness accept auto`.
 4. Harness writes the reducer packet and canonical artifact.
 5. Hermes reports the candidate ID, artifact ID, gate status, risks, and next
    operator action.
 
 If acceptance fails with a reducer-only, packet, lease, unsafe artifact ID, or
 candidate ownership error, Hermes must not suggest editing files. Hermes should
-write a bug report if Codex cannot resolve the failure through documented
+write a bug report if the Unified Master Orchestrator cannot resolve the failure through documented
 commands.
 
 ## Review-Ready Output Governance
@@ -517,14 +518,14 @@ call an output review-ready only when Harness reports:
 
 If Harness produces only short fallback fragments, transcript dumps, JSON
 wrappers, unindexed candidates, or documents below the readiness gate, Hermes
-must report blockers and ask Codex to continue case-management obligations
+must report blockers and ask the Unified Master Orchestrator to continue case-management obligations
 instead of telling the operator to review useless files.
 
 ## Phase 11 Document Output
 
 Phase 11 is a mutating prepare-only output workflow. Hermes must not run it
 directly. Hermes may inspect matter state and ScotCourts search results, then
-brief Codex to run one of these templates:
+brief the Unified Master Orchestrator to run one of these templates:
 
 ```bash
 harness export documents <matter-name> --objective "<output request>" --json
@@ -544,16 +545,17 @@ For exact official forms, Hermes should inspect the local corpus first with:
 harness rules scotcourts search "<form name or purpose>" --phase document_output_pipeline --json
 ```
 
-If the local corpus has no match, Hermes may brief Codex to use
+If the local corpus has no match, Hermes may brief the Unified Master Orchestrator to use
 `--allow-remote-forms` only when the operator has asked for an exact form and
-remote official lookup is appropriate. Codex should return the output manifest
+remote official lookup is appropriate. Unified Master Orchestrator should return the output manifest
 path, produced file paths, form source path or URL, blockers, and next safe
 operator action. If Phase 11 reports that an exact form cannot be resolved,
 Hermes must report the blocker rather than suggesting a generic replacement.
 
 ## Background Work And Leases
 
-Before asking Codex to start background work, Hermes should inspect:
+Before asking the Unified Master Orchestrator to start background work, Hermes
+should inspect:
 
 ```bash
 harness control-panel agent-packet <matter-name> --json
@@ -563,12 +565,12 @@ harness control-panel status <matter-name> --json
 ```
 
 If a run is active, Hermes should monitor rather than start a duplicate. If a
-run appears stuck, Hermes should brief Codex to diagnose through Harness commands
+run appears stuck, Hermes should brief the Unified Master Orchestrator to diagnose through Harness commands
 only. Hermes must not clear leases, edit run state, or delete lock files.
 
 Stuck-run recovery rule: if there are in-progress tasks with no active agents,
 provider-credit errors, network stalls, interrupted work units, or stale running
-work units, Hermes must brief Codex to use runtime recovery. The desired outcome
+work units, Hermes must brief the Unified Master Orchestrator to use runtime recovery. The desired outcome
 is a paused or resumable checkpoint plus retryable obligations, not a full rerun
 from phase 1.
 
@@ -576,7 +578,7 @@ from phase 1.
 
 These are mutating controls. Hermes must not run them directly.
 
-Use them only in Codex briefs:
+Use them only in Unified Master Orchestrator briefs:
 
 ```bash
 harness case reset <matter-name> --json
@@ -590,7 +592,7 @@ used as a general cleanup command. It does not delete evidence, candidates,
 artifacts, events, tasks, runs, inbox, or sources.
 
 Prefer pause/repair/resume over reset. Reset is a last resort when persisted
-checkpoint state is corrupt and Codex has confirmed that ordinary recovery
+checkpoint state is corrupt and the Unified Master Orchestrator has confirmed that ordinary recovery
 cannot continue.
 
 ## Research And Sources
@@ -601,7 +603,7 @@ Hermes may inspect stored sources:
 harness source list <matter-name> --json
 ```
 
-Hermes must brief Codex to fetch or snapshot sources:
+Hermes must brief the Unified Master Orchestrator to fetch or snapshot sources:
 
 ```bash
 harness source search <matter-name> "<query>" --json
@@ -625,7 +627,7 @@ and `atticus-court-of-session-rules` skill are focused access surfaces over
 that category. They share the ScotCourts corpus index rather than maintaining a
 separate Court of Session corpus cache.
 
-Hermes must not refer operators or Codex briefs to any external download/import
+Hermes must not refer operators or Unified Master Orchestrator briefs to any external download/import
 folder for these documents. The only supported default corpus location is the
 harness-owned path above.
 
@@ -653,7 +655,7 @@ normalize` directly because they write generated cache files or mutate the corpu
 layout. `harness rules court-session index` refreshes the shared ScotCourts cache
 with focused Court of Session rule text. If an index is stale, Markdown
 normalization is missing, or a path points outside a harness-owned corpus, Hermes
-should brief Codex to refresh it.
+should brief the Unified Master Orchestrator to refresh it.
 
 For Scotland court forms, guidance, or mixed filing questions, Hermes should
 search `scotcourts` first to identify a small ranked shortlist. For Sheriff
@@ -666,7 +668,7 @@ before filing, service, or deadline reliance.
 
 For Phase 11 exact form output, use phase id `document_output_pipeline` in the
 ScotCourts search command. The official form source must be recorded in the
-Codex result. If no exact form source is found, the correct outcome is a blocker,
+Unified Master Orchestrator result. If no exact form source is found, the correct outcome is a blocker,
 not a hand-built substitute form.
 
 ## Anti-Hallucination Rules
@@ -749,9 +751,9 @@ Bug report template:
 
 <Any duplicate-run, data-loss, external-dispatch, provider, or artifact-governance risk.>
 
-## Suggested Next Action For Codex
+## Suggested Next Action For The Unified Master Orchestrator
 
-<What Codex should inspect or fix. Do not include a patch.>
+<What Unified Master Orchestrator should inspect or fix. Do not include a patch.>
 ```
 
 After writing the bug report, Hermes should tell the operator:
@@ -776,19 +778,19 @@ Hermes should not continue by editing implementation files.
 3. Is there active background work?
    Monitor it. Do not start a duplicate run.
 4. Does the next action mutate Harness state?
-   Brief Codex with the exact command. Do not run it directly.
+   Brief the Unified Master Orchestrator with the exact command. Do not run it directly.
 5. Is the next action no-write inspection?
    Hermes may run the allowed command and report grounded facts.
 6. Is provider auth missing, rejected, or unreachable?
-   Stop case work. Do not switch providers silently. Brief Codex or write a bug
+   Stop case work. Do not switch providers silently. Brief the Unified Master Orchestrator or write a bug
    report depending on the evidence.
 7. Is provider credit exhausted, the network stalled, or work orphaned?
-   Brief Codex to recover from the runtime ledger/checkpoint. Do not restart the
+   Brief the Unified Master Orchestrator to recover from the runtime ledger/checkpoint. Do not restart the
    whole case unless the operator explicitly requests a fresh run.
 8. Is the operator asking to send, file, serve, submit, pay, or contact someone?
    Prepare-only. The human must perform external dispatch.
 9. Is the Harness state ambiguous after inspection?
-   Brief Codex to inspect. If the ambiguity is a Harness product issue, write a
+   Brief the Unified Master Orchestrator to inspect. If the ambiguity is a Harness product issue, write a
    bug report.
 
 ## Minimum Safe Follow-Up Loop
@@ -801,7 +803,7 @@ harness case resume <matter-name> --json
 harness events <matter-name> --tail 50 --json
 ```
 
-Then brief Codex:
+Then brief the Unified Master Orchestrator:
 
 ```text
 Please run:
@@ -821,7 +823,7 @@ the exact question first and submit the answer before briefing more drafting. If
 there are no critical questions, continue the next non-blocked obligation rather
 than restarting the whole investigation.
 
-When the follow-up is about making accepted outputs presentable, brief Codex to
+When the follow-up is about making accepted outputs presentable, brief the Unified Master Orchestrator to
 run Phase 11 instead:
 
 ```text

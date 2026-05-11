@@ -101,12 +101,12 @@ harness policy preset auto-accept-gated # Auto-accept after gates pass
 harness policy preset full-local-autonomy  # Full autonomy (prepare-only output)
 ```
 
-Hermes operators must treat the examples below as general operator/Codex CLI
+Hermes operators must treat the examples below as general operator/Harness CLI
 examples, not as a Hermes execution allowlist. Hermes direct execution is
 limited to the no-write inspection and briefing runbook in
 [`.hermes/hermes-agent-guide.md`](.hermes/hermes-agent-guide.md); all mutating,
-repairing, or long-running commands must be briefed to Codex or escalated as a
-bug report. Briefing Codex is the operator workflow surface, not a provider
+repairing, or long-running commands must be briefed to the Unified Master Orchestrator or escalated as a
+bug report. Briefing the Unified Master Orchestrator is the operator workflow surface, not a provider
 selection instruction. The Harness remains provider-agnostic and the active
 Harness provider profile decides the model lane unless the operator explicitly
 asks to change or test a provider.
@@ -177,10 +177,10 @@ harness case resume my-case --json
 harness case reset my-case
 ```
 
-Hermes should treat these as Codex-orchestrator command templates, not as
+Hermes should treat these as Unified Master Orchestrator command templates, not as
 permission to mutate the Harness directly. Case-related emails, communications,
 task lists, status reports, and follow-up documents go through
-`harness case manage`; Hermes inspects read-only state, briefs Codex to execute
+`harness case manage`; Hermes inspects read-only state, briefs the Unified Master Orchestrator to execute
 the mutating command, and reports the result.
 
 The case-management implementation is stateful rather than phase-only. It
@@ -200,7 +200,7 @@ externally.
 Before running LLM-backed case work, Hermes should check provider readiness with
 `harness control-panel status --json`. Missing or rejected auth is a setup error:
 do not fall back silently or start a partial run. Accepted artifacts are also
-governed by reducer-only promotion; Codex should use `harness accept manual` or
+governed by reducer-only promotion; Unified Master Orchestrator should use `harness accept manual` or
 `harness accept auto` after Hermes briefs the action. Hermes must never write
 directly to `_artifacts`.
 
@@ -262,10 +262,10 @@ Hermes/Atticus agent configuration:
    /home/alba/atticus-harness-v2/.hermes/prompts/09-hermes-agent-system-prompt.md
    ```
 
-3. Add Hermes's Codex handoff template from:
+3. Add Hermes's Unified Master Orchestrator handoff template from:
 
    ```text
-   /home/alba/atticus-harness-v2/.hermes/prompts/10-codex-handoff-template.md
+   /home/alba/atticus-harness-v2/.hermes/prompts/10-unified-master-orchestrator-handoff-template.md
    ```
 
    Hermes should use this whenever the operator asks for mutating Harness work:
@@ -287,7 +287,7 @@ Hermes/Atticus agent configuration:
    - `external-actions`: approve/reject/record external actions only from human
      instruction and Harness state.
    - `recovery`: detect stuck runs, provider credit/network stalls, stale
-     leases, orphaned tasks, and brief Codex to pause/repair/resume.
+     leases, orphaned tasks, and brief the Unified Master Orchestrator to pause/repair/resume.
    - `provider-readiness`: inspect the active provider profile and capability
      matrix; keep the default OpenRouter profile DeepSeek-only.
    - `review-ready-export`: require manifest, source map, quality/readability
@@ -295,7 +295,7 @@ Hermes/Atticus agent configuration:
 
 5. Ensure Hermes can run only the no-write inspection commands documented in
    [`.hermes/hermes-agent-guide.md`](.hermes/hermes-agent-guide.md). Mutating commands
-   must be briefed to Codex, not executed directly by Hermes.
+   must be briefed to the Unified Master Orchestrator, not executed directly by Hermes.
 
 6. Smoke-test Hermes with an existing matter. Hermes should inspect state before
    answering and should not start duplicate long-running work:
@@ -316,7 +316,7 @@ Hermes/Atticus agent configuration:
    - "Can DeepSeek process images in the default profile?"
 
    Correct behavior: Hermes inspects state, asks only Harness-surfaced missing
-   questions, briefs Codex for mutating work, preserves prepare-only external
+   questions, briefs the Unified Master Orchestrator for mutating work, preserves prepare-only external
    action limits, and says DeepSeek is text/file only in the default Harness
    capability policy.
 

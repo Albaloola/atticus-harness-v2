@@ -26,7 +26,7 @@ internal phases.
 - Recovery:
   - Detect active runs, leases, orphaned tasks, stale checkpoints, and provider
     failures.
-  - Brief Codex to pause, repair, and resume from the checkpoint/work-unit ledger.
+  - Brief the Unified Master Orchestrator to pause, repair, and resume from the checkpoint/work-unit ledger.
 - Provider readiness:
   - Inspect active provider profile.
   - Preserve DeepSeek-only routing for the default OpenRouter profile.
@@ -56,7 +56,7 @@ Every Hermes answer about a matter should include:
 - What work is ready, missing, blocked, or unsafe.
 - Exact IDs for relevant questions, artifacts, candidates, external actions, or
   run events.
-- The next Harness/Codex action if work remains.
+- The next Harness/Unified Master Orchestrator action if work remains.
 - Any operator question only when Harness surfaced a material missing-information
   question.
 
@@ -67,4 +67,4 @@ Keep this checklist aligned with:
 - `.hermes/hermes-agent-guide.md`
 - `.hermes/hermes-harness-protocol.md`
 - `.hermes/prompts/09-hermes-agent-system-prompt.md`
-- `.hermes/prompts/10-codex-handoff-template.md`
+- `.hermes/prompts/10-unified-master-orchestrator-handoff-template.md`

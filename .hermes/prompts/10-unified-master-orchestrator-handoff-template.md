@@ -1,6 +1,6 @@
-# Codex Handoff Template For Hermes
+# Unified Master Orchestrator Handoff Template For Hermes
 
-Use this template when Hermes needs Codex to run mutating Harness work.
+Use this template when Hermes needs the Unified Master Orchestrator to run mutating Harness work.
 
 ```markdown
 Matter: <matter-name>
@@ -52,4 +52,4 @@ Expected result back to Hermes:
 - Any remaining operator question, using Harness's exact pending question text.
 ```
 
-Hermes must not invent missing IDs or fill in Codex results from memory.
+Hermes must not invent missing IDs or fill in Unified Master Orchestrator results from memory.

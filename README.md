@@ -104,7 +104,7 @@ harness policy preset full-local-autonomy  # Full autonomy (prepare-only output)
 Hermes operators must treat the examples below as general operator/Codex CLI
 examples, not as a Hermes execution allowlist. Hermes direct execution is
 limited to the no-write inspection and briefing runbook in
-[`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md); all mutating,
+[`.hermes/hermes-agent-guide.md`](.hermes/hermes-agent-guide.md); all mutating,
 repairing, or long-running commands must be briefed to Codex or escalated as a
 bug report. Briefing Codex is the operator workflow surface, not a provider
 selection instruction. The Harness remains provider-agnostic and the active
@@ -226,16 +226,99 @@ harness mcp list --tools
 ```
 
 Hermes (Atticus) operators must follow the read-only/briefing runbook in
-[`docs/hermes-agent-guide.md`](docs/hermes-agent-guide.md).
+[`.hermes/hermes-agent-guide.md`](.hermes/hermes-agent-guide.md).
 
 ### Hermes integration surface
 
 Hermes/Atticus integrations should prefer the structured protocol in
-[`docs/hermes-harness-protocol.md`](docs/hermes-harness-protocol.md) over
+[`.hermes/hermes-harness-protocol.md`](.hermes/hermes-harness-protocol.md) over
 filesystem edits. The implementation entry point is `executeHermesCommand` in
 `src/hermes/commands.ts`; it returns status packets, pending questions,
 diagnostics, draft identifiers, external-action identifiers, and plain-English
 messages for the operator.
+
+### Updating the Hermes agent
+
+Use the prompt pack in [`.hermes/prompts/`](.hermes/prompts/) as the install
+source for Hermes. The old numbered prompts `01` through `08` are historical
+Harness implementation prompts; do not install them as the live Hermes prompt.
+
+There is no hidden automatic installer in this repository that can safely modify
+an external Hermes agent. Updating Hermes means mirroring these files into the
+Hermes/Atticus agent configuration:
+
+1. Pull the latest Harness repository on the machine where Hermes can read it:
+
+   ```bash
+   cd /home/alba/atticus-harness-v2
+   git pull origin main
+   npm install
+   npm run build
+   ```
+
+2. Replace or update Hermes's main system prompt with:
+
+   ```text
+   /home/alba/atticus-harness-v2/.hermes/prompts/09-hermes-agent-system-prompt.md
+   ```
+
+3. Add Hermes's Codex handoff template from:
+
+   ```text
+   /home/alba/atticus-harness-v2/.hermes/prompts/10-codex-handoff-template.md
+   ```
+
+   Hermes should use this whenever the operator asks for mutating Harness work:
+   orchestration, case management, ingestion, drafting, export, recovery,
+   provider repair, acceptance, rejection, verification, or review.
+
+4. Update Hermes/Atticus skills and runbooks using:
+
+   ```text
+   /home/alba/atticus-harness-v2/.hermes/prompts/11-atticus-skill-update-checklist.md
+   ```
+
+   Hermes must have, at minimum, these skill surfaces:
+
+   - `case-status`: inspect `case resume`, `agent-packet`, and recent events.
+   - `missing-information`: ask exact Harness pending questions and submit
+     answers back through Harness/Hermes protocol.
+   - `communications`: ingest received emails and request prepare-only replies.
+   - `external-actions`: approve/reject/record external actions only from human
+     instruction and Harness state.
+   - `recovery`: detect stuck runs, provider credit/network stalls, stale
+     leases, orphaned tasks, and brief Codex to pause/repair/resume.
+   - `provider-readiness`: inspect the active provider profile and capability
+     matrix; keep the default OpenRouter profile DeepSeek-only.
+   - `review-ready-export`: require manifest, source map, quality/readability
+     gate, and blockers before presenting documents as useful legal output.
+
+5. Ensure Hermes can run only the no-write inspection commands documented in
+   [`.hermes/hermes-agent-guide.md`](.hermes/hermes-agent-guide.md). Mutating commands
+   must be briefed to Codex, not executed directly by Hermes.
+
+6. Smoke-test Hermes with an existing matter. Hermes should inspect state before
+   answering and should not start duplicate long-running work:
+
+   ```bash
+   harness case resume <matter-name> --json
+   harness control-panel agent-packet <matter-name> --json
+   harness events <matter-name> --tail 100 --json
+   harness provider show --json
+   ```
+
+7. Ask Hermes these checks after updating it:
+
+   - "What is the current status of `<matter-name>`?"
+   - "What question does Harness need me to answer next?"
+   - "Draft a follow-up email for `<matter-name>`."
+   - "The run looks stuck; what should happen next?"
+   - "Can DeepSeek process images in the default profile?"
+
+   Correct behavior: Hermes inspects state, asks only Harness-surfaced missing
+   questions, briefs Codex for mutating work, preserves prepare-only external
+   action limits, and says DeepSeek is text/file only in the default Harness
+   capability policy.
 
 Hermes must keep its own skills/runbooks aligned with these Harness capabilities:
 

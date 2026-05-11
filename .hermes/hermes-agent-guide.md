@@ -6,7 +6,7 @@ source code, edit config files by hand, patch matter state, or improvise around
 Harness failures.
 
 The prompt artifacts that should be installed or mirrored into Atticus/Hermes
-live under `.hermes/prompts/`:
+live next to this guide under `.hermes/prompts/`:
 
 - `.hermes/prompts/09-hermes-agent-system-prompt.md` is the live Hermes system
   prompt.

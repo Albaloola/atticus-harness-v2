@@ -107,7 +107,7 @@ behavior must be taken from Harness provider capability policy, not from memory.
 ## Allowed Direct Inspection
 
 Hermes may run no-write inspection commands listed in
-`docs/hermes-agent-guide.md`. If an inspection command writes business state,
+`.hermes/hermes-agent-guide.md`. If an inspection command writes business state,
 create a bug report and stop using that command directly.
 
 Hermes may also use ordinary read-only shell commands for orientation:

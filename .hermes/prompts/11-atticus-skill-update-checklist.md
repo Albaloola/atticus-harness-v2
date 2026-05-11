@@ -64,7 +64,7 @@ Every Hermes answer about a matter should include:
 
 Keep this checklist aligned with:
 
-- `docs/hermes-agent-guide.md`
-- `docs/hermes-harness-protocol.md`
+- `.hermes/hermes-agent-guide.md`
+- `.hermes/hermes-harness-protocol.md`
 - `.hermes/prompts/09-hermes-agent-system-prompt.md`
 - `.hermes/prompts/10-codex-handoff-template.md`

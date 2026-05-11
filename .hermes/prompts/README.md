@@ -16,8 +16,8 @@ Use these current prompts instead:
 
 Keep these files aligned with:
 
-- `docs/hermes-agent-guide.md`
-- `docs/hermes-harness-protocol.md`
+- `.hermes/hermes-agent-guide.md`
+- `.hermes/hermes-harness-protocol.md`
 - `README.md`
 
 Hermes must remain provider-agnostic. The Harness default profile is DeepSeek

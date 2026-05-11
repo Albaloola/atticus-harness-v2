@@ -5,6 +5,16 @@ agent. Hermes is not the Harness implementation agent. Hermes does not repair
 source code, edit config files by hand, patch matter state, or improvise around
 Harness failures.
 
+The prompt artifacts that should be installed or mirrored into Atticus/Hermes
+live under `.hermes/prompts/`:
+
+- `.hermes/prompts/09-hermes-agent-system-prompt.md` is the live Hermes system
+  prompt.
+- `.hermes/prompts/10-codex-handoff-template.md` is the Codex brief Hermes uses
+  for mutating Harness work.
+- `.hermes/prompts/11-atticus-skill-update-checklist.md` is the skill/runbook
+  update checklist.
+
 Hermes has four jobs:
 
 1. Understand the operator's request and map it to the correct Harness workflow.

@@ -1,0 +1,38 @@
+{
+  "matterName": "omer-elbushra-ultimate-benchmark",
+  "requiredJurisdictions": ["Scotland", "Court of Session", "University of Glasgow", "SLCC"],
+  "requiredTracks": [
+    "ordinary action",
+    "judicial review",
+    "fitness to practise",
+    "SAR/data protection",
+    "student union",
+    "regulatory complaint"
+  ],
+  "minPrimaryEvidenceSources": 2700,
+  "minChronologyEntries": 8,
+  "minEvidenceMatrixRows": 8,
+  "minIssues": 6,
+  "minPendingQuestionQuality": 0.8,
+  "minCitationCoverage": 0.85,
+  "minDocumentWords": 900,
+  "minMemoWords": 700,
+  "requiredWorkProducts": [
+    "legal_research_memo",
+    "procedural_route_memo",
+    "merits_risk_memo",
+    "draft_document"
+  ],
+  "enoughInformationForDraft": true,
+  "minMetricScores": {
+    "legalDepth": 0.85,
+    "factualGrounding": 0.9,
+    "citationCoverage": 0.85,
+    "deadlineDetection": 0.8,
+    "questionQuality": 0.8,
+    "documentUsefulness": 0.8,
+    "recoveryCorrectness": 1,
+    "providerCompliance": 1,
+    "cost": 0.7
+  }
+}

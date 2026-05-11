@@ -98,14 +98,15 @@ Each command returns:
 
 ## Provider And Media Rules
 
-- Default legal reasoning should use `openrouter-deepseek`.
-- OpenRouter provider routing for the DeepSeek-only profile must allow only
-  DeepSeek and must not allow silent fallbacks.
+- Default legal reasoning uses `openrouter-deepseek`, but Harness is
+  provider-agnostic and Codex SDK plus other supported profiles may be selected.
+- OpenRouter provider routing for the default DeepSeek-only profile must allow
+  only DeepSeek and must not allow silent fallbacks.
 - DeepSeek must not receive image/audio/video inputs.
-- If image processing is genuinely required beyond reasonable doubt, Hermes may
-  brief Codex for the approved Gemma vision fallback for `image_extraction`
-  only. Extracted facts return to case state; legal reasoning returns to
-  DeepSeek.
+- If image processing is genuinely required beyond reasonable doubt and the
+  active profile cannot process images, Hermes may brief Codex for the approved
+  Gemma vision fallback for `image_extraction` only. Extracted facts return to
+  case state; legal reasoning returns to the active provider profile.
 - JSON mode, tool calling, prompt caching, and structured output assumptions
   must come from the provider capability matrix, not from Hermes memory.
 

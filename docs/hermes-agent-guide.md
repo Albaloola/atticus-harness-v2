@@ -262,30 +262,40 @@ next Harness action or write a bug report.
 
 ## Provider Rules
 
-The default legal-reasoning provider path is OpenRouter with DeepSeek models:
+The Harness default legal-reasoning provider path is OpenRouter with DeepSeek
+models:
 
 - Default provider profile: `openrouter-deepseek`
 - Default fast model: `deepseek/deepseek-v4-flash`
 - Default reasoning/drafting/reviewer model: `deepseek/deepseek-v4-pro`
 
-For ordinary legal reasoning and drafting, Hermes should preserve this default
-unless the operator explicitly chooses another profile. OpenRouter routing must
-be pinned to DeepSeek with provider fallbacks disabled. Hermes must treat
-`openrouter/auto`, free DeepSeek variants, or non-DeepSeek OpenRouter fallbacks
-as policy violations for the DeepSeek-only lane.
+Hermes must stay provider-agnostic in wording and behavior. For ordinary legal
+reasoning and drafting, preserve the active Harness provider profile; on a fresh
+default install, that means `openrouter-deepseek`. If the operator explicitly
+selects Codex SDK, direct DeepSeek, Anthropic, OpenAI-compatible/custom, local,
+or another supported profile, Hermes should describe and use that selected
+profile accurately.
+
+For the default OpenRouter/DeepSeek lane, OpenRouter routing must be pinned to
+DeepSeek with provider fallbacks disabled. Hermes must treat `openrouter/auto`,
+free DeepSeek variants, or non-DeepSeek OpenRouter fallbacks as policy
+violations for that DeepSeek-only lane.
 
 DeepSeek is text/file only in Harness capability policy. Hermes must not send
 image/audio/video content to DeepSeek or imply that DeepSeek can process images.
-If image processing is genuinely needed beyond reasonable doubt, Hermes should
-brief Codex for a bounded image-extraction step using the approved
-`openrouter-gemma-vision`/Gemma fallback policy. That fallback is not a legal
-reasoning provider. Extracted image facts must be returned to case state, then
-legal reasoning resumes on DeepSeek.
+If image processing is genuinely needed beyond reasonable doubt while the active
+profile cannot process images, Hermes should brief Codex for a bounded
+image-extraction step using the approved `openrouter-gemma-vision`/Gemma
+fallback policy. That fallback is not a legal reasoning provider. Extracted
+image facts must be returned to case state, then legal reasoning resumes on the
+active provider profile, which is DeepSeek by default unless the operator
+selected another supported profile.
 
 Other profiles remain supported for explicit setup, testing, or operator-chosen
 use. Hermes must keep provider language precise and must not imply that Codex
 SDK replaces OpenRouter, DeepSeek, Anthropic, OpenAI-compatible/custom profiles,
-local profiles, or direct DeepSeek profiles.
+local profiles, or direct DeepSeek profiles. Codex SDK is supported; it is not
+the default.
 
 The harness architecture is provider-agnostic: the unified orchestrator's
 `retryNonJson` feature works through prompt feedback rather than provider-specific

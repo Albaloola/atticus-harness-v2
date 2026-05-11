@@ -52,19 +52,23 @@ harness secrets set OPENROUTER_API_KEY sk-or-v1-...
 export OPENROUTER_API_KEY=sk-or-v1-...
 ```
 
-OpenRouter with DeepSeek is the default legal-reasoning profile. Select provider
-profiles with `harness provider select <profile>` and inspect the active model
-roles with `harness provider show`. Built-in profiles cover OpenRouter/DeepSeek,
-direct DeepSeek, Anthropic OAuth/API key, OpenAI API key, OpenRouter custom,
-local/Ollama, and delegated Codex SDK.
+Harness defaults to DeepSeek through OpenRouter for legal reasoning, but the
+provider layer is provider-agnostic. Select provider profiles with
+`harness provider select <profile>` and inspect the active model roles with
+`harness provider show`. Built-in profiles cover OpenRouter/DeepSeek, direct
+DeepSeek, Anthropic OAuth/API key, OpenAI API key, OpenRouter custom,
+local/Ollama, and delegated Codex SDK. Codex is supported through the
+`codex-sdk` profile; it is not the default provider lane.
 
 For the default `openrouter-deepseek` lane, OpenRouter provider routing must stay
 pinned to DeepSeek with fallbacks disabled. DeepSeek is treated as a text/file
 reasoning provider; the Harness must not send image/audio/video inputs to it. If
 image processing is genuinely required beyond reasonable doubt, the only
-approved non-DeepSeek escape hatch is a bounded OpenRouter Gemma vision step for
-image extraction only. Extracted image facts must be written back to case state,
-then all legal reasoning returns to the DeepSeek profile.
+approved non-DeepSeek escape hatch for that default lane is a bounded OpenRouter
+Gemma vision step for image extraction only. Extracted image facts must be
+written back to case state, then legal reasoning continues through the active
+provider profile, which is DeepSeek by default unless the operator selected a
+different supported provider.
 
 Model-role edits are guarded by the active provider profile. Direct provider
 profiles reject incompatible model ids instead of silently sending them to the
@@ -247,9 +251,10 @@ Hermes must keep its own skills/runbooks aligned with these Harness capabilities
 - Recovery skill: detect provider-credit exhaustion, network stalls,
   interrupted runs, and orphaned workers; pause for repair or resume from the
   work-unit ledger rather than restarting a phase.
-- Provider skill: verify `openrouter-deepseek` routing, DeepSeek-only model
-  roles, fallback denial, JSON/tool-calling assumptions, and the narrow Gemma
-  vision extraction exception.
+- Provider skill: verify the active provider profile and capability matrix. For
+  the default `openrouter-deepseek` profile, verify DeepSeek-only routing,
+  fallback denial, JSON/tool-calling assumptions, and the narrow Gemma vision
+  extraction exception.
 - Export skill: request review-ready outputs only after work products are at
   least `operator_review_ready`; report manifest/source-map paths and blockers
   instead of presenting raw `_output` files as useful legal documents.

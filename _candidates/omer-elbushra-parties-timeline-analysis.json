@@ -1,0 +1,154 @@
+{
+  "status": "completed",
+  "summary": "Identified all parties, mapped the chronological timeline of events from November 2024 to October 2025, and documented evidence sources for each finding in the matter of Omer Elbushra v University of Glasgow et al.",
+  "findings": [
+    {
+      "claim": "The matter is a multi-defendant civil action by Omer Elbushra (Pursuer, Student ID 2799294) against the University of Glasgow and numerous individual defendants, including Professor Malcolm Shepherd, Dr. Helen Lloyd, Dr. Lesley Jackson, Dr. Angela Cogan, Dr. Margaret McMillan, Dr. Mary Blatchford, Dr. Sharon Sneddon, Ms. Rhiannon McAuslan, Ms. Michelle Robb, Security Officer David Battersbay, the Students' Representative Council, Bob Hay (SRC CEO), Gina Connor (SRC Deputy CEO), Mhairi Frame (SRC Policy Officer), Pauline Ewan (Complaints Officer), and others. The action involves claims under the Equality Act 2010, UK GDPR/Data Protection Act 2018, contract law, tort/negligence, defamation, breach of confidentiality, and abuse of process.",
+      "support": "The Comprehensive Accountability Matrix (OME-SRC-0027) lists all named defendants across Parts A-E and categorises breaches against each. The Case Master Index (OME-SRC-0025) confirms Omer Elbushra as MBChB Year 2 student at University of Glasgow, Student ID 2799294. The Executive Summary (OME-SRC-0042) confirms date 5 November 2025 and pre-litigation stage ready for filing.",
+      "confidence": "high",
+      "kind": "procedural_fact",
+      "source_ids": ["OME-SRC-0027", "OME-SRC-0025", "OME-SRC-0042"]
+    },
+    {
+      "claim": "Timeline begins November 2024 with initial academic and welfare interactions between Mr Elbushra and University staff, including Dr. Sharon Sneddon and Dr. Lauren Boulazreg.",
+      "support": "Case Timeline (OME-SRC-0041) records November 27, 2024 as earliest entry. Executive Summary (OME-SRC-0042) provides quick reference confirming case covers November 2024 to October 2025 period.",
+      "confidence": "high",
+      "kind": "procedural_fact",
+      "source_ids": ["OME-SRC-0041", "OME-SRC-0042"]
+    },
+    {
+      "claim": "On January 13, 2025, a meeting occurred involving multiple staff (including Dr. Antonia Roseweir and Dr. Sharon Sneddon) where Mr Elbushra confidentially disclosed his use of AI assistance, which was later used against him in the March 12 meeting.",
+      "support": "Accountability Matrix (OME-SRC-0027) at Part B Section 8 (Dr. Sharon Sneddon) records the January 13 meeting and AI disclosure. OME-SRC-0041 timeline confirms this date.",
+      "confidence": "high",
+      "kind": "procedural_fact",
+      "source_ids": ["OME-SRC-0027", "OME-SRC-0041"]
+    },
+    {
+      "claim": "On February 17, 2025, a welfare meeting with Dr. Lesley Jackson and Dr. Angela Cogan occurred. Mr Elbushra alleges it was interrogatory rather than supportive and that confidential welfare information was shared with Professor Malcolm Shepherd.",
+      "support": "Accountability Matrix (OME-SRC-0027) at Part B Section 4 (Dr. Lesley Jackson) and Section 5 (Dr. Angela Cogan) records the February 17 meeting and the confidentiality breach allegations.",
+      "confidence": "high",
+      "kind": "procedural_fact",
+      "source_ids": ["OME-SRC-0027"]
+    },
+    {
+      "claim": "On March 12, 2025, a critical meeting occurred with Professor Malcolm Shepherd (Head of Undergraduate Medical School). Mr Elbushra alleges racist comments, a hostile environment, and that the meeting was conducted without support or risk assessment despite known suicide risk. This meeting is cited as a direct cause of the March 22 mental health crisis requiring emergency (999) intervention.",
+      "support": "Accountability Matrix (OME-SRC-0027) at Part B Section 2 (Professor Malcolm Shepherd) details the March 12 meeting, racist comments alleged, the negligence claim for conducting it without safeguards, and the causation link to the March 22 crisis. Case Timeline (OME-SRC-0041) confirms March 12 and March 22 entries.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0027", "OME-SRC-0041"]
+    },
+    {
+      "claim": "On April 16, 2025, Mr Elbushra filed a formal complaint (Ref: 1176569) against Professor Shepherd's conduct. Shortly thereafter, Fitness to Practise proceedings were initiated against Mr Elbushra, which he alleges is retaliatory victimisation under s.27 Equality Act 2010.",
+      "support": "Accountability Matrix (OME-SRC-0027) at Part A and Part B Section 2 records the April 16 complaint, the FtP referral shortly after, and the victimisation claim. Expanded Defendant Analysis (OME-SRC-0043) confirms the complaint reference and timeline.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0027", "OME-SRC-0043"]
+    },
+    {
+      "claim": "Throughout May to October 2025, Mr Elbushra submitted multiple Subject Access Requests (SARs 2025/50, 2025/59, 2025/86). He alleges systematic obstruction and delay by Dr. Helen Lloyd, Professor Malcolm Shepherd, and the Data Protection Office, including unlawful scope limitation, false claims of ICO consultation, and threatening use of the Expected Behaviour Policy.",
+      "support": "Expanded SAR Obstruction Analysis (OME-SRC-0044) provides a detailed timeline of SAR submissions, statutory deadlines, and delays. Key dates: SAR50 submitted 10 June 2025, due 13 July 2025, Part 1 delivered 5 Sep 2025 (54 days late), Part 2 delivered 12 Sep 2025 (61 days late).",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0044"]
+    },
+    {
+      "claim": "On June 9, 2025, Dr. Helen Lloyd inadvertently sent Mr Elbushra personal data belonging to other students. Mr Elbushra reported this breach himself. The Data Protection Office allegedly closed the case without proper investigation or notification to affected students.",
+      "support": "OME-SRC-0044 Section 1.A.2 records the data breach incident, Mr Elbushra's self-reporting, and the DPO's response minimising the breach and prematurely closing the case.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0044"]
+    },
+    {
+      "claim": "On June 10, 2025, Bob Hay (SRC Chief Executive) issued a permanent ban from SRC premises, allegedly in retaliation for Mr Elbushra providing feedback about SRC services.",
+      "support": "Accountability Matrix (OME-SRC-0027) Part C Sections 12-13 records the SRC ban, the timeline showing feedback (May 21, 2025) to ban (June 10, 2025), and the victimisation claim. OME-SRC-0041 confirms the June 10 date.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0027", "OME-SRC-0041"]
+    },
+    {
+      "claim": "On June 18, 2025, an informal FtP meeting occurred where Rhiannon McAuslan took notes. Mr Elbushra alleges the notes were later edited in coordination with Dr. McMillan and that the unedited versions were withheld in breach of GDPR.",
+      "support": "Final Defendant Expansion (OME-SRC-0045) Part on Rhiannon McAuslan describes the June 18 meeting, the minutes manipulation allegations, the SAR request for original versions, and the alleged refusal.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0045"]
+    },
+    {
+      "claim": "On July 25, 2025, a formal FtP investigation meeting was held with Dr. Margaret McMillan as investigator. Mr Elbushra alleges aggressive questioning, bias, and improper questioning about refugee status.",
+      "support": "Accountability Matrix (OME-SRC-0027) Part B Section 6 (Dr. Margaret McMillan) records the July 25 meeting, allegations of aggressive questioning, pressure tactics, and the refugee/racial stereotyping claim.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0027"]
+    },
+    {
+      "claim": "In late August 2025, the FtP Panel Hearing took place (around August 25). Dr. Mary Blatchford's investigation report allegedly contained an amateur psychological diagnosis of 'grandiose narcissism' which she was not qualified to make, and the report was biased.",
+      "support": "Accountability Matrix (OME-SRC-0027) Part B Section 7 (Dr. Mary Blatchford) records the alleged defamatory diagnosis, that Mr Elbushra's therapist Lauren Boulazreg confirmed he is not a narcissist, and the biased report claim. SAR delivery timeline in OME-SRC-0044 confirms SAR50 Part 1 delivered 5 Sep 2025 - after the hearing.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0027", "OME-SRC-0044"]
+    },
+    {
+      "claim": "In September-October 2025, Ms. Michelle Robb (Head of Professional Services) allegedly ordered an unlawful campus ban and confiscation of Mr Elbushra's student and staff ID cards without due process or legal authority.",
+      "support": "Final Defendant Expansion (OME-SRC-0045) Part on Michelle Robb details the campus ban, card confiscation, claims of ultra vires conduct, no written decision from Clerk of Senate required by Code of Student Conduct s.33, and the September 9, 2025 email barring welfare drop-in access.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0045"]
+    },
+    {
+      "claim": "Security Officer David Battersbay allegedly enforced the unlawful campus ban, confiscated campus cards, and engaged in multiple confrontations with Mr Elbushra. Potential claims include assault/battery and false imprisonment.",
+      "support": "Accountability Matrix (OME-SRC-0027) Part B Section 11 (David Battersbay) documents the alleged assault/battery, false imprisonment potential, harassment, and enforcement of the ban without written authority. Transcript evidence referenced.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0027"]
+    },
+    {
+      "claim": "The Complaints Resolution Office (CRO), particularly Pauline Ewan, allegedly failed to investigate Complaint 1176569 within statutory timescales, weaponised the Expected Behaviour Policy, and obstructed Mr Elbushra's complaints. Ewan allegedly told him to 'desist from demanding responses within inappropriate timescales' while the university was failing its own deadlines.",
+      "support": "Expanded Defendant Analysis (OME-SRC-0043) Part on Complaints Resolution Office and Pauline Ewan provides the analysis and quotes from correspondence. OME-SRC-0027 Part D Section 16 confirms CRO allegations including missed deadlines, Expected Behaviour Policy threats, and the 'coffee incident'.",
+      "confidence": "high",
+      "kind": "evidence_fact",
+      "source_ids": ["OME-SRC-0043", "OME-SRC-0027"]
+    },
+    {
+      "claim": "The case is assessed as having strong merit (approximately 75% complete) with estimated damages across all defendants of up to £455,000 against the University, plus individual defendant amounts. The action is intended to be by Sheriff Court Initial Writ (Ordinary Cause).",
+      "support": "Executive Summary (OME-SRC-0042) provides the 75% completion assessment and 'strong case' evaluation. Civil Case Writ Master Action Plan (OME-SRC-0026) confirms Ordinary Cause in Sheriff Court with estimated value £100,000+. Damages calculations in OME-SRC-0027 Part G provide detailed breakdown.",
+      "confidence": "high",
+      "kind": "procedural_fact",
+      "source_ids": ["OME-SRC-0042", "OME-SRC-0026", "OME-SRC-0027"]
+    }
+  ],
+  "risks": [
+    {
+      "risk": "Multiple defendants (18-22 named) may increase procedural complexity, service costs, and risk of partial dismissal if claims against individuals are not properly particularised for each defendant's specific conduct.",
+      "severity": "medium",
+      "mitigation": "Ensure each individual defendant has a specific section in the Condescendence detailing their personal involvement and legal basis for personal liability. Tier the defendants and consider a phased joinder strategy."
+    },
+    {
+      "risk": "Quasi-judicial immunity may protect FtP panel chair (Professor Kennedy Lees) and panel members from personal suit, though their decisions can still be used as evidence of systemic failure.",
+      "severity": "low",
+      "mitigation": "The existing classification in OME-SRC-0027 already correctly identifies these individuals as 'do not sue'. Ensure this is maintained in the final writ."
+    },
+    {
+      "risk": "Statute of limitations: Claims under the Equality Act 2010 must generally be brought within 3 months (employment) or other short timeframes. Some claims may be time-barred if not filed promptly.",
+      "severity": "medium",
+      "mitigation": "Verify the applicable limitation periods for each cause of action in the Sheriff Court Ordinary Cause context. The pre-litigation readiness assessment suggests imminent filing which would mitigate this risk."
+    },
+    {
+      "risk": "Litigant-in-person status against multiple represented defendants may create procedural disadvantages, particularly at the adjustment and debate stages.",
+      "severity": "medium",
+      "mitigation": "Consider seeking pro bono or legal aid representation, or at minimum a solicitor for the initial writ drafting and service. The materials prepared are comprehensive enough for a solicitor to adopt quickly."
+    },
+    {
+      "risk": "The claim that ICO was consulted regarding metadata (OME-SRC-0044) is asserted by the pursuer to be false. If the DPO can produce evidence of actual ICO guidance, this specific claim of false statement would weaken.",
+      "severity": "low",
+      "mitigation": "Submit a pre-action FOIA/ICO request for records of any consultation about the pursuer's SARs before issuing proceedings."
+    }
+  ],
+  "proposedTasks": [
+    "Confirm precise addresses for service for all Tier 1-2 defendants",
+    "Verify applicable limitation periods for each cause of action under Scots law",
+    "Draft the Initial Writ Condescendence with specific paragraphs for each defendant's conduct",
+    "Prepare defendant-specific evidence bundles cross-referenced to the timeline",
+    "Submit pre-action letters before action to all intended defendants",
+    "Consider ICO complaint regarding SAR obstruction claims"
+  ],
+  "nextActions": "Proceed to drafting the Initial Writ Condescendence and compiling defendant-specific evidence bundles. The timeline and party identification are complete and ready for use in drafting."
+}

@@ -13,7 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 describe('full case management benchmark', () => {
   it('passes only when a run produces the full case-management surface', async () => {
-    const expectation = await loadOmerExpectation();
+    const expectation = await loadFullCaseManagementExpectation();
     const result = assertCaseManagementBenchmark(expectation, completeObservation());
 
     expect(result.passed).toBe(true);
@@ -22,7 +22,7 @@ describe('full case management benchmark', () => {
   });
 
   it('fails activity-style completion without case state, work products, review, handoff, and recovery', async () => {
-    const expectation = await loadOmerExpectation();
+    const expectation = await loadFullCaseManagementExpectation();
     const result = assertCaseManagementBenchmark(expectation, {
       matterName: expectation.matterName,
       caseState: {
@@ -76,7 +76,7 @@ describe('full case management benchmark', () => {
   });
 
   it('fails when generated work product is used as primary evidence', async () => {
-    const expectation = await loadOmerExpectation();
+    const expectation = await loadFullCaseManagementExpectation();
     const observation = completeObservation();
     observation.caseState = {
       ...observation.caseState,
@@ -103,14 +103,14 @@ describe('full case management benchmark', () => {
   });
 });
 
-async function loadOmerExpectation(): Promise<CaseManagementExpectation> {
-  const text = await readFile(join(__dirname, 'fixtures', 'omer-elbushra-expectations.json'), 'utf-8');
+async function loadFullCaseManagementExpectation(): Promise<CaseManagementExpectation> {
+  const text = await readFile(join(__dirname, 'fixtures', 'full-case-management-expectations.json'), 'utf-8');
   return JSON.parse(text) as CaseManagementExpectation;
 }
 
 function completeObservation(): CaseManagementObservation {
   return {
-    matterName: 'omer-elbushra-ultimate-benchmark',
+    matterName: 'full-case-management-regression',
     caseState: {
       authoritative: true,
       jurisdictions: ['Scotland', 'Court of Session', 'University of Glasgow', 'SLCC'],

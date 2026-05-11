@@ -40,7 +40,7 @@ The harness must be able to support:
 
 ## Current Failure Pattern To Design Against
 
-The omer-elbushra-ultimate-benchmark runs exposed these architectural failures:
+Recent high-volume case-management runs exposed these architectural failures:
 
 - phases were marked complete without usable deliverables
 - blocked phases were treated as completed

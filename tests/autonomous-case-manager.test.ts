@@ -107,7 +107,7 @@ describe('autonomous case manager loop', () => {
       matterName,
       questionId: pending[0]?.questionId ?? 'missing',
       answer: '2026-01-15',
-      source: 'hermes',
+      source: 'agent',
     });
 
     const resumed = await runAutonomousCaseManagerLoop({

@@ -150,16 +150,16 @@ function detectProviderCreditExhaustion(events: MatterEvent[]): OrchestrationHea
 }
 
 function detectMasterNoPhaseProgress(events: MatterEvent[], tasks: TaskDagNode[]): OrchestrationHealthIssue[] {
-  if (tasks.some((task) => task.kind === 'mini_orchestrator')) return [];
+  if (tasks.some((task) => task.kind === 'mini_orchestrator' || task.type === 'delegated_work_order')) return [];
   const turnEvents = events.filter((event) => event.type === 'agent.turn.completed');
   if (turnEvents.length < 8) return [];
   const toolEvents = events.filter((event) => event.type === 'tool.called');
-  const runPhaseCalls = toolEvents.filter((event) => event.data.tool === 'run_phase');
-  if (runPhaseCalls.length > 0) return [];
+  const progressCalls = toolEvents.filter((event) => event.data.tool === 'run_phase' || event.data.tool === 'delegate_task');
+  if (progressCalls.length > 0) return [];
   return [{
     type: 'master_no_phase_progress',
     severity: 'critical',
-    summary: `Master completed ${turnEvents.length} turn(s) without creating any phase task or calling run_phase.`,
+    summary: `Master completed ${turnEvents.length} turn(s) without creating any phase task or calling run_phase/delegate_task.`,
     remediation: 'Pause for repair, checkpoint the master state, tighten the master prompt/tool policy, then resume from the same run position without replaying completed phases.',
     evidence: {
       turnCount: turnEvents.length,

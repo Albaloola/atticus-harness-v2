@@ -24,6 +24,19 @@ import { QualityGateTool } from './quality-gate.tool.js';
 import { SubmitCandidateTool } from './submit-candidate.tool.js';
 import { WebSearchTool } from '../research/web-search.tool.js';
 import { WebFetchTool } from '../research/web-fetch.tool.js';
+import { createChronologyAddTool } from './chronology-add.tool.js';
+import { createChronologyUpdateTool } from './chronology-update.tool.js';
+import { createChronologyListTool } from './chronology-list.tool.js';
+import { createSubmitMatterOutcomeTool } from './submit-matter-outcome.tool.js';
+import { createDelegateTaskTool } from './delegate-task.tool.js';
+import { createEntityAddTool } from './entity-add.tool.js';
+import { createEntityListTool } from './entity-list.tool.js';
+import { createBreachAddTool } from './breach-add.tool.js';
+import { createBreachListTool } from './breach-list.tool.js';
+import { createRelationshipAddTool } from './relationship-add.tool.js';
+import { createRelationshipListTool } from './relationship-list.tool.js';
+import { createCaseCitationAddTool } from './case-citation-add.tool.js';
+import { createCaseCitationListTool } from './case-citation-list.tool.js';
 import type { AutonomyPolicy } from '../config/schema.js';
 import { McpToolManager, mergeMcpServerConfigs } from '../mcp/client.js';
 import type { McpConfig } from '../mcp/types.js';
@@ -82,6 +95,19 @@ export class ToolRegistry {
       this.register(new WebSearchTool());
       this.register(new WebFetchTool());
     }
+    this.register(createChronologyAddTool());
+    this.register(createChronologyUpdateTool());
+    this.register(createChronologyListTool());
+    this.register(createSubmitMatterOutcomeTool());
+    this.register(createDelegateTaskTool());
+    this.register(createEntityAddTool());
+    this.register(createEntityListTool());
+    this.register(createBreachAddTool());
+    this.register(createBreachListTool());
+    this.register(createRelationshipAddTool());
+    this.register(createRelationshipListTool());
+    this.register(createCaseCitationAddTool());
+    this.register(createCaseCitationListTool());
     this.register(new ToolSearchTool(() => this.getAllDefinitions()));
   }
 

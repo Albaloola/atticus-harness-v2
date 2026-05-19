@@ -586,6 +586,10 @@ export function outputFormatGuideline(kind: DocumentOutputKind): string {
 
 export function humanize(text: string): string {
   let next = text;
+  next = next.replace(/<think>[\s\S]*?<\/think>/g, '');
+  if (next.includes('<think>')) {
+    next = next.slice(0, next.indexOf('<think>'));
+  }
   for (const [pattern, replacement] of AIISM_REMEDIES) {
     next = next.replace(pattern, replacement);
   }
@@ -787,16 +791,32 @@ function buildDocumentParagraphs(input: {
   const paragraphs: DocxParagraph[] = [];
 
   if (input.kind === 'letter') {
-    paragraphs.push(
-      { text: '[Sender address]', style: 'Normal' },
-      { text: '[Recipient address]', style: 'Normal' },
-      { text: date, style: 'Normal' },
-      { text: `Re: ${input.title}`, style: 'Heading1' },
-      { text: 'Dear Sir/Madam,', style: 'Normal' },
-      ...markdownToParagraphs(body),
-      { text: 'Yours faithfully,', style: 'Normal' },
-      { text: '[Signature]', style: 'Normal' },
-    );
+    const hasSalutation = /^(dear\s|to\s+whom\s+it\s+may\s+concern)/mi.test(body);
+    const hasRe = /^(re\s*:)/mi.test(body);
+    const hasSignOff = /\b(yours\s+(sincerely|faithfully|truly|warmly)|kind\s+regards|best\s+regards)/mi.test(body);
+
+    const letterParagraphs: DocxParagraph[] = [];
+    if (!hasSalutation) {
+      letterParagraphs.push(
+        { text: '[Sender address]', style: 'Normal' },
+        { text: '[Recipient address]', style: 'Normal' },
+        { text: date, style: 'Normal' },
+      );
+      if (!hasRe) {
+        letterParagraphs.push({ text: `Re: ${input.title}`, style: 'Heading1' });
+      }
+      letterParagraphs.push({ text: 'Dear Sir/Madam,', style: 'Normal' });
+    }
+    
+    letterParagraphs.push(...markdownToParagraphs(body));
+    
+    if (!hasSignOff) {
+      letterParagraphs.push(
+        { text: 'Yours faithfully,', style: 'Normal' },
+        { text: '[Signature]', style: 'Normal' },
+      );
+    }
+    paragraphs.push(...letterParagraphs);
   } else if (input.kind === 'form') {
     paragraphs.push(
       { text: input.title, style: 'Title' },

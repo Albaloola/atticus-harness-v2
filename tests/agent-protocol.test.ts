@@ -3,11 +3,11 @@ import { closeStateDb } from '../src/state/store.js';
 import { deleteMatter, initMatter } from '../src/storage/matter.js';
 import { loadCaseStateDocument } from '../src/case-state/store.js';
 import { loadWorkProductDocument } from '../src/work-products/store.js';
-import { executeHermesCommand } from '../src/hermes/commands.js';
+import { executeAgentCommand } from '../src/agent-protocol/commands.js';
 import { listPendingQuestionsFromStore, syncQuestionsForMatter } from '../src/questions/generate.js';
 
-describe('hermes-protocol', () => {
-  const matterName = 'hermes-protocol-test';
+describe('agent-protocol', () => {
+  const matterName = 'agent-protocol-test';
 
   beforeEach(async () => {
     await initMatter(matterName);
@@ -19,11 +19,11 @@ describe('hermes-protocol', () => {
   });
 
   it('starts case management and returns a status packet', async () => {
-    const response = await executeHermesCommand({
+    const response = await executeAgentCommand({
       command: 'start_case_management',
       matterName,
       instruction: 'Prepare case management for the new matter.',
-      source: 'hermes',
+      source: 'agent',
     });
 
     expect(response.ok).toBe(true);
@@ -33,23 +33,23 @@ describe('hermes-protocol', () => {
   });
 
   it('records a user answer and refreshes obligations for resume', async () => {
-    await executeHermesCommand({
+    await executeAgentCommand({
       command: 'start_case_management',
       matterName,
       instruction: 'Start this case and build required artifacts.',
-      source: 'hermes',
+      source: 'agent',
     });
 
     await syncQuestionsForMatter({ matterName });
     const pendingQuestions = await listPendingQuestionsFromStore(matterName);
     expect(pendingQuestions.length).toBeGreaterThan(0);
 
-    const answer = await executeHermesCommand({
+    const answer = await executeAgentCommand({
       command: 'submit_user_answer',
       matterName,
       questionId: pendingQuestions[0]!.questionId,
       answer: '2026-05-10',
-      source: 'hermes',
+      source: 'agent',
     });
 
     expect(answer.ok).toBe(true);
@@ -59,20 +59,20 @@ describe('hermes-protocol', () => {
   });
 
   it('returns a requested document with work product id and status', async () => {
-    await executeHermesCommand({
+    await executeAgentCommand({
       command: 'start_case_management',
       matterName,
       instruction: 'Need chronology for the case.',
-      source: 'hermes',
+      source: 'agent',
     });
 
-    const response = await executeHermesCommand({
+    const response = await executeAgentCommand({
       command: 'request_document',
       matterName,
       documentType: 'chronology',
       title: 'Case Chronology',
       objective: 'Capture timeline',
-      source: 'hermes',
+      source: 'agent',
     });
 
     expect(response.ok).toBe(true);
@@ -86,53 +86,53 @@ describe('hermes-protocol', () => {
   });
 
   it('prevents sending draft email without explicit external action approval', async () => {
-    await executeHermesCommand({
+    await executeAgentCommand({
       command: 'start_case_management',
       matterName,
       instruction: 'Draft a response email.',
-      source: 'hermes',
+      source: 'agent',
     });
 
-    const draft = await executeHermesCommand({
+    const draft = await executeAgentCommand({
       command: 'request_email_draft',
       matterName,
       to: 'opponent@example.org',
       subject: 'Request for documents',
-      source: 'hermes',
+      source: 'agent',
       objective: 'Draft a polite records request',
     });
     const externalActionId = draft.data?.externalActionId as string | undefined;
     expect(externalActionId).toBeTruthy();
 
-    const blocked = await executeHermesCommand({
+    const blocked = await executeAgentCommand({
       command: 'record_sent_email',
       matterName,
       externalActionId,
       to: 'opponent@example.org',
       subject: 'Request for documents',
-      source: 'hermes',
+      source: 'agent',
       body: 'Please provide the records.',
     });
     expect(blocked.ok).toBe(false);
     expect(blocked.userMessage).toContain('must be approved');
 
-    const approved = await executeHermesCommand({
+    const approved = await executeAgentCommand({
       command: 'approve_external_action',
       matterName,
       actionId: externalActionId,
       reason: 'User approved send',
-      source: 'hermes',
+      source: 'agent',
     });
     expect(approved.ok).toBe(true);
     expect(approved.data?.status).toBe('approved');
 
-    const sent = await executeHermesCommand({
+    const sent = await executeAgentCommand({
       command: 'record_sent_email',
       matterName,
       externalActionId,
       to: 'opponent@example.org',
       subject: 'Request for documents',
-      source: 'hermes',
+      source: 'agent',
       body: 'Please provide the records.',
     });
     expect(sent.ok).toBe(true);

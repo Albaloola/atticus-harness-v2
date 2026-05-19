@@ -96,7 +96,7 @@ describe('CaseManager', () => {
     const result = await manager.handle({
       matterName,
       instruction: 'Draft an email to the accommodation office asking them to confirm the repair appointment.',
-      source: 'hermes',
+      source: 'agent',
       autoAccept: false,
     });
 
@@ -106,7 +106,7 @@ describe('CaseManager', () => {
 
     const candidates = await listCandidates(matterName);
     expect(candidates).toHaveLength(1);
-    expect(candidates[0].metadata.source).toBe('hermes');
+    expect(candidates[0].metadata.source).toBe('agent');
     expect(candidates[0].metadata.externalAction).toBe('prepare_only');
     expect(candidates[0].metadata.humanizerSkill).toBe('humanizer');
     expect(candidates[0].metadata.selectedSkills).toBeDefined();
@@ -153,7 +153,7 @@ describe('CaseManager', () => {
     const result = await manager.handle({
       matterName,
       instruction: 'Draft a follow-up email to the accommodation office.',
-      source: 'hermes',
+      source: 'agent',
       autoAccept: false,
     });
 
@@ -206,7 +206,7 @@ describe('CaseManager', () => {
       matterName,
       instruction: 'Create an action plan.',
       requestedType: 'task',
-      source: 'hermes',
+      source: 'agent',
       autoAccept: false,
       force: true,
     });

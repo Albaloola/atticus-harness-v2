@@ -4,7 +4,7 @@ import { initMatter, deleteMatter } from '../src/storage/matter.js';
 import { createCaseState, addDeadline } from '../src/case-state/mutations.js';
 import { loadCaseStateDocument } from '../src/case-state/store.js';
 import { buildCaseStateSnapshot } from '../src/case-state/snapshot.js';
-import { executeHermesCommand } from '../src/hermes/commands.js';
+import { executeAgentCommand } from '../src/agent-protocol/commands.js';
 import { calculateCaseDeadlines } from '../src/deadlines/engine.js';
 import { isFinalDecisionDateMissing } from '../src/deadlines/questions.js';
 import { syncQuestionsForMatter } from '../src/questions/generate.js';
@@ -55,13 +55,13 @@ describe('deadlines', () => {
   });
 
   it('records a deadline from ingested email response language', async () => {
-    const response = await executeHermesCommand({
+    const response = await executeAgentCommand({
       command: 'ingest_email',
       matterName,
       from: 'opponent@example.org',
       subject: 'Response required',
       body: 'Please provide the documentation by 2026-07-04.',
-      source: 'hermes',
+      source: 'agent',
     });
 
     expect(response.ok).toBe(true);
@@ -70,16 +70,16 @@ describe('deadlines', () => {
     expect(response.userMessage).toContain('Email ingested');
   });
 
-  it('surfaces deadline uncertainty in case state snapshot and hermes handoff', async () => {
+  it('surfaces deadline uncertainty in case state snapshot and agent status packet', async () => {
     const stateDocument = await loadCaseStateDocument(matterName);
     const snapshotBefore = buildCaseStateSnapshot(stateDocument!.state);
     expect(snapshotBefore.blocked.some((item) => item.includes('deadline uncertainty'))).toBe(true);
     expect(isFinalDecisionDateMissing(stateDocument!.state)).toBe(true);
 
-    const command = await executeHermesCommand({
+    const command = await executeAgentCommand({
       command: 'get_case_status',
       matterName,
-      source: 'hermes',
+      source: 'agent',
     });
     expect(command.ok).toBe(true);
     expect(command.summary.blocked.some((item) => item.includes('deadline uncertainty'))).toBe(true);

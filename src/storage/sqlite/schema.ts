@@ -144,6 +144,23 @@ export function createTables(db: Database.Database): void {
       VALUES (new.id, new.content, new.evidence_id, new.chunk_index);
     END;
 
+    CREATE TABLE IF NOT EXISTS chronology_events (
+      id TEXT PRIMARY KEY,
+      matter_name TEXT NOT NULL,
+      date_start TEXT,
+      date_end TEXT,
+      description TEXT NOT NULL,
+      evidence_id TEXT REFERENCES evidence_items_v2(evidence_id) ON DELETE SET NULL,
+      issue_id TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      source_team TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_chronology_events_matter ON chronology_events(matter_name);
+    CREATE INDEX IF NOT EXISTS idx_chronology_events_dates ON chronology_events(matter_name, date_start, date_end);
+
     CREATE TABLE IF NOT EXISTS schema_version (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL
@@ -161,5 +178,68 @@ export function createTables(db: Database.Database): void {
 
 	  if (version < 2) {
 	    db.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (2, ?)').run(new Date().toISOString());
+	  }
+
+	  if (version < 3) {
+	    db.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (3, ?)').run(new Date().toISOString());
+	  }
+
+	  if (version < 4) {
+	    db.exec(`
+	      CREATE TABLE IF NOT EXISTS entities (
+	        id TEXT PRIMARY KEY,
+	        matter_name TEXT NOT NULL,
+	        name TEXT NOT NULL,
+	        role TEXT NOT NULL,
+	        description TEXT,
+	        metadata_json TEXT NOT NULL DEFAULT '{}',
+	        created_at TEXT NOT NULL,
+	        updated_at TEXT NOT NULL
+	      );
+	      CREATE INDEX IF NOT EXISTS idx_entities_matter ON entities(matter_name);
+	      CREATE INDEX IF NOT EXISTS idx_entities_role ON entities(role);
+
+	      CREATE TABLE IF NOT EXISTS breaches (
+	        id TEXT PRIMARY KEY,
+	        matter_name TEXT NOT NULL,
+	        entity_id TEXT NOT NULL REFERENCES entities(id) ON DELETE CASCADE,
+	        date_committed TEXT,
+	        title TEXT NOT NULL,
+	        description TEXT NOT NULL,
+	        provisions_violated TEXT,
+	        evidence_citations_json TEXT NOT NULL DEFAULT '[]',
+	        created_at TEXT NOT NULL,
+	        updated_at TEXT NOT NULL
+	      );
+	      CREATE INDEX IF NOT EXISTS idx_breaches_matter ON breaches(matter_name);
+	      CREATE INDEX IF NOT EXISTS idx_breaches_entity ON breaches(entity_id);
+
+	      CREATE TABLE IF NOT EXISTS relationships (
+	        id TEXT PRIMARY KEY,
+	        matter_name TEXT NOT NULL,
+	        source_id TEXT NOT NULL,
+	        target_id TEXT NOT NULL,
+	        relation_type TEXT NOT NULL,
+	        metadata_json TEXT NOT NULL DEFAULT '{}',
+	        created_at TEXT NOT NULL
+	      );
+	      CREATE INDEX IF NOT EXISTS idx_relationships_matter ON relationships(matter_name);
+	      CREATE INDEX IF NOT EXISTS idx_relationships_source ON relationships(source_id);
+
+	      CREATE TABLE IF NOT EXISTS case_citations (
+	        id TEXT PRIMARY KEY,
+	        matter_name TEXT NOT NULL,
+	        citation_query TEXT,
+	        case_name TEXT NOT NULL,
+	        relevance_score REAL DEFAULT 0.0,
+	        relevance_rationale TEXT,
+	        key_quote TEXT,
+	        procedural_context TEXT,
+	        created_at TEXT NOT NULL
+	      );
+	      CREATE INDEX IF NOT EXISTS idx_case_citations_matter ON case_citations(matter_name);
+	      CREATE INDEX IF NOT EXISTS idx_case_citations_query ON case_citations(citation_query);
+	    `);
+	    db.prepare('INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (4, ?)').run(new Date().toISOString());
 	  }
 	}

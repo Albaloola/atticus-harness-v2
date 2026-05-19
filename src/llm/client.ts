@@ -511,7 +511,26 @@ export class OpenAICompatibleClient implements LLMClient {
     }
 
     const message = choice.message;
-    const reasoningContent = message.reasoning_content ?? message.reasoning ?? undefined;
+    let content = message.content || '';
+    let reasoningContent = message.reasoning_content ?? message.reasoning ?? undefined;
+
+    if (content.includes('<think>')) {
+      let extractedReasoning = '';
+      content = content.replace(/<think>([\s\S]*?)<\/think>/g, (_, thinking) => {
+        extractedReasoning += (thinking + '\n');
+        return '';
+      });
+      if (content.includes('<think>')) {
+        const remainingIdx = content.indexOf('<think>');
+        extractedReasoning += content.slice(remainingIdx + 7);
+        content = content.slice(0, remainingIdx);
+      }
+      content = content.trim();
+      if (!reasoningContent && extractedReasoning.trim()) {
+        reasoningContent = extractedReasoning.trim();
+      }
+    }
+
     const toolCalls: ToolCall[] | undefined = message.tool_calls?.map((tc) => {
       try {
         return {
@@ -540,7 +559,7 @@ export class OpenAICompatibleClient implements LLMClient {
       : undefined;
 
     return {
-      content: message.content || '',
+      content,
       reasoningContent,
       toolCalls,
       usage,

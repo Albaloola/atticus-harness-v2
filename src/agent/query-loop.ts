@@ -40,6 +40,8 @@ export interface QueryLoopConfig {
   shouldStop?: () => string | undefined;
   /** When true, if the final response is not valid JSON, the loop will give the model another turn with feedback instead of returning raw non-JSON content. */
   retryNonJson?: boolean;
+  /** When set, the agent MUST call this tool to exit the loop. Raw text responses without tool calls will be rejected with feedback. */
+  requireTerminationTool?: string;
 }
 
 export interface QueryLoopResult {
@@ -174,6 +176,19 @@ export class QueryLoop {
           );
         }
 
+        if (this.config.requireTerminationTool) {
+          nonJsonRetries += 1; // Reuse the retry counter
+          this.history.push({
+            role: 'user',
+            content: `You must call the '${this.config.requireTerminationTool}' tool to finish your turn. Do not return raw text responses.`,
+          });
+          await this.saveResumeSummary({
+            lastUserGoal: userMessage,
+            lastModelVisibleSummary: `Agent attempted to exit without calling ${this.config.requireTerminationTool}. Asked model to use the tool.`,
+          });
+          continue;
+        }
+
         if (this.config.retryNonJson && nonJsonRetries < maxNonJsonRetries && !isJsonLike(response.content)) {
           nonJsonRetries += 1;
           const feedback = buildNonJsonRetryFeedback(response.content);
@@ -241,6 +256,28 @@ export class QueryLoop {
           toolCallId: toolCall.id,
           toolName: toolCall.name,
         });
+
+        // If the agent called the required termination tool, we can exit early.
+        if (this.config.requireTerminationTool && toolCall.name === this.config.requireTerminationTool) {
+          this.turns.push({
+            turnNumber: turnCount,
+            request: this.history.slice(-(response.toolCalls.length + 2)),
+            response,
+            toolCalls: toolCallResults,
+          });
+          await this.emitTurnEvent(turnCount, response.content);
+          
+          const transcriptPath = await this.saveTranscript();
+          return {
+            turns: this.turns,
+            history: this.history,
+            finalContent: JSON.stringify(toolCall.args), // Return the structured args as finalContent
+            status: 'completed',
+            transcriptPath,
+            nativeActions: nativeActions.length ? nativeActions : undefined,
+            policyViolations: policyViolations.length ? policyViolations : undefined,
+          };
+        }
       }
 
       const stopAfterTools = this.config.shouldStop?.();

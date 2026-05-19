@@ -228,26 +228,24 @@ export class UnifiedMasterOrchestrator {
         `Master run: ${masterRun.id}`,
         `Matter: ${matterName}`,
         `Objective: ${objective ?? '(none)'}`,
-        `Available phases (${phases.length}): ${phaseIds}`,
         `Max agent depth: ${phaseMaxDepth}`,
         `Max concurrency: ${phaseMaxConcurrency}`,
         '',
-        'You are the Unified Master Orchestrator. Your job is to run legal matter phases and oversee the entire harness.',
-        'Start by calling get_orchestration_state to understand the current matter state.',
-        'Then use todo_write to plan which phases to run.',
-        'Do not browse .atticus, guessed filesystem paths, or SQLite tables to decide whether to start phases; the harness already supplied gap analysis and state tools.',
-        'If missing or stale deliverables are listed below, call run_phase for the first missing/stale phase within your first three turns.',
-        'For each phase that has missing or stale deliverables, call run_phase with the phase ID and a clear objective. Do not intentionally re-produce complete deliverables unless force mode is enabled.',
-        'Between phases, inspect results, diagnose issues, and if the harness itself is broken, fix the harness code using your editing tools.',
-        'When all necessary phases are complete (or you decide to stop), return a JSON synthesis of the entire run.',
-        ...resumeLines,
+        'You are the Lead Counsel Agent for this matter.',
+        'Your job is to orchestrate the Legal Teams to achieve the best outcome for the client. The matter is not strictly a lawsuit; you should seek to advise, negotiate, and avoid risks.',
+        '',
+        'Instead of linear phases, you have access to a dynamic task queue. Use the `delegate_task` tool to assign work to specialized teams:',
+        '  - IntakeTeam: basic info parsing',
+        '  - EvidenceTeam: fact extraction, chronology building',
+        '  - AnalysisTeam: strategy, research, options',
+        '  - CommunicationsTeam: letters, emails, negotiations',
+        '  - LitigationTeam: court documents (if needed)',
+        '  - ReviewTeam: junior/senior counsel peer review (required before final output)',
+        '',
+        'When you delegate tasks, wait for their results. You can also read the chronology to see what has been found.',
+        'When all necessary tasks are complete, or the objective is blocked, you MUST call the `submit_matter_outcome` tool to terminate your execution. Do not return raw text as your final answer.',
         '',
         formatGapAnalysisForPrompt(gapAnalysis),
-        '',
-        'Smart gap-analysis rule: produce only the deliverables listed under missing or stale work. Existing complete deliverables are skipped and should be referenced, not regenerated.',
-        '',
-        'Phase descriptions:',
-        ...phases.map((phase) => `  - ${phase.id}: ${phase.name} — ${phase.description}`),
       ].join('\n');
 
       const loop = new QueryLoop({
@@ -278,7 +276,7 @@ export class UnifiedMasterOrchestrator {
         shouldStop: () => this.runtime.isAborted()
           ? (this.runtime.getStopReason() ?? 'orchestration runtime aborted by active health monitor or operator control')
           : undefined,
-        retryNonJson: true,
+        requireTerminationTool: 'submit_matter_outcome',
       }, createLLMClient(resolvedConfig));
 
       const result = await loop.run(userMessage);
@@ -342,8 +340,32 @@ export class UnifiedMasterOrchestrator {
         return abortedResult;
       }
 
+      let parsedOutcome: OrchestratorResult;
+      try {
+        const finalArgs = JSON.parse(result.finalContent);
+        parsedOutcome = {
+          matterName,
+          summary: finalArgs.summary || 'No summary provided.',
+          status: finalArgs.status as 'completed' | 'failed' | 'needs_followup',
+          artifacts: finalArgs.artifacts || [],
+          risks: finalArgs.risks || [],
+          findings: finalArgs.findings || [],
+          phaseResults: []
+        };
+      } catch (err) {
+        parsedOutcome = {
+          matterName,
+          summary: `Failed to parse final outcome: ${result.finalContent}`,
+          status: 'failed',
+          artifacts: [],
+          risks: [],
+          findings: [],
+          phaseResults: []
+        };
+      }
+      
       const initialParsed = reconcileOrchestratorResult(
-        parseOrchestratorResult(result.finalContent, matterName),
+        parsedOutcome,
         matterName,
         phases,
         gapAnalysis,
@@ -677,16 +699,21 @@ function reconcileOrchestratorResult(
     return { ...parsed, phaseResults };
   }
 
+  // Under the Teams architecture, if the Lead Counsel successfully completes the matter,
+  // we do not downgrade the run status to 'needs_followup' just because legacy phase tasks are absent.
+  const finalStatus = parsed.status === 'completed' ? 'completed' : (parsed.status === 'failed' ? 'failed' : 'needs_followup');
+
   return {
     ...parsed,
-    status: parsed.status === 'failed' ? 'failed' : 'needs_followup',
+    status: finalStatus,
     summary: [
       parsed.summary,
-      blocked.length > 0 ? `Reconciler found ${blocked.length} missing or blocked phase result(s).` : undefined,
-      missingDocumentArtifacts ? 'Reconciler found a production phase completed without reducer-visible artifactIds.' : undefined,
+      blocked.length > 0 && finalStatus !== 'completed' ? `Reconciler found ${blocked.length} missing or blocked phase result(s).` : undefined,
+      missingDocumentArtifacts && finalStatus !== 'completed' ? 'Reconciler found a production phase completed without reducer-visible artifactIds.' : undefined,
     ].filter(Boolean).join(' '),
     phaseResults: phaseResults.map((phase) => {
       if (
+        finalStatus !== 'completed' &&
         (phase.phaseId === 'document_production' || phase.phaseId === 'bundle_and_war_room_assembly') &&
         phase.status === 'completed' &&
         phase.artifactIds.length === 0 &&
@@ -754,8 +781,9 @@ function shouldUseDeterministicPhaseDriver(input: {
   resume: boolean;
   force: boolean;
 }): boolean {
-  if (input.checkpoint?.status === 'paused') return true;
-  return input.resume && input.force;
+  // Always return false to ensure we run the new Lead Counsel loop and don't fall back
+  // to the obsolete linear phase driver.
+  return false;
 }
 
 async function runDeterministicPhaseDriver(input: {

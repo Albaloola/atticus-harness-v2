@@ -2,9 +2,9 @@ import type { CaseStateDocument } from '../case-state/schema.js';
 import { buildCaseStateSnapshot, type CaseStateSnapshot } from '../case-state/snapshot.js';
 import type { CaseObligationSet } from '../case-manager/obligation-types.js';
 import type { QuestionRecord } from '../questions/schema.js';
-import type { HermesDiagnosticSummary, HermesUserSummary } from './protocol.js';
+import type { AgentDiagnosticSummary, AgentUserSummary } from './protocol.js';
 
-export interface HermesStatusPacketInput {
+export interface AgentStatusPacketInput {
   matterName: string;
   runId: string;
   stateDocument: CaseStateDocument;
@@ -12,12 +12,12 @@ export interface HermesStatusPacketInput {
   pendingQuestions: QuestionRecord[];
 }
 
-export interface HermesStatusPacket {
-  summary: HermesUserSummary;
-  diagnostics: HermesDiagnosticSummary;
+export interface AgentStatusPacket {
+  summary: AgentUserSummary;
+  diagnostics: AgentDiagnosticSummary;
 }
 
-export function buildHermesStatusPacket(input: HermesStatusPacketInput): HermesStatusPacket {
+export function buildAgentStatusPacket(input: AgentStatusPacketInput): AgentStatusPacket {
   const snapshot = buildCaseStateSnapshot(input.stateDocument.state);
   const pendingQuestionCount = input.pendingQuestions.length;
   const nextActions = deriveNextActions(input.obligations);

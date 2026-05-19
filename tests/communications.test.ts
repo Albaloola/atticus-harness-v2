@@ -48,7 +48,7 @@ describe('communications and external action control', () => {
       to: 'opponent@example.org',
       subject: 'Request for docs',
       objective: 'Prepare a draft response requesting copies of the files.',
-      source: 'hermes',
+      source: 'agent',
       actor: 'operator',
       requestedAt: '2026-01-01T00:00:00.000Z',
     });
@@ -75,7 +75,7 @@ describe('communications and external action control', () => {
       requestedAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
       summary: 'Prepare and send reply draft.',
-      source: 'hermes',
+      source: 'agent',
     };
 
     const prepareMode = evaluateExternalActionForMode({ action: pending, executionMode: 'prepare_only' });
@@ -105,7 +105,7 @@ describe('communications and external action control', () => {
       requestedAt: '2026-01-02T00:00:00.000Z',
       updatedAt: '2026-01-02T00:00:00.000Z',
       summary: 'File complaint draft',
-      source: 'hermes',
+      source: 'agent',
     };
 
     const archived = archiveRejectedAction(rejected, 'User rejected due to low confidence');

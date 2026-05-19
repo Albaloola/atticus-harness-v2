@@ -38,7 +38,7 @@ export async function appendInboxMessage(
       content: content.substring(0, 500),
       source,
     },
-    source: source === 'operator' ? 'operator' : 'hermes',
+    source: source === 'operator' ? 'operator' : source,
   };
   await appendEvent(eventParams);
 

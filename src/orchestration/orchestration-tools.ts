@@ -423,7 +423,7 @@ async function buildDocumentProductionFallback(
   const docs = [
     {
       id: 'phase11-judicial-review-petition-draft',
-      title: 'Phase 11 Judicial Review Petition Draft',
+      title: 'Judicial Review Petition Draft',
       requestedType: 'judicial_review_petition',
       body: [
         '# Judicial Review Petition Draft',
@@ -454,7 +454,7 @@ async function buildDocumentProductionFallback(
     },
     {
       id: 'phase11-ordinary-action-claim-draft',
-      title: 'Phase 11 Ordinary Action Claim Draft',
+      title: 'Ordinary Action Claim Draft',
       requestedType: 'ordinary_action_claim',
       body: [
         '# Ordinary Action Claim Draft',
@@ -483,7 +483,7 @@ async function buildDocumentProductionFallback(
     },
     {
       id: 'phase11-ico-complaint-draft',
-      title: 'Phase 11 ICO Complaint Draft',
+      title: 'ICO Complaint Draft',
       requestedType: 'ico_complaint',
       body: [
         '# ICO Complaint Draft',
@@ -509,7 +509,7 @@ async function buildDocumentProductionFallback(
     },
     {
       id: 'phase11-spso-complaint-draft',
-      title: 'Phase 11 SPSO Complaint Draft',
+      title: 'SPSO Complaint Draft',
       requestedType: 'spso_complaint',
       body: [
         '# SPSO Complaint Draft',
@@ -531,7 +531,7 @@ async function buildDocumentProductionFallback(
     },
     {
       id: 'phase11-gmc-complaint-draft',
-      title: 'Phase 11 GMC Complaint Draft',
+      title: 'GMC Complaint Draft',
       requestedType: 'gmc_complaint',
       body: [
         '# GMC Complaint Draft',
@@ -553,7 +553,7 @@ async function buildDocumentProductionFallback(
     },
     {
       id: 'phase11-slcc-complaint-draft',
-      title: 'Phase 11 SLCC Complaint Draft',
+      title: 'SLCC Complaint Draft',
       requestedType: 'slcc_complaint',
       body: [
         '# SLCC Complaint Draft',
@@ -574,14 +574,14 @@ async function buildDocumentProductionFallback(
     },
     {
       id: 'phase11-master-action-plan',
-      title: 'Phase 11 Master Action Plan',
+      title: 'Master Action Plan',
       requestedType: 'master_action_plan',
       body: [
         '# Master Action Plan',
         '',
         '## Immediate Priorities',
         '- Operator legal review of forum, competency, limitation, and service addresses.',
-        '- Promote and verify Phase 11 draft documents through reducer/acceptance workflow.',
+        '- Promote and verify draft documents through reducer/acceptance workflow.',
         '- Fill gaps: final FtP/Senate appeal outcome, current deadlines, solicitor file, SAR metadata, service addresses, and medical/psychiatric expert evidence.',
         '',
         '## Sequencing',
@@ -638,9 +638,9 @@ async function buildDocumentProductionFallback(
 
   return {
     status: 'completed',
-    summary: `Document production fallback created ${artifactIds.length} reducer-visible Phase 11 draft candidate(s) after worker output had no artifactIds.`,
+    summary: `Document production fallback created ${artifactIds.length} reducer-visible draft candidate(s) after worker output had no artifactIds.`,
     findings: [{
-      claim: 'Document production fallback produced reducer-visible Phase 11 draft candidates.',
+      claim: 'Document production fallback produced reducer-visible draft candidates.',
       support: artifactIds.join(', '),
       confidence: 'high',
       kind: 'procedural_fact',
@@ -655,7 +655,7 @@ async function buildDocumentProductionFallback(
     ],
     proposedTasks: priorResult.proposedTasks,
     artifactIds,
-    nextActions: ['Run hostile review and document output pipeline against the Phase 11 fallback candidates.'],
+    nextActions: ['Run hostile review and document output pipeline against the fallback candidates.'],
   };
 }
 
@@ -931,9 +931,9 @@ async function buildDocumentOutputPhase(
           mitigation: 'Accept at least one candidate or rerun the missing production phases, then rerun document_output_pipeline.',
         },
       ],
-      proposedTasks: ['Accept candidate deliverables before running Phase 11.'],
+      proposedTasks: ['Accept candidate deliverables before running the document output pipeline.'],
       artifactIds: [],
-      nextActions: ['Accept or produce the missing deliverables, then rerun Phase 11.'],
+      nextActions: ['Accept or produce the missing deliverables, then rerun the document output pipeline.'],
     };
   }
 
@@ -943,7 +943,7 @@ async function buildDocumentOutputPhase(
       summary: result.summary,
       findings: result.blockers.map((blocker) => ({
         claim: blocker,
-        support: `Phase 11 produced ${result.produced.length} output file(s), but at least one requested exact form could not be resolved.`,
+        support: `The document output pipeline produced ${result.produced.length} output file(s), but at least one requested exact form could not be resolved.`,
         confidence: 'high',
         kind: 'gap',
       })),
@@ -951,10 +951,10 @@ async function buildDocumentOutputPhase(
         {
           risk: 'At least one requested official form output is missing, so the operator bundle is incomplete.',
           severity: 'medium',
-          mitigation: 'Add the official form to the ScotCourts corpus or allow remote form download, then rerun Phase 11.',
+          mitigation: 'Add the official form to the ScotCourts corpus or allow remote form download, then rerun the document output pipeline.',
         },
       ],
-      proposedTasks: result.blockers.map((blocker) => `Resolve Phase 11 output blocker: ${blocker}`),
+      proposedTasks: result.blockers.map((blocker) => `Resolve document output blocker: ${blocker}`),
       artifactIds: [result.manifestPath, ...result.produced.map((output) => output.path)],
       nextActions: [
         `Review ${result.manifestPath} for produced files and blockers.`,

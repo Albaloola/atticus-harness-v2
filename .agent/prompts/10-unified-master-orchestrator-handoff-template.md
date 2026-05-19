@@ -1,14 +1,14 @@
-# Unified Master Orchestrator Handoff Template For Hermes
+# Lead Counsel Orchestrator Handoff Template
 
-Use this template when Hermes needs the Unified Master Orchestrator to run mutating Harness work.
+Use this template when the Agent needs the Lead Counsel Orchestrator to run mutating Harness work.
 
 ```markdown
 Matter: <matter-name>
-Source: Hermes
+Source: Agent
 Operator request: <exact user instruction>
 
 Current inspected state:
-- Resume/checkpoint: <status, phase, blockers, updatedAt>
+- Resume/checkpoint: <status, phase/task, blockers, updatedAt>
 - Agent packet: <status, activeAgents, leases, task counts>
 - Recent events: <relevant event IDs or summaries>
 - Relevant artifacts/candidates/questions/actions: <IDs>
@@ -23,7 +23,7 @@ Provider/profile constraints:
 
 Requested Harness action:
 ```bash
-<exact harness command or Hermes protocol action>
+<exact harness command or Agent protocol action>
 ```
 
 Execution requirements:
@@ -34,9 +34,10 @@ Execution requirements:
 - Prefer the smallest resumable work unit.
 - If the run is stuck or interrupted, use runtime recovery, checkpoint, work-unit
   ledger, and orphan reaper. Pause, repair, and resume instead of restarting a
-  whole phase where possible.
+  whole task where possible.
 - Preserve prepare-only external-action limits. Do not send, file, serve, pay,
   submit, or contact externally.
+- Enforce strict JSON outcome checks via `submit_matter_outcome`.
 
 Success criteria:
 - <specific deliverable or state transition>
@@ -44,7 +45,7 @@ Success criteria:
 - Manifest/source map/blockers are present for document export.
 - Fresh status packet confirms no orphaned active work.
 
-Expected result back to Hermes:
+Expected result back to the Agent:
 - Command/protocol result JSON.
 - Candidate/artifact/question/action IDs created or changed.
 - Review/gate status and blockers.
@@ -52,4 +53,4 @@ Expected result back to Hermes:
 - Any remaining operator question, using Harness's exact pending question text.
 ```
 
-Hermes must not invent missing IDs or fill in Unified Master Orchestrator results from memory.
+The Agent must not invent missing IDs or fill in Lead Counsel Orchestrator results from memory.

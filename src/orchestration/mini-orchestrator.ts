@@ -714,7 +714,7 @@ function supplementalWorkerTitles(phase: string): string[] {
         'Audit court-rule and regulator admissibility compliance',
         'Run opponent defences and strike-out challenge',
         'Run institutional-response and regulator-threshold challenge',
-        'Check document completeness against Phase 11 deliverable list',
+        'Check document completeness against the document output deliverable list',
         'Check consistency across chronology, pleadings, and complaints',
         'Check source-discipline warnings and unsupported inferences',
         'Identify evidence gaps that require operator action',
@@ -737,7 +737,7 @@ function supplementalWorkerTitles(phase: string): string[] {
       ];
     case 'operator_handoff':
       return [
-        'Map accepted artifacts to requested Phase 11 deliverables',
+        'Map accepted artifacts to requested document output deliverables',
         'Summarize filing readiness and blockers by route',
         'Summarize urgent deadlines and next human actions',
         'Summarize evidence gaps and verification caveats',

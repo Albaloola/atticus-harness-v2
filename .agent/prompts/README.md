@@ -1,26 +1,19 @@
-# Hermes Prompt Pack
+# Agent Prompt Pack (OpenClaw & Atticus)
 
-This directory contains prompt artifacts for Atticus/Hermes and for the Harness
-Unified Master Orchestrator handoff.
+This directory contains prompt artifacts for the operator-facing Agent (supporting OpenClaw, Atticus, etc.) and for the Harness Lead Counsel Orchestrator handoff.
 
-The historical numbered prompts `01` through `08` were implementation prompts for
-building the original Harness layers. They are kept as project history and should
-not be used as the live Hermes operating prompt.
+The historical numbered prompts `01` through `08` were implementation prompts for building the original Harness layers. They are kept as project history and should not be used as the live Agent operating prompt.
 
 Use these current prompts instead:
 
-- `09-hermes-agent-system-prompt.md`: the operator-facing Hermes system prompt.
-- `10-unified-master-orchestrator-handoff-template.md`: the mutating-work brief
-  Hermes gives the Unified Master Orchestrator.
-- `11-atticus-skill-update-checklist.md`: the checklist for updating Hermes
-  skills/runbooks so Atticus can manage cases through Harness.
+- `09-agent-system-prompt.md`: the operator-facing Agent system prompt.
+- `10-unified-master-orchestrator-handoff-template.md`: the mutating-work brief the Agent gives the Lead Counsel Orchestrator.
+- `11-agent-skill-update-checklist.md`: the checklist for updating Agent skills/runbooks so it can manage cases through Harness.
 
 Keep these files aligned with:
 
-- `.hermes/hermes-agent-guide.md`
-- `.hermes/hermes-harness-protocol.md`
+- `.agent/agent-guide.md`
+- `.agent/agent-harness-protocol.md`
 - `README.md`
 
-Hermes must remain provider-agnostic. The Harness default profile is DeepSeek
-through OpenRouter, but Codex SDK and other configured provider profiles are
-supported through Harness provider policy.
+The Agent must remain provider-agnostic. The Harness default profile is DeepSeek through OpenRouter, but Codex SDK and other configured provider profiles are supported through Harness provider policy.

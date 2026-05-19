@@ -41,7 +41,7 @@ describe('questions', () => {
       matterName,
       questionId: questions[0]!.questionId,
       answer: '2026-03-15',
-      source: 'hermes',
+      source: 'agent',
     });
 
     const updated = await loadCaseStateDocument(matterName);

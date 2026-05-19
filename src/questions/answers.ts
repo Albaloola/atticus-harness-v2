@@ -37,8 +37,8 @@ export async function submitQuestionAnswer(input: SubmitQuestionAnswerInput): Pr
         critical: false,
         status: 'met',
       }, {
-        source: input.source ?? 'hermes',
-        actor: input.source ?? 'hermes',
+        source: input.source ?? 'agent',
+        actor: input.source ?? 'agent',
         summary: `Answered question ${input.questionId}`,
       });
     } else {
@@ -47,8 +47,8 @@ export async function submitQuestionAnswer(input: SubmitQuestionAnswerInput): Pr
         status: 'accepted',
         evidenceItemIds: [],
       }, {
-        source: input.source ?? 'hermes',
-        actor: input.source ?? 'hermes',
+        source: input.source ?? 'agent',
+        actor: input.source ?? 'agent',
         summary: `Answered question ${input.questionId}`,
       });
     }

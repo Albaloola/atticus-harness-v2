@@ -54,7 +54,7 @@ export async function handleCaseManage(
     matterName,
     instruction,
     requestedType,
-    source: options.source ?? 'hermes',
+    source: options.source ?? 'agent',
     autoAccept: options.autoAccept,
     force: options.force,
   });

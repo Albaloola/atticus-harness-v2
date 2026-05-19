@@ -37,7 +37,7 @@ export interface EmailDraftResult {
 type DraftEmailPayload = WorkProductPayloadByType['draft_email'];
 
 const DEFAULT_TONE: EmailDraftInput['tone'] = 'formal';
-const SOURCE_FALLBACK = 'hermes';
+const SOURCE_FALLBACK = 'agent';
 
 function deterministicId(prefix: string, ...parts: string[]): string {
   const hash = createHash('sha256')
@@ -50,7 +50,7 @@ function deterministicId(prefix: string, ...parts: string[]): string {
 function normalizeContext(input: EmailDraftInput, action: string): CaseStateMutationContext {
   return {
     source: input.source ?? SOURCE_FALLBACK,
-    actor: input.actor ?? 'hermes',
+    actor: input.actor ?? 'agent',
     runId: input.runId,
     confidence: 0.95,
     summary: `${action} for ${input.matterName}`,
@@ -114,7 +114,7 @@ async function createEmailDraftWorkProduct(
     sourceBasis: [
       {
         sourceType: 'user_statement',
-        sourceId: 'hermes-command',
+        sourceId: 'agent-command',
         description: `Requested by ${context.actor} via ${context.source}`,
       },
     ],
@@ -186,7 +186,7 @@ function createProposedExternalAction(
     matterName: input.matterName,
     actionType: 'send_email',
     status: 'proposed',
-    requestedBy: input.actor ?? 'hermes',
+    requestedBy: input.actor ?? 'agent',
     requestedAt,
     updatedAt: requestedAt,
     summary: `Send draft email to ${input.to}: ${input.subject}`,
@@ -224,7 +224,7 @@ async function upsertExternalAction(input: EmailDraftInput, action: ExternalActi
     matterName: input.matterName,
     context: {
       source: input.source ?? SOURCE_FALLBACK,
-      actor: input.actor ?? 'hermes',
+      actor: input.actor ?? 'agent',
       runId: input.runId,
       confidence: 0.95,
       summary: `Creating draft email action ${action.actionId}`,
@@ -242,7 +242,7 @@ async function upsertExternalAction(input: EmailDraftInput, action: ExternalActi
     {
       matterName: input.matterName,
       source: input.source ?? SOURCE_FALLBACK,
-      actor: input.actor ?? 'hermes',
+      actor: input.actor ?? 'agent',
       runId: input.runId,
       type: 'case.external_action_created',
       summary: `Created external action ${action.actionId}`,

@@ -86,7 +86,7 @@ export class CaseManager {
 
   async handle(request: CaseManagerRequest): Promise<CaseManagerResult> {
     const requestedType = request.requestedType ?? inferRequestType(request.instruction);
-    const source = request.source ?? 'hermes';
+    const source = request.source ?? 'agent';
     const run = createRun({
       id: request.runId ?? process.env.ATTICUS_RUN_ID,
       matterName: request.matterName,
@@ -370,7 +370,7 @@ export class CaseManager {
           content: [
             `Requested output type: ${requestedType}`,
             ...(activeSkillMarker ? [activeSkillMarker] : []),
-            `Instruction from ${request.source ?? 'hermes'}: ${request.instruction}`,
+            `Instruction from ${request.source ?? 'agent'}: ${request.instruction}`,
             ...(gapAnalysis
               ? [
                   '',

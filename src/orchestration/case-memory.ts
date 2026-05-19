@@ -10,6 +10,7 @@ import { listInboxMessages } from '../state/inbox.js';
 import { deriveSnapshot } from '../state/snapshot.js';
 import { resolveConfig } from '../config/loader.js';
 import { listSources } from '../research/source-store.js';
+import { listEntities, listBreaches, listRelationships, listCaseCitations } from '../storage/sqlite/index.js';
 import type { MatterRuntimeSnapshot } from '../types/state.js';
 import type { MatterIndex } from '../types/matter.js';
 
@@ -66,6 +67,38 @@ export interface CaseMemoryPack {
   activeAndRecentTasks: Array<{ id: string; type: string; status: string; title: string; updated: string }>;
   recentRuns: Array<{ id: string; role: string; status: string; prompt?: string; summary?: string; started: string }>;
   inbox: Array<{ id: string; timestamp: string; source: string; content: string }>;
+  entities: Array<{
+    id: string;
+    name: string;
+    role: string;
+    description: string | null;
+    metadata: Record<string, unknown>;
+  }>;
+  breaches: Array<{
+    id: string;
+    entityId: string;
+    dateCommitted: string | null;
+    title: string;
+    description: string;
+    provisionsViolated: string | null;
+    evidenceCitations: any[];
+  }>;
+  relationships: Array<{
+    id: string;
+    sourceId: string;
+    targetId: string;
+    relationType: string;
+    metadata: Record<string, unknown>;
+  }>;
+  caseCitations: Array<{
+    id: string;
+    citationQuery: string | null;
+    caseName: string;
+    relevanceScore: number;
+    relevanceRationale: string | null;
+    keyQuote: string | null;
+    proceduralContext: string | null;
+  }>;
   recoveryInstructions: string[];
 }
 
@@ -87,6 +120,20 @@ export async function buildCaseMemoryPack(
     listCandidates(matterName).catch(() => []),
     listInboxMessages(matterName, { tail: limits.inbox }).catch(() => []),
   ]);
+
+  let dbEntities: any[] = [];
+  let dbBreaches: any[] = [];
+  let dbRelationships: any[] = [];
+  let dbCitations: any[] = [];
+
+  try {
+    dbEntities = listEntities(matterName);
+    dbBreaches = listBreaches(matterName);
+    dbRelationships = listRelationships(matterName);
+    dbCitations = listCaseCitations(matterName);
+  } catch {
+    // Graceful fallback if tables do not exist yet
+  }
 
   const evidenceSummary = await Promise.all(
     evidence.slice(0, limits.evidence).map(async (record) => ({
@@ -178,9 +225,41 @@ export async function buildCaseMemoryPack(
       source: message.source,
       content: message.content,
     })),
+    entities: dbEntities.map((e) => ({
+      id: e.id,
+      name: e.name,
+      role: e.role,
+      description: e.description,
+      metadata: JSON.parse(e.metadataJson || '{}'),
+    })),
+    breaches: dbBreaches.map((b) => ({
+      id: b.id,
+      entityId: b.entityId,
+      dateCommitted: b.dateCommitted,
+      title: b.title,
+      description: b.description,
+      provisionsViolated: b.provisionsViolated,
+      evidenceCitations: JSON.parse(b.evidenceCitationsJson || '[]'),
+    })),
+    relationships: dbRelationships.map((r) => ({
+      id: r.id,
+      sourceId: r.sourceId,
+      targetId: r.targetId,
+      relationType: r.relationType,
+      metadata: JSON.parse(r.metadataJson || '{}'),
+    })),
+    caseCitations: dbCitations.map((c) => ({
+      id: c.id,
+      citationQuery: c.citationQuery,
+      caseName: c.caseName,
+      relevanceScore: c.relevanceScore,
+      relevanceRationale: c.relevanceRationale,
+      keyQuote: c.keyQuote,
+      proceduralContext: c.proceduralContext,
+    })),
     recoveryInstructions: [
       'Treat this pack as the source of continuity after compaction or reset.',
-      'Use accepted artifacts, evidence IDs, source IDs, task history, and recent inbox messages before asking Hermes or the operator to restate the case.',
+      'Use accepted artifacts, evidence IDs, source IDs, task history, and recent inbox messages before asking the agent or the operator to restate the case.',
       'Do not rerun all investigation phases unless explicitly instructed or the dashboard shows missing foundational work.',
       'External communications are prepare-only drafts; do not send, file, serve, pay, or contact anyone.',
     ],

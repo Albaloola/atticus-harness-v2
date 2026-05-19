@@ -64,7 +64,7 @@ function normalizeContext(
 ): CaseStateMutationContext {
   return {
     source: input.source ?? SOURCE_FALLBACK,
-    actor: input.actor ?? 'hermes',
+    actor: input.actor ?? 'agent',
     runId: input.runId,
     confidence: input.confidence ?? 0.9,
     summary: `${action} for ${input.matterName}`,

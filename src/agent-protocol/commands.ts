@@ -10,21 +10,22 @@ import type { CaseObligationSet } from '../case-manager/obligation-types.js';
 import type { UnknownWorkProduct, WorkProductPayloadByType, WorkProductType } from '../work-products/types.js';
 import { isWorkProductType } from '../work-products/types.js';
 import { upsertWorkProduct } from '../work-products/store.js';
-import { buildHermesStatusPacket } from './status-packets.js';
+import { buildAgentStatusPacket } from './status-packets.js';
 import {
-  type HermesCommand,
-  type HermesCommandName,
-  type HermesCommandResponse,
-  type HermesDiagnosticSummary,
-  type HermesUserSummary,
+  type AgentCommand,
+  type AgentCommandName,
+  type AgentCommandResponse,
+  type AgentDiagnosticSummary,
+  type AgentUserSummary,
 } from './protocol.js';
 
 type CaseStatus = CaseStateDocument['state']['status'];
 
-export async function executeHermesCommand(command: HermesCommand): Promise<HermesCommandResponse> {
+export async function executeAgentCommand(command: AgentCommand): Promise<AgentCommandResponse> {
   const runId = command.runId ?? randomUUID();
-  const actor = command.actor ?? command.source ?? 'hermes';
-  const source = command.source ?? 'hermes';
+  const actor = command.actor ?? command.source ?? 'agent';
+  const source = command.source ?? 'agent';
+  const actorDisplay = actor.charAt(0).toUpperCase() + actor.slice(1);
 
   switch (command.command) {
     case 'start_case_management': {
@@ -33,7 +34,7 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
         context: {
           source,
           actor,
-          summary: 'Hermes case management started',
+          summary: `${actorDisplay} case management started`,
         },
       });
 
@@ -49,7 +50,7 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
         {
           source,
           actor,
-          summary: 'Hermes case instruction received',
+          summary: `${actorDisplay} case instruction received`,
         },
       );
 
@@ -89,7 +90,7 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
         {
           source,
           actor,
-          summary: 'Hermes follow-up instruction received',
+          summary: `${actorDisplay} follow-up instruction received`,
         },
       );
       await syncQuestionsForMatter({ matterName: command.matterName });
@@ -115,7 +116,7 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unable to record the user answer.';
-        return buildHermesFailure(command.command, runId, command.matterName, message);
+        return buildAgentFailure(command.command, runId, command.matterName, message);
       }
       await syncQuestionsForMatter({ matterName: command.matterName });
       const packet = await buildPacket(command.matterName, runId);
@@ -298,10 +299,10 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
     case 'record_sent_email': {
       const action = await getExternalAction(command.matterName, command.externalActionId);
       if (!action) {
-        return buildHermesFailure(command.command, runId, command.matterName, `External action ${command.externalActionId} not found.`);
+        return buildAgentFailure(command.command, runId, command.matterName, `External action ${command.externalActionId} not found.`);
       }
       if (action.status !== 'approved') {
-        return buildHermesFailure(
+        return buildAgentFailure(
           command.command,
           runId,
           command.matterName,
@@ -324,7 +325,7 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
           summary: `Sent email using action ${command.externalActionId}`,
         },
       );
-      await setExternalActionStatus(command.matterName, command.externalActionId, 'executed', 'Sent successfully');
+      await setExternalActionStatus(command.matterName, command.externalActionId, 'executed', 'Sent successfully', source, actor);
       const packet = await buildPacket(command.matterName, runId);
       return {
         ok: true,
@@ -389,9 +390,9 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
     }
 
     case 'approve_external_action': {
-      const updated = await setExternalActionStatus(command.matterName, command.actionId, 'approved', command.reason);
+      const updated = await setExternalActionStatus(command.matterName, command.actionId, 'approved', command.reason, source, actor);
       if (!updated) {
-        return buildHermesFailure(command.command, runId, command.matterName, `External action ${command.actionId} not found.`);
+        return buildAgentFailure(command.command, runId, command.matterName, `External action ${command.actionId} not found.`);
       }
       const packet = await buildPacket(command.matterName, runId);
       return {
@@ -406,9 +407,9 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
     }
 
     case 'reject_external_action': {
-      const updated = await setExternalActionStatus(command.matterName, command.actionId, 'rejected', command.reason);
+      const updated = await setExternalActionStatus(command.matterName, command.actionId, 'rejected', command.reason, source, actor);
       if (!updated) {
-        return buildHermesFailure(command.command, runId, command.matterName, `External action ${command.actionId} not found.`);
+        return buildAgentFailure(command.command, runId, command.matterName, `External action ${command.actionId} not found.`);
       }
       const packet = await buildPacket(command.matterName, runId);
       return {
@@ -460,11 +461,11 @@ export async function executeHermesCommand(command: HermesCommand): Promise<Herm
   }
 }
 
-async function buildPacket(matterName: string, runId: string): Promise<{ summary: HermesUserSummary; diagnostics: HermesDiagnosticSummary }> {
+async function buildPacket(matterName: string, runId: string): Promise<{ summary: AgentUserSummary; diagnostics: AgentDiagnosticSummary }> {
   const stateDocument = await loadCaseStateDocumentOrFallback(matterName);
   const obligations = await loadObligationSet(matterName);
   const pendingQuestions = await listPendingQuestionsFromStore(matterName);
-  return buildHermesStatusPacket({
+  return buildAgentStatusPacket({
     matterName,
     runId,
     stateDocument,
@@ -478,7 +479,7 @@ async function loadCaseStateDocumentOrFallback(matterName: string): Promise<Case
   if (document) {
     return document;
   }
-  return createCaseState({ matterName, context: { source: 'hermes', actor: 'hermes' } });
+  return createCaseState({ matterName, context: { source: 'agent', actor: 'agent' } });
 }
 
 async function loadObligationSet(matterName: string): Promise<CaseObligationSet> {
@@ -486,12 +487,12 @@ async function loadObligationSet(matterName: string): Promise<CaseObligationSet>
   return generateObligationsFromCaseState(stateDocument);
 }
 
-function buildHermesFailure(
-  command: HermesCommandName,
+function buildAgentFailure(
+  command: AgentCommandName,
   runId: string,
   matterName: string,
   userMessage: string,
-): HermesCommandResponse {
+): AgentCommandResponse {
   return {
     ok: false,
     command,
@@ -553,19 +554,20 @@ async function createRequestedDocument(input: {
     throw new Error(`Unsupported work product type: ${input.documentType}`);
   }
   const now = new Date().toISOString();
+  const actorDisplay = input.actor.charAt(0).toUpperCase() + input.actor.slice(1);
   const workProduct: UnknownWorkProduct = {
     id: randomUUID(),
     matterName: input.matterName,
     type: input.documentType,
     title: input.title ?? `Requested ${input.documentType}`,
-    content: `Hermes requested ${input.documentType}. ${input.objective ?? 'No objective provided.'}`,
+    content: `${actorDisplay} requested ${input.documentType}. ${input.objective ?? 'No objective provided.'}`,
     readiness: 'raw',
     purpose: `Request document: ${input.documentType}`,
     audience: input.audience ?? 'operator',
     sourceBasis: [{
       sourceType: 'user_statement',
       sourceId: input.source,
-      description: `Hermes request for ${input.documentType}`,
+      description: `${actorDisplay} request for ${input.documentType}`,
     }],
     unresolvedGaps: ['Document is requested and has not yet been reviewed.'],
     safetyStatus: 'safe',
@@ -573,7 +575,7 @@ async function createRequestedDocument(input: {
       requestedBy: input.source,
       requestedAt: now,
     },
-    payload: createPlaceholderPayload(input.documentType),
+    payload: createPlaceholderPayload(input.documentType, input.source, input.actor),
     createdAt: now,
     updatedAt: now,
   };
@@ -583,30 +585,35 @@ async function createRequestedDocument(input: {
     workProductId: workProduct.id,
     type: workProduct.type,
     readiness: workProduct.readiness,
-    source: 'hermes',
+    source: input.source,
   }, {
     source: input.source,
     actor: input.actor,
-    summary: `Hermes requested ${workProduct.type}`,
+    summary: `${actorDisplay} requested ${workProduct.type}`,
   });
 
   return workProduct;
 }
 
-function createPlaceholderPayload(type: WorkProductType): WorkProductPayloadByType[keyof WorkProductPayloadByType] {
+function createPlaceholderPayload(
+  type: WorkProductType,
+  source = 'agent',
+  actor = 'agent'
+): WorkProductPayloadByType[keyof WorkProductPayloadByType] {
   const today = new Date().toISOString().slice(0, 10);
+  const actorDisplay = actor.charAt(0).toUpperCase() + actor.slice(1);
   switch (type) {
     case 'intake_summary':
       return {
         intakeSummary: 'Initial intake summary captured from user request.',
-        sourceType: 'Hermes request',
+        sourceType: `${actorDisplay} request`,
       };
     case 'chronology':
       return {
-        events: [{ date: today, event: 'Initial intake event noted', sourceIds: ['hermes-request'] }],
+        events: [{ date: today, event: 'Initial intake event noted', sourceIds: [`${source}-request`] }],
       };
     case 'evidence_matrix':
-      return { rows: [{ claim: 'Core claim', evidence: ['hermes-request'], inference: 'Needs review' }] };
+      return { rows: [{ claim: 'Core claim', evidence: [`${source}-request`], inference: 'Needs review' }] };
     case 'fact_finding_report':
       return { findings: [{ finding: 'User statement indicates preliminary facts.', basis: ['user instruction'], confidence: 0.6 }] };
     case 'issue_map':
@@ -636,7 +643,7 @@ function createPlaceholderPayload(type: WorkProductType): WorkProductPayloadByTy
         nextAction: 'Verify final decision date',
       };
     case 'case_theory':
-      return { theory: 'Working theory pending', assumptions: ['Factual gaps remain'], evidenceLinks: ['hermes-request'] };
+      return { theory: 'Working theory pending', assumptions: ['Factual gaps remain'], evidenceLinks: [`${source}-request`] };
     case 'merits_opinion':
       return { merits: 'To be assessed', downside: ['Factual uncertainty'], relief: ['Potential relief options'] };
     case 'risk_register':
@@ -658,7 +665,7 @@ function createPlaceholderPayload(type: WorkProductType): WorkProductPayloadByTy
     case 'schedule_of_loss':
       return { losses: [{ date: today, harm: 'Loss description pending' }] };
     case 'draft_order':
-      return { orderFor: 'Applicant', requestedRelief: 'Provisional relief', supportingFacts: ['hermes-request'] };
+      return { orderFor: 'Applicant', requestedRelief: 'Provisional relief', supportingFacts: [`${source}-request`] };
     case 'bundle_index':
       return { entries: ['chronology', 'evidence_matrix', 'issue_map'] };
     case 'war_room_pack':
@@ -683,7 +690,7 @@ async function createExternalAction(input: {
   await applyCaseStateMutation(
     {
       matterName: input.matterName,
-      source: 'hermes',
+      source: input.requestedBy,
       actor: input.requestedBy,
       type: 'case.external_action_created',
       summary: `Created external action ${actionId}`,
@@ -722,6 +729,8 @@ async function setExternalActionStatus(
   actionId: string,
   status: ExternalActionRecord['status'],
   reason?: string,
+  source = 'agent',
+  actor = 'agent',
 ): Promise<boolean> {
   const document = await getCaseStateDocumentOrCreate({ matterName });
   const index = document.state.externalActions.findIndex((action) => action.actionId === actionId);
@@ -733,8 +742,8 @@ async function setExternalActionStatus(
   await applyCaseStateMutation(
     {
       matterName,
-      source: 'hermes',
-      actor: 'hermes',
+      source,
+      actor,
       type: 'case.external_action_updated',
       summary: `External action ${actionId} -> ${status}`,
       confidence: 1,

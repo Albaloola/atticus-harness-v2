@@ -83,7 +83,7 @@ interface InventoryInput {
 }
 
 const CASE_BROAD_RE = /\b(all|everything|what'?s needed|needed|handle|manage|full|complete|master|bundle)\b/i;
-const HOUSING_CONTEXT_RE = /\b(napier|accommodation|housing|arrears|rent|eviction|notice to quit|ntq|guarantor|university|student)\b/i;
+const HOUSING_CONTEXT_RE = /\b(accommodation|housing|arrears|rent|eviction|notice to quit|ntq|guarantor|university|student)\b/i;
 
 const LEGAL_ALIASES: Partial<Record<LegalArtifactType, string[]>> = {
   intake_summary: ['intake summary', 'matter intake', 'case intake'],

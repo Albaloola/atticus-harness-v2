@@ -696,7 +696,7 @@ Replace activity-based benchmark success with case-management success.
 ### Add
 
 - `benchmarks/full-case-management.spec.ts`
-- `benchmarks/fixtures/omer-elbushra-expectations.json`
+- `benchmarks/fixtures/generic-expectations.json`
 - `benchmarks/assertions/case-management.ts`
 
 ### Benchmark Must Fail Unless It Produces
@@ -731,7 +731,7 @@ Replace activity-based benchmark success with case-management success.
 - time
 - concurrency stability
 
-## Omer Matter Recovery Path
+## Case Recovery Path
 
 Do not rerun the whole matter until the milestones above are implemented enough to avoid another wasteful run.
 
@@ -743,15 +743,8 @@ When ready:
 4. Produce authoritative chronology.
 5. Produce evidence matrix.
 6. Produce issue map.
-7. Produce Scottish legal/procedural research memo.
-8. Produce procedural route memo covering:
-   - judicial review
-   - ordinary action
-   - university/internal route
-   - ICO
-   - SPSO
-   - GMC
-   - SLCC
+7. Produce legal/procedural research memo.
+8. Produce procedural route memo covering relevant legal avenues.
 9. Produce merits/risk memo.
 10. Produce document set only after analysis passes gates.
 11. Hostile review.
@@ -777,7 +770,7 @@ Build in this order:
 12. Provider capability routing
 13. Review-ready export
 14. Benchmark replacement
-15. Omer recovery run
+15. Case recovery run
 
 Do not spend more money on full autonomous runs before at least milestones 1-4 and 8 are working. Otherwise the harness will continue to confuse activity with progress.
 

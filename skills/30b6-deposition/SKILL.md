@@ -233,7 +233,7 @@ If working in Scotland:
 2. Use **specification of documents** for documentary recovery
 3. If oral evidence is needed pre-trial, apply for a **commission to examine** - explain scope, necessity, and why affidavit evidence is inadequate
 4. For corporate knowledge, use **written answers to pleadings** and supplementary interrogatories (rare; court permission needed)
-5. Flag to Omer that Scottish procedure does not have 30(b)(6) and the US methodology is for comparative/analytical purposes only
+5. Flag to the operator that Scottish procedure does not have 30(b)(6) and the US methodology is for comparative/analytical purposes only
 
 ## Foreign-Law / US-Origin Guardrail
 

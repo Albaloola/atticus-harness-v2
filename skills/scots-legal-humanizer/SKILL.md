@@ -381,12 +381,12 @@ Remove em dashes entirely by restructuring the prose. Do not use find-and-replac
 - Rewrite the phrase so the break is not needed.
 
 **Correct:**
-- "Anfal disclosed hardship early. Napier did not escalate for five months."
+- "The claimant disclosed hardship early. The landlord did not escalate for five months."
 - "The NTQ says payment by 9 May. The meeting summary says cancellation possible until 18 May."
 
 **Incorrect:**
-- "Anfal disclosed hardship early — Napier did not escalate for five months."
-- "Anfal disclosed hardship early -- Napier did not escalate for five months."
+- "The claimant disclosed hardship early — The landlord did not escalate for five months."
+- "The claimant disclosed hardship early -- The landlord did not escalate for five months."
 
 Also remove or replace:
 - ornamental or curly quotation marks where straight marks suit the context

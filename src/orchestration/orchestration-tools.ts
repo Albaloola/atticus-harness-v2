@@ -419,7 +419,7 @@ async function buildDocumentProductionFallback(
   priorResult: AgentStructuredResult,
 ): Promise<AgentStructuredResult> {
   const created = new Date().toISOString();
-  const sourceIds = ['OME-SRC-0025', 'OME-SRC-0026', 'OME-SRC-0041', 'OME-SRC-0042', 'OME-SRC-0046', 'OME-SRC-0049'];
+  const sourceIds = ['SRC-0001', 'SRC-0002', 'SRC-0003', 'SRC-0004', 'SRC-0005', 'SRC-0006'];
   const docs = [
     {
       id: 'phase11-judicial-review-petition-draft',
@@ -432,10 +432,10 @@ async function buildDocumentProductionFallback(
         'Court of Session, Outer House.',
         '',
         '## Petitioner',
-        'Omer Elbushra.',
+        '[Petitioner Name]',
         '',
         '## Respondent',
-        'University of Glasgow and any competent decision-maker responsible for the Fitness to Practise / Senate appeal decision under review.',
+        '[Respondent Organisation] and any competent decision-maker responsible for the decision under review.',
         '',
         '## Orders Sought',
         '- Reduction of the impugned Fitness to Practise / Senate appeal decision.',
@@ -463,10 +463,10 @@ async function buildDocumentProductionFallback(
         'Glasgow Sheriff Court, Ordinary Cause, subject to solicitor/operator review of competency and forum.',
         '',
         '## Pursuer',
-        'Omer Elbushra.',
+        '[Pursuer Name]',
         '',
         '## Defenders',
-        'University of Glasgow and relevant officers/persons identified in the parties matrix, subject to service-address verification.',
+        '[Defender Organisation] and relevant officers/persons identified in the parties matrix, subject to service-address verification.',
         '',
         '## Heads of Claim',
         '- Equality Act 2010: disability discrimination, discrimination arising from disability, failure to make reasonable adjustments, harassment, and victimisation.',
@@ -489,10 +489,10 @@ async function buildDocumentProductionFallback(
         '# ICO Complaint Draft',
         '',
         '## Complainant',
-        'Omer Elbushra.',
+        '[Complainant Name]',
         '',
         '## Organisation',
-        'University of Glasgow.',
+        '[Organisation Name].',
         '',
         '## Complaint Themes',
         '- Incomplete or delayed subject access responses.',
@@ -515,7 +515,7 @@ async function buildDocumentProductionFallback(
         '# SPSO Complaint Draft',
         '',
         '## Organisation',
-        'University of Glasgow.',
+        '[Organisation Name].',
         '',
         '## Complaint Themes',
         '- Complaint handling delay, fragmentation, and failure to address disability-related complaint substance.',
@@ -810,11 +810,10 @@ async function buildFastOperatorHandoff(
 
   const artifactIds = [
     `matters/${config.matterName}/master-bundle-index.md`,
-    `matters/${config.matterName}/bundle-evidence-fact-cross-reference-2026-05-09.json`,
-    `matters/${config.matterName}/_candidates/document-bundle-index-2026-05-09.md`,
-    `matters/${config.matterName}/_candidates/document-production-key-documents-2026-05-09.md`,
+    `matters/${config.matterName}/bundle-evidence-fact-cross-reference.json`,
+    `matters/${config.matterName}/_candidates/document-bundle-index.md`,
+    `matters/${config.matterName}/_candidates/document-production-key-documents.md`,
     `matters/${config.matterName}/_candidates/filing-checklist-bundle-war-room.md`,
-    '.atticus/artifacts/WITNESS-STATEMENT-NON-APPLICABILITY-ANFAL-20260509.md',
   ];
 
   return {
@@ -832,50 +831,50 @@ async function buildFastOperatorHandoff(
         kind: 'procedural_fact',
       },
       {
-        claim: 'The matter record contains 101 evidence items and local prepare-only bundle/handoff artifacts.',
-        support: `Matter index evidenceCount=${matter?.evidenceCount ?? 'unknown'}; artifact paths include master-bundle-index.md, document-bundle-index-2026-05-09.md, document-production-key-documents-2026-05-09.md, filing-checklist-bundle-war-room.md, and witness statement non-applicability index.`,
+        claim: 'The matter record contains prepare-only bundle/handoff artifacts.',
+        support: `Matter index evidenceCount=${matter?.evidenceCount ?? 'unknown'}; artifact paths include master-bundle-index.md, document-bundle-index.md, document-production-key-documents.md, and filing-checklist-bundle-war-room.md.`,
         confidence: 'high',
         kind: 'evidence_fact',
       },
       {
-        claim: 'The operative factual deadline is the accommodation Notice to Quit / contract end at 10am on 18 May 2026.',
-        support: 'ANF-SRC-0074 and ANF-SRC-0057 identify the financial NTQ and 18 May 2026 contract-end position; prior phase outputs cross-reference these records.',
+        claim: 'The operative deadlines and requirements are detailed in the action plan.',
+        support: 'Prior phase outputs cross-reference the ingested records.',
         confidence: 'high',
         kind: 'evidence_fact',
       },
       {
-        claim: 'The current record-supported route is internal Edinburgh Napier accommodation/student complaint escalation; court or tribunal filing is not locked by the produced checklist.',
-        support: 'filing-checklist-bundle-war-room.md states the current record-supported forum is Edinburgh Napier internal accommodation / student complaints pathway and labels court routes as fallback/not locked.',
+        claim: 'The current record-supported route is internal dispute resolution; court or tribunal filing is not locked by the produced checklist.',
+        support: 'filing-checklist-bundle-war-room.md states the current record-supported pathway.',
         confidence: 'high',
         kind: 'procedural_fact',
       },
       {
         claim: 'Witness statements were treated as not presently applicable because the record lacks signed first-person witness evidence.',
-        support: '.atticus/artifacts/WITNESS-STATEMENT-NON-APPLICABILITY-ANFAL-20260509.md records the non-applicability rationale and production index.',
+        support: 'Witness statement non-applicability records the non-applicability rationale and production index.',
         confidence: 'high',
         kind: 'not_applicable',
       },
     ],
     risks: [
       {
-        risk: 'Urgent housing and possession risk remains tied to the 18 May 2026 NTQ/contract-end date.',
+        risk: 'Urgent risks remain tied to the contract end date or Notice to Quit date if specified in the evidence.',
         severity: 'critical',
-        mitigation: 'Operator should verify current accommodation status, any council/housing contact, and whether Napier has paused enforcement before any external step.',
+        mitigation: 'Operator should verify current status and deadlines before any external step.',
       },
       {
-        risk: 'Payment-plan and guarantor-affordability facts need careful handling because the record includes a disputed or non-final family payment arrangement.',
+        risk: 'Payment plans and financial agreements need careful handling because the record includes disputed or non-final arrangements.',
         severity: 'high',
-        mitigation: 'Use ANF-SRC-0060 as the controlling call note and verify any later written confirmation before stating an agreement exists.',
+        mitigation: 'Verify any written confirmation before stating an agreement exists.',
       },
       {
-        risk: 'Hardship fund / SAAS evidence is incomplete unless later outcome documents are added.',
+        risk: 'Hardship fund or government support evidence is incomplete unless later outcome documents are added.',
         severity: 'high',
-        mitigation: 'Confirm whether the SAAS award letter and hardship evidence were supplied and whether Student Funding made a decision.',
+        mitigation: 'Confirm whether the funding decision was supplied.',
       },
       {
         risk: 'Safeguarding and wellbeing arguments are sensitive and must stay source-anchored.',
         severity: 'high',
-        mitigation: 'Tie mental-health/support assertions to ANF-SRC-0008, ANF-SRC-0030/0031/0033, and avoid unsupported clinical or causation conclusions.',
+        mitigation: 'Tie medical/support assertions to the relevant evidence and avoid unsupported clinical or causation conclusions.',
       },
       {
         risk: 'No external complaint, court filing, payment, service, or dispatch is recorded by this harness run.',
@@ -884,17 +883,17 @@ async function buildFastOperatorHandoff(
       },
     ],
     proposedTasks: [
-      'Verify whether the formal complaint was actually submitted and whether Napier acknowledged it.',
-      'Verify current accommodation/housing position before 18 May 2026 and capture any council or university response.',
-      'Confirm hardship fund / SAAS status and add missing outcome evidence if available.',
-      'Have a human legal reviewer check the NTQ, guarantor/payment-plan position, forum route, and complaint wording before dispatch.',
+      'Verify whether the formal complaint was actually submitted and acknowledged.',
+      'Verify current status/housing position and capture any relevant responses.',
+      'Confirm hardship fund or support status and add missing outcome evidence if available.',
+      'Have a human legal reviewer check the document drafts, guarantor/payment-plan position, forum route, and complaint wording before dispatch.',
       'If external action is authorised, create a logged dispatch/service/payment record separate from this prepare-only run.',
     ],
     artifactIds,
     nextActions: [
       'Use the master bundle index and filing checklist as the operator handoff packet.',
       'Do not treat witness statements as ready; use the non-applicability artifact unless signed statements are later obtained.',
-      'Prioritise the 18 May 2026 accommodation deadline, complaint acknowledgement, hardship/SAAS outcome, and housing fallback evidence.',
+      'Prioritise the immediate accommodation/contract deadlines, complaint acknowledgement, hardship/SAAS outcome, and fallback evidence.',
       'Resume from this checkpoint if more work is needed; do not replay earlier recovered phases.',
     ],
   };

@@ -2,7 +2,7 @@
 
 **Author:** Atticus (capturing Omar's vision)
 **Date:** 2026-05-07
-**Context:** After running the Anfal Elbushra accommodation arrears case, the current harness architecture was found to be too shallow for serious legal work. This document captures the operational requirements and architectural vision for a fundamentally stronger system.
+**Context:** After running the previous accommodation arrears reference case, the current harness architecture was found to be too shallow for serious legal work. This document captures the operational requirements and architectural vision for a fundamentally stronger system.
 
 ---
 

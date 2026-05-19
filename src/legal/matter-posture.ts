@@ -129,7 +129,7 @@ export async function classifyMatterPosture(input: {
     jurisdictions.push({ system: 'United Kingdom', forum: 'UK Supreme Court', confidence: 0.8, evidenceIds: [], reason: 'UKSC/Northern Ireland appellate terms detected' });
   }
 
-  const privateDataPolicy: PrivateDataPolicy = /omer|private|local only|confidential|sar|gdpr/.test(text)
+  const privateDataPolicy: PrivateDataPolicy = /private|local only|confidential|sar|gdpr/.test(text)
     ? 'local_only'
     : primaryMode === 'retrospective_benchmark'
       ? 'public_sources_only'

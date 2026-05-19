@@ -765,7 +765,7 @@ function selfReportedPolicyViolations(
     /\b(?:web_search|web_fetch|web source ingestion|Harness web).{0,160}\b(?:policy-blocked|blocked by policy)\b.{0,160}\b(?:live|official|URL|source|legislation|authority)\b/i.test(compact);
   const citesExternalUrlAsSource =
     /https?:\/\/\S+/i.test(compact) &&
-    /\b(?:official|source|accessed|checked|verified|live|legislation\.gov\.uk|napier\.ac\.uk|spso\.org\.uk|gov\.uk)\b/i.test(compact);
+    /\b(?:official|source|accessed|checked|verified|live|legislation\.gov\.uk|spso\.org\.uk|gov\.uk)\b/i.test(compact);
 
   if (!claimsLiveOfficialSource && !citesExternalUrlAsSource) return [];
   return ['Worker output appears to rely on live/external web sources while autonomy.autoApproveWeb=false'];

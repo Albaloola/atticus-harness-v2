@@ -94,7 +94,7 @@ function classifyEvidenceForSourceDiscipline(
 
   if (!text.trim()) return 'unknown';
 
-  if (/\b(action plan|call script|call transcript comprehensive|email to edinburgh napier|version [a-z] after phone call|atticus|case preparation|strategy memo|draft response)\b/.test(text)) {
+  if (/\b(action plan|call script|call transcript comprehensive|email to opponent|version [a-z] after phone call|atticus|case preparation|strategy memo|draft response)\b/.test(text)) {
     return 'work_product';
   }
   if (/\b(complaint draft|formal complaint|draft updated|complaint updated)\b/.test(text)) {

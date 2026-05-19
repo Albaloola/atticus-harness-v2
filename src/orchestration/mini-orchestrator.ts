@@ -602,7 +602,7 @@ function supplementalWorkerTitles(phase: string): string[] {
   switch (phase) {
     case 'intake_and_normalization':
       return [
-        'Map protected characteristics, vulnerabilities, and reasonable-adjustment needs',
+        'Map relevant party details, special considerations, and urgent needs',
         'Identify procedural posture across courts, regulators, and institutions',
         'Extract remedies sought and rank practical outcomes',
         'Inventory evidence anchors and source IDs for downstream use',
@@ -620,10 +620,10 @@ function supplementalWorkerTitles(phase: string): string[] {
         'Extract source-linked fact table by party, date, and issue',
         'Assess evidence reliability, provenance, and duplicate handling',
         'Map procedural records and court or regulator correspondence',
-        'Extract medical, welfare, and vulnerability evidence facts',
+        'Extract critical support, medical, or safety evidence facts if present',
         'Extract financial, loss, and quantification evidence facts',
-        'Extract SAR, data protection, and records-access evidence facts',
-        'Extract education, professional, and institutional evidence facts',
+        'Extract information-access and data processing evidence facts if present',
+        'Extract educational, employment, professional, or institutional evidence facts if present',
         'Build contradiction and corroboration matrix',
         'Select high-value quotations with source IDs and chunk references',
         'Map productions and bundle-ready evidence candidates',
@@ -632,11 +632,11 @@ function supplementalWorkerTitles(phase: string): string[] {
       ];
     case 'issue_spotting':
       return [
-        'Identify equality and discrimination issues',
-        'Identify public law and judicial review issues',
-        'Identify data protection, FOI, and records-access issues',
+        'Identify statutory rights, equality, or discrimination issues if present',
+        'Identify public law, judicial review, or administrative law issues if present',
+        'Identify privacy, data protection, and records-access issues if present',
         'Identify negligence, delict, contract, and misrepresentation issues',
-        'Identify education, regulatory, and professional standards issues',
+        'Identify professional, regulatory, or educational standards issues if present',
         'Identify human rights and procedural fairness issues',
         'Map remedies, orders, compensation, and non-monetary relief',
         'Map jurisdiction, forum, standing, and competency objections',
@@ -647,13 +647,13 @@ function supplementalWorkerTitles(phase: string): string[] {
       ];
     case 'law_and_policy_research':
       return [
-        'Research Scottish civil procedure and forum requirements',
-        'Research judicial review standards, time limits, and remedies',
-        'Research equality and disability discrimination authorities',
-        'Research GDPR, Data Protection Act, and ICO complaint standards',
-        'Research SPSO admissibility, maladministration, and exhaustion rules',
-        'Research GMC fitness-to-practise and complaint triage standards',
-        'Research SLCC admissibility and legal-services complaint standards',
+        'Research relevant civil procedure and forum requirements',
+        'Research judicial review and administrative appeal standards',
+        'Research relevant equality or discrimination authorities',
+        'Research data protection, privacy, and regulatory complaint standards',
+        'Research public ombudsman admissibility and complaint-exhaustion rules',
+        'Research relevant professional body fitness-to-practise or conduct standards',
+        'Research relevant legal services or professional standards complaint rules',
         'Research human rights and procedural fairness authorities',
         'Research delict, contract, and damages principles',
         'Research limitation, prescription, mora, and delay defences',
@@ -677,12 +677,12 @@ function supplementalWorkerTitles(phase: string): string[] {
       ];
     case 'procedural_route_planning':
       return [
-        'Plan judicial review route, remedies, permission issues, and deadlines',
-        'Plan ordinary action route, pleadings, service, and adjustment steps',
-        'Plan ICO complaint route and supporting evidence package',
-        'Plan SPSO complaint route and exhaustion requirements',
-        'Plan GMC complaint route and evidential thresholds',
-        'Plan SLCC complaint route and admissibility requirements',
+        'Plan public law / judicial review route, remedies, and deadlines if applicable',
+        'Plan civil action / court claim route, pleadings, and service requirements',
+        'Plan data protection regulator complaint route if applicable',
+        'Plan public ombudsman complaint route and exhaustion requirements if applicable',
+        'Plan professional regulatory complaint route and thresholds if applicable',
+        'Plan legal services or professional conduct complaint route if applicable',
         'Map pre-action correspondence and protocol-style steps',
         'Map interim remedies, urgent applications, and protective steps',
         'Map service addresses, parties, and representative information',
@@ -692,15 +692,12 @@ function supplementalWorkerTitles(phase: string): string[] {
       ];
     case 'document_production':
       return [
-        'Draft judicial review petition skeleton and remedies section',
-        'Draft judicial review statement of facts with source anchors',
-        'Draft ordinary action summons or claim narrative',
-        'Draft ordinary action crave, pleas-in-law, and remedies outline',
-        'Draft pre-action or letter-before-action package',
-        'Draft ICO complaint with chronology and data-rights breaches',
-        'Draft SPSO complaint with maladministration and injustice sections',
-        'Draft GMC complaint with fitness-to-practise concerns',
-        'Draft SLCC complaint with service and conduct issues',
+        'Draft public law / judicial review petition skeleton and remedies section',
+        'Draft civil action summons or court claim narrative',
+        'Draft data protection regulator complaint if applicable',
+        'Draft public ombudsman complaint if applicable',
+        'Draft professional regulatory complaint if applicable',
+        'Draft legal services or professional conduct complaint if applicable',
         'Draft schedule of loss and non-monetary remedies appendix',
         'Draft source and citation table for all produced documents',
         'Draft master action plan and operator filing checklist',
@@ -722,8 +719,8 @@ function supplementalWorkerTitles(phase: string): string[] {
       ];
     case 'bundle_and_war_room_assembly':
       return [
-        'Prepare judicial review production bundle index',
-        'Prepare ordinary action production bundle index',
+        'Prepare court-ready or review bundle index',
+        'Prepare civil claim bundle index',
         'Prepare regulator complaint evidence packets',
         'Prepare chronology and key-events bundle',
         'Prepare authorities and policy bundle',
@@ -752,9 +749,9 @@ function supplementalWorkerTitles(phase: string): string[] {
       ];
     case 'document_output_pipeline':
       return [
-        'Format judicial review outputs for operator-ready review',
-        'Format ordinary action outputs for operator-ready review',
-        'Format ICO, SPSO, GMC, and SLCC complaints',
+        'Format public law / judicial review outputs for review',
+        'Format civil claim/action outputs for review',
+        'Format data protection, ombudsman, and regulatory complaints',
         'Format master action plan and deadline tracker',
         'Create output manifest and artifact crosswalk',
         'Create source appendix and citation index',

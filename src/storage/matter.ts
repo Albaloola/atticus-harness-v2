@@ -106,6 +106,14 @@ export async function ensureMatterDirectories(name: string): Promise<void> {
 }
 
 export async function deleteMatter(name: string): Promise<void> {
+  try {
+    const { closeDb } = await import('./sqlite/index.js');
+    const { closeStateDb } = await import('../state/store.js');
+    closeDb(name);
+    closeStateDb(name);
+  } catch {
+    // Ignore cleanup errors
+  }
   await rm(getMatterPath(name), { recursive: true, force: true });
 }
 

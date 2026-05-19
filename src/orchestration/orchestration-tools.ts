@@ -130,7 +130,7 @@ export function createRunPhaseTool(config: PhaseToolsConfig): Tool<RunPhaseArgs,
         if (dependencyBlocker) {
           return {
             success: false,
-            error: dependencyBlocker,
+            error: dependencyBlocker.reason,
           };
         }
         const recovered = config.resumePlan?.phaseResults.find((item) => item.phase.id === phase.id);
@@ -422,151 +422,95 @@ async function buildDocumentProductionFallback(
   const sourceIds = ['SRC-0001', 'SRC-0002', 'SRC-0003', 'SRC-0004', 'SRC-0005', 'SRC-0006'];
   const docs = [
     {
-      id: 'phase11-judicial-review-petition-draft',
-      title: 'Judicial Review Petition Draft',
-      requestedType: 'judicial_review_petition',
+      id: 'phase11-pre-action-letter-draft',
+      title: 'Pre-Action Letter Draft',
+      requestedType: 'pre_action_letter',
       body: [
-        '# Judicial Review Petition Draft',
+        '# Pre-Action Letter Draft',
         '',
-        '## Court',
-        'Court of Session, Outer House.',
+        '## Claimant',
+        '[Claimant Name]',
         '',
-        '## Petitioner',
-        '[Petitioner Name]',
+        '## Proposed Respondent',
+        '[Respondent Name / Organisation]',
         '',
-        '## Respondent',
-        '[Respondent Organisation] and any competent decision-maker responsible for the decision under review.',
+        '## Background and Factual Summary',
+        '- [Factual Assertion 1]',
+        '- [Factual Assertion 2]',
         '',
-        '## Orders Sought',
-        '- Reduction of the impugned Fitness to Practise / Senate appeal decision.',
-        '- Declarator that the process was procedurally unfair, discriminatory, and/or irrational.',
-        '- Interim and ancillary orders preserving student status, records, and access pending final disposal where competent.',
+        '## Legal Basis and Grounds',
+        '- Breach of contract, statutory duties, or relevant regulations.',
+        '- Failure to resolve matters through internal procedures.',
         '',
-        '## Core Grounds',
-        '- Procedural unfairness, including disputed records, inadequate support, and inability to participate effectively.',
-        '- Apparent bias / predetermination arising from complaint-conflict dynamics.',
-        '- Failure to make reasonable adjustments and failure to have due regard to disability-related needs.',
-        '- Irrationality and disproportionality in escalating welfare/complaint conduct into professional fitness proceedings.',
+        '## Actions Required / Remedy Sought',
+        '- Prompt resolution of the dispute and appropriate remedies.',
         '',
         '## Evidence Base',
         sourceIds.map((id) => `- ${id}`).join('\n'),
       ].join('\n'),
     },
     {
-      id: 'phase11-ordinary-action-claim-draft',
-      title: 'Ordinary Action Claim Draft',
-      requestedType: 'ordinary_action_claim',
+      id: 'phase11-civil-claim-draft',
+      title: 'Civil Claim Draft',
+      requestedType: 'claim_draft',
       body: [
-        '# Ordinary Action Claim Draft',
+        '# Civil Claim Draft',
         '',
         '## Forum',
-        'Glasgow Sheriff Court, Ordinary Cause, subject to solicitor/operator review of competency and forum.',
+        'Relevant Court or Tribunal having jurisdiction.',
         '',
-        '## Pursuer',
-        '[Pursuer Name]',
+        '## Claimant',
+        '[Claimant Name]',
         '',
-        '## Defenders',
-        '[Defender Organisation] and relevant officers/persons identified in the parties matrix, subject to service-address verification.',
+        '## Respondent',
+        '[Respondent Name / Organisation]',
         '',
         '## Heads of Claim',
-        '- Equality Act 2010: disability discrimination, discrimination arising from disability, failure to make reasonable adjustments, harassment, and victimisation.',
-        '- Breach of contract / implied procedural fairness in university disciplinary and professional gatekeeping procedures.',
-        '- Negligence / psychiatric injury where competent and sufficiently evidenced.',
-        '- UK GDPR / Data Protection Act 2018 breaches relating to SAR handling and sensitive-data processing.',
+        '- Breach of contract, statutory duties, or relevant regulations.',
         '',
-        '## Remedies',
-        'Reduction/implement where competent, damages/solatium, injury-to-feelings award, special damages, interest, expenses, record correction, and appropriate declarators.',
+        '## Remedy and Quantification',
+        '- Damages, performance, declarator, or other competent remedies.',
         '',
         '## Evidence Base',
         sourceIds.map((id) => `- ${id}`).join('\n'),
       ].join('\n'),
     },
     {
-      id: 'phase11-ico-complaint-draft',
-      title: 'ICO Complaint Draft',
-      requestedType: 'ico_complaint',
+      id: 'phase11-witness-statement-draft',
+      title: 'Witness Statement Draft',
+      requestedType: 'witness_statement',
       body: [
-        '# ICO Complaint Draft',
+        '# Witness Statement Draft',
         '',
-        '## Complainant',
-        '[Complainant Name]',
+        '## Case Reference',
+        '[Matter Reference / Name]',
         '',
-        '## Organisation',
-        '[Organisation Name].',
+        '## Statement of',
+        '[Witness Name]',
         '',
-        '## Complaint Themes',
-        '- Incomplete or delayed subject access responses.',
-        '- Missing metadata, audit trails, version histories, and internal communications where personal data is alleged.',
-        '- Processing and sharing of special-category health/disability data across welfare, complaints, and FtP functions.',
-        '- Alleged incompatible use of welfare information for disciplinary/professional fitness purposes.',
-        '',
-        '## Outcome Requested',
-        'ICO assessment, compliance steps, further SAR disclosure, correction of inaccurate records, and confirmation of processing bases.',
+        '## Core Narrative',
+        '1. I make this statement in relation to the dispute between the parties.',
+        '2. [Narrative detail 1]',
+        '3. [Narrative detail 2]',
         '',
         '## Evidence Base',
         sourceIds.map((id) => `- ${id}`).join('\n'),
       ].join('\n'),
     },
     {
-      id: 'phase11-spso-complaint-draft',
-      title: 'SPSO Complaint Draft',
-      requestedType: 'spso_complaint',
+      id: 'phase11-schedule-of-loss-draft',
+      title: 'Schedule of Loss Draft',
+      requestedType: 'schedule_of_loss',
       body: [
-        '# SPSO Complaint Draft',
+        '# Schedule of Loss Draft',
         '',
-        '## Organisation',
-        '[Organisation Name].',
+        '## Heads of Loss',
+        '1. Direct losses or expenses incurred: [Amount]',
+        '2. General damages or compensation sought: [Amount]',
+        '3. Interest: [Amount]',
         '',
-        '## Complaint Themes',
-        '- Complaint handling delay, fragmentation, and failure to address disability-related complaint substance.',
-        '- Failure to separate welfare/support functions from adversarial complaint and FtP handling.',
-        '- Failure to provide clear reasons, accurate records, and effective escalation routes.',
-        '',
-        '## Outcome Requested',
-        'Independent investigation, apology, process recommendations, record correction, and practical remedies for the complainant.',
-        '',
-        '## Evidence Base',
-        sourceIds.map((id) => `- ${id}`).join('\n'),
-      ].join('\n'),
-    },
-    {
-      id: 'phase11-gmc-complaint-draft',
-      title: 'GMC Complaint Draft',
-      requestedType: 'gmc_complaint',
-      body: [
-        '# GMC Complaint Draft',
-        '',
-        '## Subject Matter',
-        'Fitness to Practise handling affecting a medical student, including fairness, disability support, and professional gatekeeping implications.',
-        '',
-        '## Complaint Themes',
-        '- Disability-related conduct allegedly mischaracterised as professional unfitness.',
-        '- Inadequate adjustments and support during quasi-professional proceedings.',
-        '- Reliance on disputed records and contested welfare/complaint narratives.',
-        '',
-        '## Outcome Requested',
-        'Regulatory review of process fairness and guidance compliance; no finding is requested without GMC jurisdictional screening.',
-        '',
-        '## Evidence Base',
-        sourceIds.map((id) => `- ${id}`).join('\n'),
-      ].join('\n'),
-    },
-    {
-      id: 'phase11-slcc-complaint-draft',
-      title: 'SLCC Complaint Draft',
-      requestedType: 'slcc_complaint',
-      body: [
-        '# SLCC Complaint Draft',
-        '',
-        '## Service Provider',
-        'Relevant Scottish solicitor / firm to be confirmed from the operator evidence bundle.',
-        '',
-        '## Complaint Themes',
-        '- Advice, communication, or service concerns connected with the university litigation strategy.',
-        '- Any delay, failure to progress, inadequate explanation, or failure to protect limitation/deadline interests must be tied to the specific solicitor file before submission.',
-        '',
-        '## Outcome Requested',
-        'SLCC eligibility screening, service investigation where competent, fee/service remedy where supported.',
+        '## Summary of Claims',
+        '- Total loss claim: [To be quantified]',
         '',
         '## Evidence Base',
         sourceIds.map((id) => `- ${id}`).join('\n'),
@@ -580,16 +524,15 @@ async function buildDocumentProductionFallback(
         '# Master Action Plan',
         '',
         '## Immediate Priorities',
-        '- Operator legal review of forum, competency, limitation, and service addresses.',
+        '- Operator/legal review of forum, competency, limitation, and service addresses.',
         '- Promote and verify draft documents through reducer/acceptance workflow.',
-        '- Fill gaps: final FtP/Senate appeal outcome, current deadlines, solicitor file, SAR metadata, service addresses, and medical/psychiatric expert evidence.',
+        '- Fill gaps in current evidence and verify deadlines.',
         '',
         '## Sequencing',
-        '1. Judicial review triage and deadline confirmation.',
-        '2. Ordinary action pleading review and quantification.',
-        '3. ICO/SPSO/GMC/SLCC complaint screening.',
-        '4. Bundle index and war-room pack creation.',
-        '5. Operator handoff and export.',
+        '1. Triage and confirm deadlines.',
+        '2. Review and quantify claims.',
+        '3. Create master bundle index and check filing readiness.',
+        '4. Operator review and export.',
         '',
         '## Evidence Base',
         sourceIds.map((id) => `- ${id}`).join('\n'),
@@ -698,49 +641,24 @@ function phaseDependencyBlocker(
   phaseIndex: number,
   resumePlan: ProviderAgnosticResumePlan | undefined,
   gapAnalysis: GapAnalysisResult | undefined,
-): string | undefined {
-  if (phaseIndex <= 0) return undefined;
-  const phase = phases[phaseIndex];
-  if (!phase) return undefined;
-  const recoveredCompleted = new Set(
-    (resumePlan?.phaseResults ?? [])
-      .filter(({ result }) => result.status === 'completed')
-      .map(({ phase: recoveredPhase }) => recoveredPhase.id),
-  );
-  const tasks = listTasks(matterName).filter((task) => task.kind === 'mini_orchestrator');
-
-  for (const priorPhase of phases.slice(0, phaseIndex)) {
-    if (recoveredCompleted.has(priorPhase.id)) continue;
-    if (phaseSatisfiedByGapAnalysis(priorPhase.id, gapAnalysis)) continue;
-    const latestPriorTask = tasks
-      .filter((task) => task.type === priorPhase.id)
-      .sort((a, b) => b.updated.localeCompare(a.updated))[0];
-    if (!latestPriorTask) {
-      return `Cannot run ${phase.id} before dependency phase ${priorPhase.id} has completed. Run ${priorPhase.id} first or resume from a checkpoint that records it as completed.`;
+) {
+  for (let i = 0; i < phaseIndex; i++) {
+    const dep = phases[i];
+    if (resumePlan?.phaseResults.some((r) => r.phase.id === dep.id && r.result.status === 'completed')) {
+      continue;
     }
-    if (latestPriorTask.status !== 'completed') {
-      return `Cannot run ${phase.id} because dependency phase ${priorPhase.id} is ${latestPriorTask.status}: ${latestPriorTask.blockedReason ?? stringData(latestPriorTask.data, 'summary', 'no structured blocker recorded')}`;
-    }
-    if (stringData(latestPriorTask.data, 'resultStatus') !== 'completed') {
-      return `Cannot run ${phase.id} because dependency phase ${priorPhase.id} did not return a completed phase result: ${stringData(latestPriorTask.data, 'summary', 'no summary recorded')}`;
-    }
-  }
-
-  if (phase.id === 'verification_and_hostile_review' || phase.id === 'bundle_and_war_room_assembly' || phase.id === 'operator_handoff' || phase.id === 'document_output_pipeline') {
-    if (phaseSatisfiedByGapAnalysis('document_production', gapAnalysis)) return undefined;
-    const documentProduction = tasks
-      .filter((task) => task.type === 'document_production')
-      .sort((a, b) => b.updated.localeCompare(a.updated))[0];
-    if (documentProduction && documentProduction.status === 'completed') {
-      const artifactIds = Array.isArray(documentProduction.data.artifactIds)
-        ? documentProduction.data.artifactIds.filter((id): id is string => typeof id === 'string')
-        : [];
-      if (artifactIds.length === 0) {
-        return `Cannot run ${phase.id} because document_production completed without reducer-visible artifactIds. Rerun document_production with submit_candidate output first.`;
+    const depTasks = listTasks(matterName).filter((t) => t.kind === 'mini_orchestrator' && t.type === dep.id);
+    const hasCompletedDep = depTasks.some((t) => t.status === 'completed');
+    if (!hasCompletedDep) {
+      if (gapAnalysis?.skipped.some((s) => s.requirementLabel.toLowerCase().includes(dep.name.toLowerCase()))) {
+        continue;
       }
+      return {
+        phaseId: dep.id,
+        reason: `Dependent phase ${dep.name} has not been completed.`,
+      };
     }
   }
-
   return undefined;
 }
 
@@ -752,14 +670,10 @@ function phaseSatisfiedByGapAnalysis(phaseId: string, gapAnalysis: GapAnalysisRe
   return requirements.every((requirement) => satisfied.has(requirement.id));
 }
 
-function taskStatusForPhaseResult(
-  phase: PhaseDefinition,
-  result: AgentStructuredResult,
-): 'completed' | 'failed' | 'blocked' {
-  if (result.status === 'failed') return 'failed';
-  if (result.status === 'blocked' || result.status === 'needs_followup') return 'blocked';
-  if (requiresReducerVisibleArtifacts(phase) && result.artifactIds.length === 0) return 'blocked';
-  return 'completed';
+function taskStatusForPhaseResult(phase: PhaseDefinition, result: AgentStructuredResult): 'completed' | 'failed' | 'blocked' {
+  if (result.status === 'completed') return 'completed';
+  if (result.risks.some((r) => r.severity === 'critical')) return 'blocked';
+  return 'failed';
 }
 
 function recoveredPhaseCompleteEnough(phaseId: string, result: AgentStructuredResult | undefined): boolean {
@@ -773,17 +687,12 @@ function requiresReducerVisibleArtifacts(phase: PhaseDefinition): boolean {
 }
 
 function buildPhaseBlocker(phase: PhaseDefinition, result: AgentStructuredResult): Record<string, unknown> {
-  const missingArtifact = result.status === 'completed' && requiresReducerVisibleArtifacts(phase) && result.artifactIds.length === 0;
   return {
-    type: missingArtifact ? 'missing_reducer_artifact' : `phase_${result.status}`,
-    objectId: phase.id,
-    reason: missingArtifact
-      ? `${phase.name} completed worker activity but produced no reducer-visible artifactIds`
-      : result.summary,
-    severity: missingArtifact || result.status === 'failed' ? 'high' : 'medium',
-    remediation: missingArtifact
-      ? 'Rerun the phase and require workers to call submit_candidate for each deliverable before downstream verification or bundle phases.'
-      : 'Inspect worker events and resolve the blocker before running downstream phases.',
+    phaseId: phase.id,
+    phaseName: phase.name,
+    reason: result.summary,
+    severity: result.risks.some((r) => r.severity === 'critical') ? 'high' : 'medium',
+    remediation: 'Address the highlighted risks, update the evidence, or modify the guidelines before re-running.',
   };
 }
 
@@ -795,7 +704,7 @@ function stringData(data: Record<string, unknown>, key: string, fallback = ''): 
 async function buildFastOperatorHandoff(
   config: PhaseToolsConfig,
   phase: PhaseDefinition,
-  _objective: string,
+  objective: string,
 ): Promise<AgentStructuredResult> {
   const matter = await loadMatter(config.matterName).catch(() => null);
   const tasks = listTasks(config.matterName);
@@ -843,7 +752,7 @@ async function buildFastOperatorHandoff(
         kind: 'evidence_fact',
       },
       {
-        claim: 'The current record-supported route is internal dispute resolution; court or tribunal filing is not locked by the produced checklist.',
+        claim: 'The current record-supported route is dispute resolution; filing is not locked by the produced checklist.',
         support: 'filing-checklist-bundle-war-room.md states the current record-supported pathway.',
         confidence: 'high',
         kind: 'procedural_fact',
@@ -857,24 +766,24 @@ async function buildFastOperatorHandoff(
     ],
     risks: [
       {
-        risk: 'Urgent risks remain tied to the contract end date or Notice to Quit date if specified in the evidence.',
+        risk: 'Urgent risks or deadlines might remain unverified.',
         severity: 'critical',
         mitigation: 'Operator should verify current status and deadlines before any external step.',
       },
       {
-        risk: 'Payment plans and financial agreements need careful handling because the record includes disputed or non-final arrangements.',
+        risk: 'Financial calculations and agreements need careful verification.',
         severity: 'high',
         mitigation: 'Verify any written confirmation before stating an agreement exists.',
       },
       {
-        risk: 'Hardship fund or government support evidence is incomplete unless later outcome documents are added.',
+        risk: 'External support or funding evidence might be incomplete.',
         severity: 'high',
-        mitigation: 'Confirm whether the funding decision was supplied.',
+        mitigation: 'Confirm whether the funding or support decision was supplied.',
       },
       {
-        risk: 'Safeguarding and wellbeing arguments are sensitive and must stay source-anchored.',
+        risk: 'Personal, medical, or sensitive allegations must stay strictly source-anchored.',
         severity: 'high',
-        mitigation: 'Tie medical/support assertions to the relevant evidence and avoid unsupported clinical or causation conclusions.',
+        mitigation: 'Tie allegations to the relevant evidence and avoid unsupported clinical or causation conclusions.',
       },
       {
         risk: 'No external complaint, court filing, payment, service, or dispatch is recorded by this harness run.',
@@ -883,17 +792,17 @@ async function buildFastOperatorHandoff(
       },
     ],
     proposedTasks: [
-      'Verify whether the formal complaint was actually submitted and acknowledged.',
-      'Verify current status/housing position and capture any relevant responses.',
-      'Confirm hardship fund or support status and add missing outcome evidence if available.',
-      'Have a human legal reviewer check the document drafts, guarantor/payment-plan position, forum route, and complaint wording before dispatch.',
+      'Verify whether any formal complaints or pre-action steps were actually submitted and acknowledged.',
+      'Verify current operational status and deadlines.',
+      'Confirm external funding or assistance status if applicable.',
+      'Have a human legal reviewer check the document drafts, procedural routes, and pleadings before dispatch.',
       'If external action is authorised, create a logged dispatch/service/payment record separate from this prepare-only run.',
     ],
     artifactIds,
     nextActions: [
       'Use the master bundle index and filing checklist as the operator handoff packet.',
       'Do not treat witness statements as ready; use the non-applicability artifact unless signed statements are later obtained.',
-      'Prioritise the immediate accommodation/contract deadlines, complaint acknowledgement, hardship/SAAS outcome, and fallback evidence.',
+      'Prioritise immediate deadlines, complaint acknowledgements, and core evidence verification.',
       'Resume from this checkpoint if more work is needed; do not replay earlier recovered phases.',
     ],
   };

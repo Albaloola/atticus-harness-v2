@@ -133,6 +133,24 @@ export async function handleCaseReset(
   }
 }
 
+export async function handleCaseDelete(
+  matterName: string,
+  options: { json?: boolean },
+): Promise<void> {
+  try {
+    const { deleteMatter } = await import('../storage/matter.js');
+    await deleteMatter(matterName);
+    if (options.json) {
+      console.log(JSON.stringify({ matterName, deleted: true }, null, 2));
+    } else {
+      console.log(chalk.green(`Matter "${matterName}" and all its evidence, checkpoints, and databases have been purged.`));
+    }
+  } catch (err: unknown) {
+    console.error(chalk.red('Failed to delete matter:'), err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
 async function assertMatter(matterName: string): Promise<void> {
   try {
     await loadMatter(matterName);

@@ -28,6 +28,7 @@ program
   .command('init <matter-name>')
   .description('Create a new legal matter')
   .option('-y, --yes', 'Skip confirmation')
+  .option('--clean', 'Purge existing matter first if it exists')
   .action(async (matterName, options) => {
     const { default: handler } = await import('./commands/init.js');
     await handler(matterName, options);
@@ -43,16 +44,7 @@ program.command('status <matter-name>')
     await handler(matterName, options);
   });
 
-// Benchmark comparator
-program.command('benchmark [benchmark-dir]')
-  .description('Score benchmark matter readiness and false-completion risk')
-  .option('--matter <matter-name>', 'Score an existing matter against the benchmark expectation')
-  .option('--observation <path>', 'Score a benchmark observation JSON file')
-  .option('--json', 'JSON output mode')
-  .action(async (benchmarkDir, options) => {
-    const { benchmarkScoreHandler } = await import('./commands/benchmark.js');
-    await benchmarkScoreHandler(benchmarkDir, options);
-  });
+
 
 // Events
 program.command('events <matter-name>')
@@ -948,6 +940,16 @@ program
       .action(async (matterName, options) => {
         const { handleCaseReset } = await import('./commands/case.js');
         await handleCaseReset(matterName, options);
+      })
+  )
+  .addCommand(
+    new Command('delete')
+      .description('Purge the entire case directory, databases, and all related state')
+      .argument('<matter-name>', 'Matter name')
+      .option('--json', 'JSON output')
+      .action(async (matterName, options) => {
+        const { handleCaseDelete } = await import('./commands/case.js');
+        await handleCaseDelete(matterName, options);
       })
   );
 

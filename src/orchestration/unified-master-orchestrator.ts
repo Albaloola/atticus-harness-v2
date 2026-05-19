@@ -437,6 +437,16 @@ export class UnifiedMasterOrchestrator {
       stopActiveHealthMonitor?.();
       removeShutdownCleanup();
       this.runtime.untrackRun(masterRun.id);
+
+      // Close SQLite databases to prevent resource leaks and allow clean overwrites/deletions.
+      try {
+        const { closeDb } = await import('../storage/sqlite/schema.js');
+        const { closeStateDb } = await import('../state/index.js');
+        closeDb(matterName);
+        closeStateDb(matterName);
+      } catch {
+        // Ignore errors during dynamic import / cleanup
+      }
     }
   }
 
